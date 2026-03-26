@@ -125,6 +125,19 @@ export class DataTree {
   }
 
   /**
+   * Mark a field as dirty so it will be re-evaluated on next observe/force.
+   */
+  invalidateField(path: string): boolean {
+    const field = this.fields.get(path);
+    if (!field) return false;
+    if (field.state.status === "resolved" || field.state.status === "error") {
+      field.state = { status: "dirty" };
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Observe a field: if idle, triggers force. Returns the resolved value.
    * This is the primary API for consumers.
    */
@@ -151,10 +164,12 @@ export class DataTree {
       return field.state.value;
     }
 
-    // If already errored, re-throw
+    // If already errored, re-throw (but not if dirty — dirty fields should re-evaluate)
     if (field.state.status === "error") {
       throw field.state.error;
     }
+
+    // Dirty fields are treated like idle — re-evaluate them
 
     // Cycle detection
     if (forceStack.has(path)) {

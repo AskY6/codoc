@@ -3,6 +3,11 @@ export { validate } from "./schema.js";
 export { literalLoader } from "./loader/literal.js";
 export { refLoader } from "./loader/ref.js";
 export { getLoader, registerLoader } from "./loader/registry.js";
+export { extractDeps, extractAllDeps } from "./dep-extractor.js";
+export { DAG } from "./dag.js";
+export type { CyclicDependencyError } from "./dag.js";
+export { topoSort, topoLayers } from "./topo-sort.js";
+export { propagateDirty, propagateAndInvalidate } from "./dirty-propagator.js";
 export type {
   CodataDefinition,
   CodataField,

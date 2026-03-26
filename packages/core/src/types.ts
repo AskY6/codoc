@@ -4,7 +4,8 @@ export type FieldState<T> =
   | { status: "idle" }
   | { status: "pending" }
   | { status: "resolved"; value: T }
-  | { status: "error"; error: FieldError };
+  | { status: "error"; error: FieldError }
+  | { status: "dirty" };
 
 export type FieldError =
   | { kind: "validation"; message: string; path: string; schema: unknown }
