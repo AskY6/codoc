@@ -183,6 +183,33 @@ describe("DAG", () => {
     });
   });
 
+  describe("toDot", () => {
+    it("generates valid DOT output", () => {
+      const dag = new DAG();
+      dag.addEdge("/b", "/a");
+      dag.addEdge("/c", "/a");
+      const dot = dag.toDot();
+      expect(dot).toContain("digraph");
+      expect(dot).toContain('"/a" -> "/b"');
+      expect(dot).toContain('"/a" -> "/c"');
+    });
+
+    it("accepts custom title", () => {
+      const dag = new DAG();
+      dag.addNode("/x");
+      const dot = dag.toDot({ title: "My Graph" });
+      expect(dot).toContain('"My Graph"');
+    });
+
+    it("highlights dirty nodes", () => {
+      const dag = new DAG();
+      dag.addEdge("/b", "/a");
+      const dot = dag.toDot({ highlightDirty: ["/b"] });
+      expect(dot).toContain('"/b" [fillcolor="#ffcccc"');
+      expect(dot).not.toContain('"/a" [fillcolor="#ffcccc"');
+    });
+  });
+
   describe("incremental updates", () => {
     it("correctly updates after adding a new node with edge", () => {
       const dag = new DAG();

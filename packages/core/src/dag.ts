@@ -145,6 +145,48 @@ export class DAG {
   }
 
   /**
+   * Export the DAG as a Graphviz DOT string for visualization/debugging.
+   * Edges point from dependency to dependent (data flow direction).
+   */
+  toDot(options?: { title?: string; highlightDirty?: string[] }): string {
+    const title = options?.title ?? "CoDoc DAG";
+    const dirty = new Set(options?.highlightDirty ?? []);
+    const lines: string[] = [];
+
+    lines.push(`digraph "${title}" {`);
+    lines.push("  rankdir=TB;");
+    lines.push('  node [shape=box, style=filled, fillcolor="#e8f4fd", fontname="monospace"];');
+    if (dirty.size > 0) {
+      lines.push('  node [fillcolor="#e8f4fd"];');
+    }
+    lines.push("");
+
+    // Declare nodes (with dirty highlighting)
+    for (const node of this.getNodes().sort()) {
+      const label = node.replace(/"/g, '\\"');
+      if (dirty.has(node)) {
+        lines.push(`  "${label}" [fillcolor="#ffcccc", style="filled,bold"];`);
+      } else {
+        lines.push(`  "${label}";`);
+      }
+    }
+
+    lines.push("");
+
+    // Edges: dependency → dependent (data flow direction)
+    for (const node of this.getNodes().sort()) {
+      for (const dep of this.getDirectDeps(node).sort()) {
+        const from = dep.replace(/"/g, '\\"');
+        const to = node.replace(/"/g, '\\"');
+        lines.push(`  "${from}" -> "${to}";`);
+      }
+    }
+
+    lines.push("}");
+    return lines.join("\n");
+  }
+
+  /**
    * Build a DAG from a DataTree by statically extracting dependencies.
    */
   static buildFromTree(tree: DataTree): DAG {
