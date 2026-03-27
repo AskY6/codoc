@@ -11,6 +11,10 @@ export function clearSourceCache(): void {
   cache.clear();
 }
 
+export function evictSourceCache(url: string): boolean {
+  return cache.delete(url);
+}
+
 export function getSourceCacheSize(): number {
   return cache.size;
 }

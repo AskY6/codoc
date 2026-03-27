@@ -2,7 +2,7 @@ export { DataTree } from "./data-tree.js";
 export { validate } from "./schema.js";
 export { literalLoader } from "./loader/literal.js";
 export { refLoader } from "./loader/ref.js";
-export { sourceLoader, clearSourceCache, getSourceCacheSize } from "./loader/source.js";
+export { sourceLoader, clearSourceCache, evictSourceCache, getSourceCacheSize } from "./loader/source.js";
 export { promptLoader, setLLMClient, getLLMClient, extractTemplateVars } from "./loader/prompt.js";
 export { getLoader, registerLoader } from "./loader/registry.js";
 export { extractDeps, extractAllDeps } from "./dep-extractor.js";

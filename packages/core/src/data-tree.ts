@@ -195,6 +195,20 @@ export class DataTree {
   }
 
   /**
+   * Reset a field to idle so the next observe/force re-executes its original loader.
+   * Unlike invalidateField (which only transitions resolved/error → dirty),
+   * this also clears any pending force dedup.
+   */
+  refreshField(path: string): boolean {
+    const field = this.fields.get(path);
+    if (!field) return false;
+    field.state = { status: "idle" };
+    this.pendingForces.delete(path);
+    this.notify(path);
+    return true;
+  }
+
+  /**
    * Mark a field as dirty so it will be re-evaluated on next observe/force.
    */
   invalidateField(path: string): boolean {

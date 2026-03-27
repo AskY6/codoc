@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CoDoc MVP</title>
+    <title>CoDoc M3 — Extended Loaders</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -22,12 +22,26 @@
         color: #999;
         font-style: italic;
       }
+      .field-loading {
+        color: #999;
+        font-style: italic;
+      }
       .error-boundary {
         color: #cc0000;
         background: #fff0f0;
         padding: 12px;
         border-radius: 4px;
         border: 1px solid #ffcccc;
+      }
+      hr { margin: 1.5em 0; border: none; border-top: 1px solid #e0e0e0; }
+      pre {
+        background: #f5f5f5;
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       #console-hint {
         margin-top: 2em;
@@ -48,8 +62,10 @@
     <div id="root"></div>
     <div id="console-hint">
       <strong>Try in DevTools console:</strong><br />
-      <code>codoc.update("/title", "New Title")</code><br />
-      <code>codoc.update("/count", 99)</code>
+      <code>codoc.update("/title", "New Title")</code> — updates literal + propagates to $ref and $prompt dependents<br />
+      <code>codoc.update("/mode", "production")</code> — updates literal + propagates to $prompt<br />
+      <code>codoc.refresh("/todo")</code> — evicts cache + re-fetches from $source URL<br />
+      <code>codoc.forceAll()</code> — re-force all fields via layer-parallel scheduler
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

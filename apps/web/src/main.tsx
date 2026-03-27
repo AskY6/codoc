@@ -2,9 +2,11 @@ import { StrictMode, Suspense, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { evaluate } from "@mdx-js/mdx";
 import * as runtime from "react/jsx-runtime";
+import { setLLMClient } from "@codoc/core";
 import { CodataProvider, CodataValue } from "./codata-react.js";
 import { CodocRuntime } from "./runtime.js";
-import codocSource from "./example.codoc?raw";
+import { mockLLMClient } from "./mock-llm.js";
+import m3Source from "./m3-demo.codoc?raw";
 
 // --- Error Boundary ---
 
@@ -33,20 +35,35 @@ class ErrorBoundary extends Component<
 // --- Boot ---
 
 async function boot() {
-  // 1. Create runtime from .codoc source
-  const codocRuntime = new CodocRuntime(codocSource);
+  // 1. Configure mock LLM client for $prompt loader
+  setLLMClient(mockLLMClient);
 
-  // 2. Expose to console for interactive testing
+  // 2. Create runtime from M3 .codoc source
+  const codocRuntime = new CodocRuntime(m3Source);
+
+  // 3. Expose to console for interactive testing
   (window as unknown as Record<string, unknown>).codoc = codocRuntime;
 
-  // 3. Pre-process view and compile MDX
+  // 4. Force all fields in parallel via scheduler (M3 feature)
+  const t0 = performance.now();
+  const result = await codocRuntime.forceAll();
+  const elapsed = (performance.now() - t0).toFixed(0);
+  console.log(
+    `[scheduler] forceAll completed in ${elapsed}ms — ` +
+    `${result.resolved.length} resolved, ${result.errors.length} errors`,
+  );
+  if (result.errors.length > 0) {
+    console.warn("[scheduler] errors:", result.errors);
+  }
+
+  // 5. Pre-process view and compile MDX
   const processedView = codocRuntime.preprocessView();
   const { default: MDXContent } = await evaluate(processedView, {
     ...runtime,
     development: false,
   });
 
-  // 4. Mount React app
+  // 6. Mount React app
   const root = createRoot(document.getElementById("root")!);
   root.render(
     <StrictMode>

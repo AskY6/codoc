@@ -3,6 +3,7 @@ import {
   useContext,
   useCallback,
   useSyncExternalStore,
+  Suspense,
   type ReactNode,
 } from "react";
 import type { DataTree, DAG, FieldState } from "@codoc/core";
@@ -87,7 +88,19 @@ export function useCodata(path: string): unknown {
 
 // --- CodataValue component for use in MDX ---
 
-export function CodataValue({ path }: { path: string }) {
+function CodataValueInner({ path }: { path: string }) {
   const value = useCodata(path);
-  return <>{String(value)}</>;
+  const display =
+    typeof value === "object" && value !== null
+      ? JSON.stringify(value, null, 2)
+      : String(value);
+  return <>{display}</>;
+}
+
+export function CodataValue({ path }: { path: string }) {
+  return (
+    <Suspense fallback={<span className="field-loading">⏳</span>}>
+      <CodataValueInner path={path} />
+    </Suspense>
+  );
 }
