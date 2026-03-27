@@ -21,7 +21,7 @@ export type FieldError =
 export type LoaderDeclaration =
   | { type: "literal"; value: unknown }
   | { type: "ref"; $ref: string }
-  | { type: "source"; $source: string; ttl?: number; staleWhileRevalidate?: boolean }
+  | { type: "source"; $source: string; ttl?: number; staleWhileRevalidate?: boolean; refresh?: "eager" | "lazy" }
   | { type: "prompt"; $prompt: PromptDeclaration }
   | { type: "external"; docRef: string; fieldPath: string };
 

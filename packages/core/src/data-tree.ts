@@ -51,6 +51,9 @@ function resolveLoaderDeclaration(value: unknown): LoaderDeclaration {
         staleWhileRevalidate: typeof obj["staleWhileRevalidate"] === "boolean"
           ? obj["staleWhileRevalidate"]
           : undefined,
+        refresh: obj["refresh"] === "eager" || obj["refresh"] === "lazy"
+          ? obj["refresh"]
+          : undefined,
       };
     }
     if ("$prompt" in obj && typeof obj["$prompt"] === "object" && obj["$prompt"] !== null) {
@@ -158,6 +161,9 @@ export class DataTree {
 
   /**
    * Subscribe to all field state changes. Returns an unsubscribe function.
+   *
+   * The callback fires when any field is marked dirty, resolved, or errored.
+   * It does NOT auto-force — the consumer decides whether to re-observe.
    */
   subscribe(listener: () => void): () => void {
     this.globalListeners.add(listener);
@@ -166,6 +172,10 @@ export class DataTree {
 
   /**
    * Subscribe to state changes for a specific field. Returns an unsubscribe function.
+   *
+   * Callback fires when the field transitions state (dirty, resolved, error).
+   * It does NOT auto-force — the consumer decides whether to re-observe.
+   * Used by React (useSyncExternalStore) and cross-doc propagation.
    */
   subscribeField(path: string, listener: () => void): () => void {
     let set = this.fieldListeners.get(path);

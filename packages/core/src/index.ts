@@ -14,6 +14,8 @@ export { topoSort, topoLayers } from "./topo-sort.js";
 export { propagateDirty, propagateAndInvalidate } from "./dirty-propagator.js";
 export { scheduleForce } from "./scheduler.js";
 export type { SchedulerOptions, SchedulerResult } from "./scheduler.js";
+export { SourceScheduler } from "./source-scheduler.js";
+export type { SourceSchedulerOptions } from "./source-scheduler.js";
 export { parseCodoc } from "./codoc-loader.js";
 export { isExternalRef, parseExternalRef } from "./resolver.js";
 export type { ExternalRef } from "./resolver.js";
