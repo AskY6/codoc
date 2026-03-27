@@ -1,16 +1,25 @@
 import { type ComponentType } from "react";
-import type { MultiDocRuntime, CodocRuntime } from "./runtime.js";
-import { OpsBar } from "./OpsBar.js";
-import { DocPanel } from "./DocPanel.js";
-import { UnifiedDAG } from "./UnifiedDAG.js";
+import type { MultiDocRuntime, CodocRuntime } from "./runtime/runtime.js";
+import { DocPanel } from "./components/DocPanel.js";
+import { UnifiedDAG } from "./components/UnifiedDAG.js";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
-interface DocEntry {
+export interface DocOp {
+  label: string;
+  action: () => void;
+}
+
+export interface DocEntry {
   docId: string;
   runtime: CodocRuntime;
   rawSource: string;
   role: "provider" | "consumer";
-  MDXContent: ComponentType<{ components: Record<string, ComponentType<{ path: string }>> }>;
+  ops: DocOp[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  MDXContent: ComponentType<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mdxComponents: Record<string, ComponentType<any>>;
 }
 
 export function App({
@@ -26,54 +35,59 @@ export function App({
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-4 p-5">
+    <div className="space-y-3 p-4">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold">CoDoc Inspector</h1>
-        <p className="text-sm text-muted-foreground">
-          Two <code className="rounded bg-muted px-1 font-mono text-xs">.codoc</code> documents
-          are linked via cross-document <code className="rounded bg-muted px-1 font-mono text-xs">$ref</code>.
-          Click an operation below to update B's fields, then watch the changes propagate through the dependency graph to A.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-bold">CoDoc Inspector</h1>
+          <p className="text-xs text-muted-foreground">
+            Three <code className="rounded bg-muted px-1 font-mono text-[10px]">.codoc</code> documents
+            with cross-document <code className="rounded bg-muted px-1 font-mono text-[10px]">$ref</code>,
+            async <code className="rounded bg-muted px-1 font-mono text-[10px]">$source</code> /
+            <code className="rounded bg-muted px-1 font-mono text-[10px]">$prompt</code> loaders,
+            and custom JSX components.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => multi.forceAll()}>
+          <code className="text-xs">forceAll()</code>
+        </Button>
       </div>
 
-      {/* Operations */}
-      <OpsBar multi={multi} />
-
-      {/* Unified DAG */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-4">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Dependency Graph
-            </span>
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm border border-[#82c091] bg-[#d4edda]" />
-                resolved
+      {/* Four-column layout: DAG | doc1 | doc2 | doc3 */}
+      <div className="grid grid-cols-4 items-start gap-3">
+        {/* DAG panel */}
+        <Card>
+          <CardHeader className="px-3 py-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Dependency Graph
               </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm border border-[#e0a800] bg-[#fff3cd]" />
-                dirty
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block h-2.5 w-2.5 rounded-sm border border-[#adb5bd] bg-[#e2e3e5]" />
-                pending
-              </span>
-              <span className="flex items-center gap-1">
-                <svg width={20} height={8}><line x1={0} y1={4} x2={20} y2={4} stroke="#3b82f6" strokeWidth={1.5} /></svg>
-                cross-doc ref
-              </span>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-sm border border-[#82c091] bg-[#d4edda]" />
+                  resolved
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-sm border border-[#e0a800] bg-[#fff3cd]" />
+                  dirty
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2 w-2 rounded-sm border border-[#adb5bd] bg-[#e2e3e5]" />
+                  pending
+                </span>
+                <span className="flex items-center gap-1">
+                  <svg width={14} height={6}><line x1={0} y1={3} x2={14} y2={3} stroke="#3b82f6" strokeWidth={1.5} /></svg>
+                  cross-doc
+                </span>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex justify-center overflow-x-auto">
-          <UnifiedDAG runtimes={runtimes} />
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="px-3 pb-3 pt-0 overflow-x-auto">
+            <UnifiedDAG runtimes={runtimes} />
+          </CardContent>
+        </Card>
 
-      {/* Document panels side by side */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Doc panels */}
         {docs.map((doc) => (
           <DocPanel
             key={doc.docId}
@@ -81,7 +95,9 @@ export function App({
             runtime={doc.runtime}
             rawSource={doc.rawSource}
             MDXContent={doc.MDXContent}
+            mdxComponents={doc.mdxComponents}
             role={doc.role}
+            ops={doc.ops}
           />
         ))}
       </div>

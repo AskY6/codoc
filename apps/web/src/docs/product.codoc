@@ -1,0 +1,40 @@
+type:
+  properties:
+    name:
+      type: string
+    price:
+      type: number
+    category:
+      type: string
+    stock:
+      type: object
+    description:
+      type: string
+
+data:
+  name: "MacBook Pro 16"
+  price: 2499
+  category: "Electronics"
+  stock:
+    $source: "https://dummyjson.com/products/1?select=title,price,stock,brand,rating"
+    ttl: 30
+  description:
+    $prompt:
+      template: "Write a one-sentence product description for '{name}' in the '{category}' category."
+
+view: |
+  # {name}
+
+  <Badge>{category}</Badge>
+
+  <PriceDisplay>{price}</PriceDisplay>
+
+  ---
+
+  ## Market Comparison
+
+  <SourceBlock path="stock">{stock}</SourceBlock>
+
+  ---
+
+  <AIBlock label="AI-Generated Description">{description}</AIBlock>

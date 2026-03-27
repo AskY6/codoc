@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore, useMemo } from "react";
 import { extractExternalDeps, type DataTree, type FieldState } from "@codoc/core";
-import type { CodocRuntime } from "./runtime.js";
+import type { CodocRuntime } from "../runtime/runtime.js";
 
 // --- Field status hook ---
 
@@ -43,13 +43,14 @@ interface DocGroup {
 
 // --- Layout constants ---
 
-const NODE_W = 150;
-const NODE_H = 28;
-const NODE_GAP = 6;
-const DOC_PAD = 14;
-const DOC_HEADER = 28;
-const DOC_GAP = 100;
-const MARGIN = 16;
+const NODE_W = 110;
+const NODE_H = 24;
+const NODE_GAP = 4;
+const DOC_PAD = 8;
+const DOC_HEADER = 22;
+const COL_GAP_X = 50;
+const COL_GAP_Y = 16;
+const MARGIN = 10;
 
 // --- SVG Node with reactive status ---
 
@@ -100,7 +101,7 @@ function DAGNode({
         y={y + NODE_H / 2}
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize={11}
+        fontSize={10}
         fontFamily="'SF Mono', Monaco, monospace"
         fill="#333"
       >
@@ -125,7 +126,6 @@ function DAGEdge({
   y2: number;
   cross: boolean;
 }) {
-  // Curved path for cross-doc edges, straight for intra-doc
   if (cross) {
     const midX = (x1 + x2) / 2;
     const d = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
@@ -160,14 +160,12 @@ export function UnifiedDAG({
 }: {
   runtimes: Map<string, CodocRuntime>;
 }) {
-  const { docGroups, allNodes, edges, svgWidth, svgHeight } = useMemo(() => {
+  const { docGroups, edges, svgWidth, svgHeight } = useMemo(() => {
     const allNodes = new Map<string, NodeInfo>();
     const edges: EdgeInfo[] = [];
-    const docGroups: DocGroup[] = [];
 
-    let currentX = MARGIN;
-
-    // Build nodes and layout per document
+    // Step 1: Build node info and intra-doc edges per document
+    const docNodeMap = new Map<string, NodeInfo[]>();
     for (const [docId, rt] of runtimes) {
       const fieldPaths = rt.dag.getNodes().sort();
       const nodes: NodeInfo[] = fieldPaths.map((fp) => {
@@ -175,36 +173,23 @@ export function UnifiedDAG({
         allNodes.set(info.id, info);
         return info;
       });
+      docNodeMap.set(docId, nodes);
 
-      const groupWidth = NODE_W + DOC_PAD * 2;
-      const groupHeight = DOC_HEADER + nodes.length * (NODE_H + NODE_GAP) + DOC_PAD;
-
-      docGroups.push({
-        docId,
-        nodes,
-        x: currentX,
-        y: MARGIN,
-        width: groupWidth,
-        height: groupHeight,
-      });
-
-      // Intra-doc edges
       for (const node of fieldPaths) {
         for (const dep of rt.dag.getDirectDeps(node)) {
-          edges.push({
-            from: `${docId}:${dep}`,
-            to: `${docId}:${node}`,
-            cross: false,
-          });
+          edges.push({ from: `${docId}:${dep}`, to: `${docId}:${node}`, cross: false });
         }
       }
-
-      currentX += groupWidth + DOC_GAP;
     }
 
-    // Cross-doc edges
+    // Step 2: Cross-doc edges and doc-level dependency map
+    const docDeps = new Map<string, Set<string>>();
+    for (const docId of runtimes.keys()) {
+      docDeps.set(docId, new Set());
+    }
     for (const [docId, rt] of runtimes) {
       for (const dep of extractExternalDeps(rt.tree)) {
+        docDeps.get(docId)!.add(dep.docRef);
         edges.push({
           from: `${dep.docRef}:${dep.fieldPath}`,
           to: `${docId}:${dep.localPath}`,
@@ -213,13 +198,84 @@ export function UnifiedDAG({
       }
     }
 
-    const maxHeight = Math.max(...docGroups.map((g) => g.height));
+    // Step 3: Topological depth (BFS)
+    const docDepth = new Map<string, number>();
+    const docIds = [...runtimes.keys()];
+    const queue: string[] = [];
+    for (const docId of docIds) {
+      if (docDeps.get(docId)!.size === 0) {
+        docDepth.set(docId, 0);
+        queue.push(docId);
+      }
+    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const docId of docIds) {
+        if (docDepth.has(docId)) continue;
+        if (!docDeps.get(docId)!.has(current)) continue;
+        const allResolved = [...docDeps.get(docId)!].every((d) => docDepth.has(d));
+        if (allResolved) {
+          const maxDep = Math.max(...[...docDeps.get(docId)!].map((d) => docDepth.get(d)!));
+          docDepth.set(docId, maxDep + 1);
+          queue.push(docId);
+        }
+      }
+    }
+    for (const docId of docIds) {
+      if (!docDepth.has(docId)) docDepth.set(docId, 0);
+    }
+
+    // Step 4: Group docs by depth into columns
+    const columns = new Map<number, string[]>();
+    for (const [docId, depth] of docDepth) {
+      if (!columns.has(depth)) columns.set(depth, []);
+      columns.get(depth)!.push(docId);
+    }
+    const sortedDepths = [...columns.keys()].sort((a, b) => a - b);
+
+    // Step 5: Compute column heights
+    const groupWidth = NODE_W + DOC_PAD * 2;
+    const docHeight = (docId: string) => {
+      const nodes = docNodeMap.get(docId)!;
+      return DOC_HEADER + nodes.length * (NODE_H + NODE_GAP) + DOC_PAD;
+    };
+
+    const columnTotalHeight = (docs: string[]) =>
+      docs.reduce((sum, id) => sum + docHeight(id), 0) + (docs.length - 1) * COL_GAP_Y;
+
+    const maxColHeight = Math.max(...sortedDepths.map((d) => columnTotalHeight(columns.get(d)!)));
+
+    // Step 6: Position groups — columns left-to-right, docs vertically centered
+    const docGroups: DocGroup[] = [];
+    let currentX = MARGIN;
+
+    for (const depth of sortedDepths) {
+      const docs = columns.get(depth)!;
+      const colH = columnTotalHeight(docs);
+      let currentY = MARGIN + (maxColHeight - colH) / 2;
+
+      for (const docId of docs) {
+        const h = docHeight(docId);
+        docGroups.push({
+          docId,
+          nodes: docNodeMap.get(docId)!,
+          x: currentX,
+          y: currentY,
+          width: groupWidth,
+          height: h,
+        });
+        currentY += h + COL_GAP_Y;
+      }
+
+      currentX += groupWidth + COL_GAP_X;
+    }
+
     return {
       docGroups,
       allNodes,
       edges,
-      svgWidth: currentX - DOC_GAP + MARGIN,
-      svgHeight: maxHeight + MARGIN * 2,
+      svgWidth: currentX - COL_GAP_X + MARGIN,
+      svgHeight: maxColHeight + MARGIN * 2,
     };
   }, [runtimes]);
 
@@ -237,6 +293,10 @@ export function UnifiedDAG({
     }
     return pos;
   }, [docGroups]);
+
+  // Split edges for layered rendering
+  const intraEdges = edges.filter((e) => !e.cross);
+  const crossEdges = edges.filter((e) => e.cross);
 
   return (
     <svg
@@ -286,7 +346,7 @@ export function UnifiedDAG({
           <text
             x={group.x + DOC_PAD}
             y={group.y + 18}
-            fontSize={11}
+            fontSize={9}
             fontWeight={600}
             fill="#666"
           >
@@ -295,34 +355,19 @@ export function UnifiedDAG({
         </g>
       ))}
 
-      {/* Edges (render before nodes so they appear behind) */}
-      {edges.map(({ from, to, cross }) => {
+      {/* Intra-doc edges (behind nodes) */}
+      {intraEdges.map(({ from, to }) => {
         const fromPos = nodePositions.get(from);
         const toPos = nodePositions.get(to);
         if (!fromPos || !toPos) return null;
-
-        // Connect right side of source → left side of target for cross-doc
-        // For intra-doc, connect bottom of source → top of target
-        let x1: number, y1: number, x2: number, y2: number;
-        if (cross) {
-          x1 = fromPos.x + NODE_W;
-          y1 = fromPos.y + NODE_H / 2;
-          x2 = toPos.x;
-          y2 = toPos.y + NODE_H / 2;
-        } else {
-          x1 = fromPos.x + NODE_W / 2;
-          y1 = fromPos.y + NODE_H;
-          x2 = toPos.x + NODE_W / 2;
-          y2 = toPos.y;
-        }
         return (
           <DAGEdge
             key={`${from}->${to}`}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            cross={cross}
+            x1={fromPos.x + NODE_W / 2}
+            y1={fromPos.y + NODE_H}
+            x2={toPos.x + NODE_W / 2}
+            y2={toPos.y}
+            cross={false}
           />
         );
       })}
@@ -343,6 +388,23 @@ export function UnifiedDAG({
             />
           );
         });
+      })}
+
+      {/* Cross-doc edges (on top of nodes for visibility) */}
+      {crossEdges.map(({ from, to }) => {
+        const fromPos = nodePositions.get(from);
+        const toPos = nodePositions.get(to);
+        if (!fromPos || !toPos) return null;
+        return (
+          <DAGEdge
+            key={`${from}->${to}`}
+            x1={fromPos.x + NODE_W}
+            y1={fromPos.y + NODE_H / 2}
+            x2={toPos.x}
+            y2={toPos.y + NODE_H / 2}
+            cross={true}
+          />
+        );
       })}
     </svg>
   );

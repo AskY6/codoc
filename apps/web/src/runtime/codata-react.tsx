@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { DataTree, DAG, FieldState } from "@codoc/core";
+import { getDocRegistry } from "@codoc/core";
 
 // --- Context ---
 
@@ -84,6 +85,30 @@ export function useCodata(path: string): unknown {
 
   // idle, dirty, or pending — trigger force and suspend
   throw makeSafe(tree.observe(path));
+}
+
+/**
+ * Read the TTL (in seconds) for a field. Follows external refs to the target field.
+ * Returns null if the field is not a $source or has no TTL.
+ */
+export function useFieldTTL(fieldName: string): number | null {
+  const { tree } = useCodataContext();
+  const path = fieldName.startsWith("/") ? fieldName : "/" + fieldName;
+  const field = tree.getField(path);
+  if (!field) return null;
+
+  const decl = field.meta.loader;
+  if (decl.type === "source" && decl.ttl) return decl.ttl;
+
+  if (decl.type === "external") {
+    const registry = getDocRegistry();
+    const targetField = registry?.get(decl.docRef)?.tree.getField(decl.fieldPath);
+    if (targetField?.meta.loader.type === "source" && targetField.meta.loader.ttl) {
+      return targetField.meta.loader.ttl;
+    }
+  }
+
+  return null;
 }
 
 // --- CodataValue component for use in MDX ---

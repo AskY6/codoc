@@ -4,29 +4,54 @@ import { createRoot } from "react-dom/client";
 import { evaluate } from "@mdx-js/mdx";
 import * as runtime from "react/jsx-runtime";
 import { setLLMClient } from "@codoc/core";
-import { MultiDocRuntime } from "./runtime.js";
-import { mockLLMClient } from "./mock-llm.js";
+import { MultiDocRuntime } from "./runtime/runtime.js";
+import { mockLLMClient } from "./runtime/mock-llm.js";
 import { App } from "./App.js";
-import docASource from "./m4-demo-a.codoc?raw";
-import docBSource from "./m4-demo-b.codoc?raw";
+import { CodataValue } from "./runtime/codata-react.js";
+import {
+  Badge,
+  PriceDisplay,
+  InfoRow,
+  SourceBlock,
+  AIBlock,
+  Highlight,
+} from "./components/mdx-components.js";
+import productSource from "./docs/product.codoc?raw";
+import userSource from "./docs/user.codoc?raw";
+import orderSource from "./docs/order.codoc?raw";
+
+const mdxComponents = {
+  CodataValue,
+  Badge,
+  PriceDisplay,
+  InfoRow,
+  SourceBlock,
+  AIBlock,
+  Highlight,
+};
 
 async function boot() {
   setLLMClient(mockLLMClient);
 
   const multi = new MultiDocRuntime();
-  const rtB = multi.addDoc("B.codoc", docBSource);
-  const rtA = multi.addDoc("A.codoc", docASource);
+  const rtProduct = multi.addDoc("product.codoc", productSource);
+  const rtUser = multi.addDoc("user.codoc", userSource);
+  const rtOrder = multi.addDoc("order.codoc", orderSource);
   multi.wireAll();
 
   (window as unknown as Record<string, unknown>).codoc = multi;
 
   const t0 = performance.now();
   await multi.forceAll();
-  console.log(`[M4] forceAll completed in ${(performance.now() - t0).toFixed(0)}ms`);
+  console.log(`[boot] forceAll completed in ${(performance.now() - t0).toFixed(0)}ms`);
 
-  const [mdxB, mdxA] = await Promise.all([
-    evaluate(rtB.preprocessView(), { ...runtime, development: false }),
-    evaluate(rtA.preprocessView(), { ...runtime, development: false }),
+  // Start TTL refresh timers — $source fields will auto-invalidate on expiry
+  multi.startSchedulers();
+
+  const [mdxProduct, mdxUser, mdxOrder] = await Promise.all([
+    evaluate(rtProduct.preprocessView(), { ...runtime, development: false }),
+    evaluate(rtUser.preprocessView(), { ...runtime, development: false }),
+    evaluate(rtOrder.preprocessView(), { ...runtime, development: false }),
   ]);
 
   const root = createRoot(document.getElementById("root")!);
@@ -35,8 +60,32 @@ async function boot() {
       <App
         multi={multi}
         docs={[
-          { docId: "B.codoc", runtime: rtB, rawSource: docBSource, role: "provider", MDXContent: mdxB.default },
-          { docId: "A.codoc", runtime: rtA, rawSource: docASource, role: "consumer", MDXContent: mdxA.default },
+          {
+            docId: "product.codoc", runtime: rtProduct, rawSource: productSource, role: "provider",
+            MDXContent: mdxProduct.default, mdxComponents,
+            ops: [
+              { label: 'name → "iPad Air"', action: () => multi.update("product.codoc", "/name", "iPad Air") },
+              { label: "price → 599", action: () => multi.update("product.codoc", "/price", 599) },
+              { label: "refresh stock", action: () => rtProduct.refresh("/stock") },
+            ],
+          },
+          {
+            docId: "user.codoc", runtime: rtUser, rawSource: userSource, role: "provider",
+            MDXContent: mdxUser.default, mdxComponents,
+            ops: [
+              { label: 'name → "Bob Li"', action: () => multi.update("user.codoc", "/name", "Bob Li") },
+              { label: 'role → "VIP"', action: () => multi.update("user.codoc", "/role", "VIP") },
+              { label: "refresh activity", action: () => rtUser.refresh("/recentActivity") },
+            ],
+          },
+          {
+            docId: "order.codoc", runtime: rtOrder, rawSource: orderSource, role: "consumer",
+            MDXContent: mdxOrder.default, mdxComponents,
+            ops: [
+              { label: "qty → 5", action: () => multi.update("order.codoc", "/quantity", 5) },
+              { label: "forceAll", action: () => rtOrder.forceAll() },
+            ],
+          },
         ]}
       />
     </StrictMode>,

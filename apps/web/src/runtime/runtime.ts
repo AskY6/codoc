@@ -10,6 +10,7 @@ import {
   wireExternalDeps,
   crossDocPropagate,
   detectDocCycle,
+  SourceScheduler,
 } from "@codoc/core";
 import type { CodocFile, SchedulerResult } from "@codoc/core";
 
@@ -17,6 +18,7 @@ export class CodocRuntime {
   readonly file: CodocFile;
   readonly tree: DataTree;
   readonly dag: DAG;
+  private scheduler: SourceScheduler | null = null;
 
   constructor(source: string) {
     this.file = parseCodoc(source);
@@ -78,6 +80,24 @@ export class CodocRuntime {
    */
   async forceAll(): Promise<SchedulerResult> {
     return scheduleForce(this.tree, this.dag);
+  }
+
+  /**
+   * Start TTL-based refresh timers for $source fields.
+   * Call after forceAll() so all fields are resolved before timers start.
+   */
+  startScheduler(): void {
+    if (this.scheduler) return;
+    this.scheduler = new SourceScheduler({ tree: this.tree, dag: this.dag });
+    this.scheduler.registerAll();
+  }
+
+  /**
+   * Stop all scheduled timers.
+   */
+  dispose(): void {
+    this.scheduler?.dispose();
+    this.scheduler = null;
   }
 
   /**
@@ -155,6 +175,25 @@ export class MultiDocRuntime {
 
     await rt.update(path, value);
     await crossDocPropagate(this.registry, docId, [path]);
+  }
+
+  /**
+   * Start TTL refresh timers for all documents.
+   * Call after forceAll() so all fields are resolved first.
+   */
+  startSchedulers(): void {
+    for (const rt of this.runtimes.values()) {
+      rt.startScheduler();
+    }
+  }
+
+  /**
+   * Stop all timers and clean up.
+   */
+  dispose(): void {
+    for (const rt of this.runtimes.values()) {
+      rt.dispose();
+    }
   }
 
   getRuntime(docId: string): CodocRuntime | undefined {
