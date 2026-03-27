@@ -29,6 +29,15 @@ export {
   docDAGtoDot,
 } from "./cross-doc-propagator.js";
 export type { DocDAGEdge } from "./cross-doc-propagator.js";
+export { Workspace } from "./workspace.js";
+export type {
+  DocMeta,
+  FieldMeta,
+  FieldAddress,
+  DepEdge,
+  WorkspaceChangeEvent,
+  CodocRuntime,
+} from "./workspace.js";
 export type {
   CodataDefinition,
   CodataField,
