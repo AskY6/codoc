@@ -1,3 +1,4 @@
+import "./globals.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { evaluate } from "@mdx-js/mdx";
@@ -34,8 +35,8 @@ async function boot() {
       <App
         multi={multi}
         docs={[
-          { docId: "B.codoc", runtime: rtB, rawSource: docBSource, MDXContent: mdxB.default },
-          { docId: "A.codoc", runtime: rtA, rawSource: docASource, MDXContent: mdxA.default },
+          { docId: "B.codoc", runtime: rtB, rawSource: docBSource, role: "provider", MDXContent: mdxB.default },
+          { docId: "A.codoc", runtime: rtA, rawSource: docASource, role: "consumer", MDXContent: mdxA.default },
         ]}
       />
     </StrictMode>,
@@ -44,7 +45,7 @@ async function boot() {
 
 boot().catch((err) => {
   document.getElementById("root")!.innerHTML = `
-    <div class="error-boundary">
+    <div style="color:#cc0000;background:#fff0f0;padding:12px;border-radius:4px;border:1px solid #ffcccc">
       <strong>Boot failed:</strong> ${err.message}
     </div>
   `;
