@@ -8,6 +8,7 @@ import type {
 } from "./types.js";
 import { getLoader } from "./loader/registry.js";
 import { validate } from "./schema.js";
+import { isExternalRef, parseExternalRef } from "./resolver.js";
 
 /**
  * Parse a JSON Pointer (RFC 6901) into path segments.
@@ -35,7 +36,12 @@ function resolveLoaderDeclaration(value: unknown): LoaderDeclaration {
   ) {
     const obj = value as Record<string, unknown>;
     if ("$ref" in obj && typeof obj["$ref"] === "string") {
-      return { type: "ref", $ref: obj["$ref"] };
+      const ref = obj["$ref"];
+      if (isExternalRef(ref)) {
+        const { docRef, fieldPath } = parseExternalRef(ref);
+        return { type: "external", docRef, fieldPath };
+      }
+      return { type: "ref", $ref: ref };
     }
     if ("$source" in obj && typeof obj["$source"] === "string") {
       return {

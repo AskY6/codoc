@@ -1,0 +1,20 @@
+type:
+  properties:
+    projectName:
+      type: string
+    version:
+      type: string
+    status:
+      type: string
+
+data:
+  projectName: "CoDoc"
+  version: "0.4.0"
+  status: "M4 — Cross-Document References"
+
+view: |
+  # {projectName} v{version}
+
+  **Status:** {status}
+
+  This is Document B — a source document that provides data to other documents.

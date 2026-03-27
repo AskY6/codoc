@@ -13,7 +13,8 @@ export type FieldError =
   | { kind: "ref_not_found"; message: string; path: string }
   | { kind: "loader"; message: string; cause?: unknown }
   | { kind: "source"; message: string; url: string; retryable: boolean; cause?: unknown }
-  | { kind: "prompt"; message: string; retryable: boolean; cause?: unknown };
+  | { kind: "prompt"; message: string; retryable: boolean; cause?: unknown }
+  | { kind: "external_ref"; message: string; docRef: string; fieldPath: string };
 
 // --- Codata Meta ---
 
@@ -21,7 +22,8 @@ export type LoaderDeclaration =
   | { type: "literal"; value: unknown }
   | { type: "ref"; $ref: string }
   | { type: "source"; $source: string; ttl?: number; staleWhileRevalidate?: boolean }
-  | { type: "prompt"; $prompt: PromptDeclaration };
+  | { type: "prompt"; $prompt: PromptDeclaration }
+  | { type: "external"; docRef: string; fieldPath: string };
 
 export interface PromptDeclaration {
   /** Template string with {fieldName} placeholders */

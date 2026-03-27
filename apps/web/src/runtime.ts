@@ -5,6 +5,11 @@ import {
   propagateAndInvalidate,
   scheduleForce,
   evictSourceCache,
+  DocRegistry,
+  setDocRegistry,
+  wireExternalDeps,
+  crossDocPropagate,
+  detectDocCycle,
 } from "@codoc/core";
 import type { CodocFile, SchedulerResult } from "@codoc/core";
 
@@ -89,5 +94,70 @@ export class CodocRuntime {
       );
     }
     return view;
+  }
+}
+
+/**
+ * Multi-document runtime for M4 cross-document references.
+ * Manages a DocRegistry and wires cross-doc subscriptions.
+ */
+export class MultiDocRuntime {
+  readonly registry: DocRegistry;
+  private runtimes = new Map<string, CodocRuntime>();
+
+  constructor() {
+    this.registry = new DocRegistry();
+    setDocRegistry(this.registry);
+  }
+
+  /**
+   * Add a document to the multi-doc runtime.
+   */
+  addDoc(docId: string, source: string): CodocRuntime {
+    const rt = new CodocRuntime(source);
+    this.registry.register(docId, rt.tree, rt.dag);
+    this.runtimes.set(docId, rt);
+    return rt;
+  }
+
+  /**
+   * Wire all cross-doc subscriptions and check for doc-level cycles.
+   * Call after all docs have been added.
+   */
+  wireAll(): void {
+    // Check for doc-level cycles before wiring
+    const cycle = detectDocCycle(this.registry);
+    if (cycle) {
+      throw new Error(`Cyclic cross-document dependency: ${cycle.join(" → ")}`);
+    }
+
+    for (const docId of this.registry.getAllDocIds()) {
+      wireExternalDeps(this.registry, docId);
+    }
+  }
+
+  /**
+   * Force all fields in all documents.
+   */
+  async forceAll(): Promise<void> {
+    for (const [, rt] of this.runtimes) {
+      await rt.forceAll();
+    }
+  }
+
+  /**
+   * Update a field in a specific document and propagate cross-doc.
+   * Call from console: codoc.update("B.codoc", "/title", "New Value")
+   */
+  async update(docId: string, path: string, value: unknown): Promise<void> {
+    const rt = this.runtimes.get(docId);
+    if (!rt) throw new Error(`Document not found: ${docId}`);
+
+    await rt.update(path, value);
+    await crossDocPropagate(this.registry, docId, [path]);
+  }
+
+  getRuntime(docId: string): CodocRuntime | undefined {
+    return this.runtimes.get(docId);
   }
 }
