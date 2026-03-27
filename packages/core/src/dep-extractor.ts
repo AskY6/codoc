@@ -1,5 +1,6 @@
 import type { CodataField } from "./types.js";
 import type { DataTree } from "./data-tree.js";
+import { extractTemplateVars } from "./loader/prompt.js";
 
 /**
  * Extract dependency paths from a single field's meta (static analysis).
@@ -9,6 +10,9 @@ export function extractDeps(field: CodataField): string[] {
   const { loader } = field.meta;
   if (loader.type === "ref") {
     return [loader.$ref];
+  }
+  if (loader.type === "prompt") {
+    return extractTemplateVars(loader.$prompt.template).map((v) => `/${v}`);
   }
   return [];
 }

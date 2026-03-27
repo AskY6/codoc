@@ -11,13 +11,24 @@ export type FieldError =
   | { kind: "validation"; message: string; path: string; schema: unknown }
   | { kind: "cyclic_ref"; message: string; path: string; cycle: string[] }
   | { kind: "ref_not_found"; message: string; path: string }
-  | { kind: "loader"; message: string; cause?: unknown };
+  | { kind: "loader"; message: string; cause?: unknown }
+  | { kind: "source"; message: string; url: string; retryable: boolean; cause?: unknown }
+  | { kind: "prompt"; message: string; retryable: boolean; cause?: unknown };
 
 // --- Codata Meta ---
 
 export type LoaderDeclaration =
   | { type: "literal"; value: unknown }
-  | { type: "ref"; $ref: string };
+  | { type: "ref"; $ref: string }
+  | { type: "source"; $source: string; ttl?: number; staleWhileRevalidate?: boolean }
+  | { type: "prompt"; $prompt: PromptDeclaration };
+
+export interface PromptDeclaration {
+  /** Template string with {fieldName} placeholders */
+  template: string;
+  /** Model to use (defaults to "claude-sonnet-4-20250514") */
+  model?: string;
+}
 
 export interface CodataMeta {
   /** JSON Schema for this field's value */
@@ -49,6 +60,20 @@ export type LoaderFn = (
   field: CodataField,
   context: ForceContext
 ) => Promise<unknown>;
+
+// --- LLM Client (injected, not SDK-coupled) ---
+
+export interface LLMClient {
+  /**
+   * Generate structured output from a prompt.
+   * The implementation should enforce the provided JSON Schema on the output.
+   */
+  generate(options: {
+    model: string;
+    prompt: string;
+    schema: Record<string, unknown>;
+  }): Promise<unknown>;
+}
 
 // --- Validation ---
 

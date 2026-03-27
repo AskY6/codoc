@@ -31,11 +31,34 @@ function resolveLoaderDeclaration(value: unknown): LoaderDeclaration {
   if (
     typeof value === "object" &&
     value !== null &&
-    !Array.isArray(value) &&
-    "$ref" in value &&
-    typeof (value as Record<string, unknown>)["$ref"] === "string"
+    !Array.isArray(value)
   ) {
-    return { type: "ref", $ref: (value as Record<string, unknown>)["$ref"] as string };
+    const obj = value as Record<string, unknown>;
+    if ("$ref" in obj && typeof obj["$ref"] === "string") {
+      return { type: "ref", $ref: obj["$ref"] };
+    }
+    if ("$source" in obj && typeof obj["$source"] === "string") {
+      return {
+        type: "source",
+        $source: obj["$source"],
+        ttl: typeof obj["ttl"] === "number" ? obj["ttl"] : undefined,
+        staleWhileRevalidate: typeof obj["staleWhileRevalidate"] === "boolean"
+          ? obj["staleWhileRevalidate"]
+          : undefined,
+      };
+    }
+    if ("$prompt" in obj && typeof obj["$prompt"] === "object" && obj["$prompt"] !== null) {
+      const prompt = obj["$prompt"] as Record<string, unknown>;
+      if (typeof prompt["template"] === "string") {
+        return {
+          type: "prompt",
+          $prompt: {
+            template: prompt["template"],
+            model: typeof prompt["model"] === "string" ? prompt["model"] : undefined,
+          },
+        };
+      }
+    }
   }
   return { type: "literal", value };
 }
