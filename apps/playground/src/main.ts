@@ -56,6 +56,7 @@ async function main() {
     console.error(`Unknown filter: "${filter}"\n`);
     printUsage();
     process.exit(1);
+    return;
   }
 
   console.log(`CoDoc Playground — running ${selected.length} demo(s)\n`);
