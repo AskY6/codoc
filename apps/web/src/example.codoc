@@ -1,0 +1,26 @@
+type:
+  properties:
+    title:
+      type: string
+    count:
+      type: number
+    greeting:
+      type: string
+    summary:
+      type: string
+
+data:
+  title: "Hello CoDoc"
+  count: 42
+  greeting: "Welcome to the CoDoc MVP!"
+  summary:
+    $ref: "/title"
+
+view: |
+  # {title}
+
+  {greeting}
+
+  The count is **{count}**.
+
+  Summary (derived from title via $ref): **{summary}**

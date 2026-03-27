@@ -61,6 +61,9 @@ function extractPropertySchema(
 export class DataTree {
   private fields = new Map<string, CodataField>();
   private definition: CodataDefinition;
+  private fieldListeners = new Map<string, Set<() => void>>();
+  private globalListeners = new Set<() => void>();
+  private pendingForces = new Map<string, Promise<unknown>>();
 
   constructor(definition: CodataDefinition) {
     this.definition = definition;
@@ -125,6 +128,50 @@ export class DataTree {
   }
 
   /**
+   * Subscribe to all field state changes. Returns an unsubscribe function.
+   */
+  subscribe(listener: () => void): () => void {
+    this.globalListeners.add(listener);
+    return () => { this.globalListeners.delete(listener); };
+  }
+
+  /**
+   * Subscribe to state changes for a specific field. Returns an unsubscribe function.
+   */
+  subscribeField(path: string, listener: () => void): () => void {
+    let set = this.fieldListeners.get(path);
+    if (!set) {
+      set = new Set();
+      this.fieldListeners.set(path, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+      if (set!.size === 0) this.fieldListeners.delete(path);
+    };
+  }
+
+  private notify(path: string): void {
+    const fieldSet = this.fieldListeners.get(path);
+    if (fieldSet) {
+      for (const fn of fieldSet) fn();
+    }
+    for (const fn of this.globalListeners) fn();
+  }
+
+  /**
+   * Update a field's value externally (e.g., from console or user input).
+   * Sets the field to resolved with the new value and notifies subscribers.
+   */
+  updateField(path: string, newValue: unknown): void {
+    const field = this.fields.get(path);
+    if (!field) throw new Error(`Field not found: ${path}`);
+    field.meta.loader = { type: "literal", value: newValue };
+    field.state = { status: "resolved", value: newValue };
+    this.notify(path);
+  }
+
+  /**
    * Mark a field as dirty so it will be re-evaluated on next observe/force.
    */
   invalidateField(path: string): boolean {
@@ -132,6 +179,7 @@ export class DataTree {
     if (!field) return false;
     if (field.state.status === "resolved" || field.state.status === "error") {
       field.state = { status: "dirty" };
+      this.notify(path);
       return true;
     }
     return false;
@@ -169,6 +217,12 @@ export class DataTree {
       throw field.state.error;
     }
 
+    // If already being forced, return the cached promise (dedup concurrent forces)
+    if (field.state.status === "pending") {
+      const pending = this.pendingForces.get(path);
+      if (pending) return pending;
+    }
+
     // Dirty fields are treated like idle — re-evaluate them
 
     // Cycle detection
@@ -183,6 +237,7 @@ export class DataTree {
         cycle: cyclePath,
       };
       field.state = { status: "error", error };
+      this.notify(path);
       throw error;
     }
 
@@ -196,39 +251,50 @@ export class DataTree {
       forceStack: newStack,
     };
 
-    try {
-      const loader = getLoader(field.meta.loader);
-      const rawValue = await loader(field, context);
+    const promise = (async () => {
+      try {
+        const loader = getLoader(field.meta.loader);
+        const rawValue = await loader(field, context);
 
-      // Validate against schema if present
-      if (field.meta.schema) {
-        const result = validate(field.meta.schema, rawValue, path);
-        if (!result.ok) {
-          field.state = { status: "error", error: result.error };
-          throw result.error;
+        // Validate against schema if present
+        if (field.meta.schema) {
+          const result = validate(field.meta.schema, rawValue, path);
+          if (!result.ok) {
+            field.state = { status: "error", error: result.error };
+            this.notify(path);
+            throw result.error;
+          }
         }
-      }
 
-      field.state = { status: "resolved", value: rawValue };
-      return rawValue;
-    } catch (err) {
-      // If error is already a FieldError, preserve it
-      if (
-        typeof err === "object" &&
-        err !== null &&
-        "kind" in err
-      ) {
-        field.state = { status: "error", error: err as FieldError };
-        throw err;
+        field.state = { status: "resolved", value: rawValue };
+        this.notify(path);
+        return rawValue;
+      } catch (err) {
+        // If error is already a FieldError, preserve it
+        if (
+          typeof err === "object" &&
+          err !== null &&
+          "kind" in err
+        ) {
+          field.state = { status: "error", error: err as FieldError };
+          this.notify(path);
+          throw err;
+        }
+        // Wrap unknown errors
+        const error: FieldError = {
+          kind: "loader",
+          message: err instanceof Error ? err.message : String(err),
+          cause: err,
+        };
+        field.state = { status: "error", error };
+        this.notify(path);
+        throw error;
       }
-      // Wrap unknown errors
-      const error: FieldError = {
-        kind: "loader",
-        message: err instanceof Error ? err.message : String(err),
-        cause: err,
-      };
-      field.state = { status: "error", error };
-      throw error;
-    }
+    })();
+
+    this.pendingForces.set(path, promise);
+    const cleanup = () => { this.pendingForces.delete(path); };
+    promise.then(cleanup, cleanup);
+    return promise;
   }
 }

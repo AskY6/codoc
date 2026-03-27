@@ -70,3 +70,9 @@ export interface CodataDefinition {
   type: Record<string, unknown>;
   data: Record<string, unknown>;
 }
+
+export interface CodocFile {
+  type: Record<string, unknown>;
+  data: Record<string, unknown>;
+  view: string;
+}

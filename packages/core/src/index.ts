@@ -8,10 +8,12 @@ export { DAG } from "./dag.js";
 export type { CyclicDependencyError } from "./dag.js";
 export { topoSort, topoLayers } from "./topo-sort.js";
 export { propagateDirty, propagateAndInvalidate } from "./dirty-propagator.js";
+export { parseCodoc } from "./codoc-loader.js";
 export type {
   CodataDefinition,
   CodataField,
   CodataMeta,
+  CodocFile,
   FieldError,
   FieldState,
   ForceContext,
