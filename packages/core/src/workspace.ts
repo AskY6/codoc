@@ -119,6 +119,10 @@ export class Workspace {
     return this.index.get(docId);
   }
 
+  getRawDoc(docId: string): CodocFile | undefined {
+    return this.parsed.get(docId);
+  }
+
   getDependencyGraph(): { nodes: FieldAddress[]; edges: DepEdge[] } {
     const nodes: FieldAddress[] = [];
     const edges: DepEdge[] = [];

@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+import { getWorkspace } from "../_workspace";
+import type { WorkspaceSnapshot, DocMeta } from "@/lib/types";
+
+export async function GET() {
+  const ws = await getWorkspace();
+  const rawDocs = ws.listDocs();
+  const graph = ws.getDependencyGraph();
+
+  const docs: DocMeta[] = rawDocs.map((d) => ({
+    docId: d.docId,
+    fields: d.fields.map((f) => ({
+      path: f.path,
+      loaderType: f.loaderType,
+      description: f.description,
+    })),
+  }));
+
+  const snapshot: WorkspaceSnapshot = { docs, graph };
+  return NextResponse.json(snapshot);
+}
