@@ -1,0 +1,63 @@
+type:
+  properties:
+    beanName:
+      type: string
+    beanBody:
+      type: string
+    beanFlavorNotes:
+      type: array
+      items:
+        type: string
+    method:
+      type: string
+    grindSize:
+      type: string
+    waterTemp:
+      type: string
+    ratio:
+      type: string
+    brewTime:
+      type: string
+    tip:
+      type: string
+
+data:
+  beanName:
+    $ref: "[[yirgacheffe.codoc]]/name"
+  beanBody:
+    $ref: "[[yirgacheffe.codoc]]/body"
+  beanFlavorNotes:
+    $ref: "[[yirgacheffe.codoc]]/flavorNotes"
+  method: "Pour Over (V60)"
+  grindSize: "medium-fine"
+  waterTemp: "92°C"
+  ratio: "1:15"
+  brewTime: "2:30 – 3:00"
+  tip:
+    $prompt:
+      template: "Give one practical brewing tip (one sentence) for a pour-over of '{beanName}' coffee, which has a {beanBody} body and flavor notes of {beanFlavorNotes}. Focus on how to highlight its delicate florals."
+
+view: |
+  # Brew Guide: {beanName}
+
+  <Highlight variant="warning">
+  Cross-document `$ref` — bean info pulled from **yirgacheffe.codoc** in real time.
+  </Highlight>
+
+  ## Bean
+
+  <InfoRow label="Name">{beanName}</InfoRow>
+  <InfoRow label="Body">{beanBody}</InfoRow>
+  <InfoRow label="Flavor Notes">{beanFlavorNotes}</InfoRow>
+
+  ## Parameters
+
+  <InfoRow label="Method">{method}</InfoRow>
+  <InfoRow label="Grind Size">{grindSize}</InfoRow>
+  <InfoRow label="Water Temp">{waterTemp}</InfoRow>
+  <InfoRow label="Ratio">{ratio}</InfoRow>
+  <InfoRow label="Brew Time">{brewTime}</InfoRow>
+
+  ---
+
+  <AIBlock label="AI Brewing Tip">{tip}</AIBlock>

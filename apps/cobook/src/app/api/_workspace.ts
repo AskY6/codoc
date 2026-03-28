@@ -1,11 +1,46 @@
 import { resolve } from "node:path";
-import { Workspace } from "@codoc/core";
+import { Workspace, setLLMClient } from "@codoc/core";
+import type { LLMClient } from "@codoc/core";
+import { getClient, getModel } from "@/lib/ai";
+
+function ensureLLMClient(): void {
+  const client = getClient();
+  const impl: LLMClient = {
+    async generate({ prompt, schema }) {
+      const res = await client.messages.create({
+        model: getModel(),
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      });
+      let text = "";
+      for (const block of res.content) {
+        if (block.type === "text") text += block.text;
+      }
+
+      // If a non-empty schema is provided, attempt structured JSON parse.
+      if (schema && Object.keys(schema).length > 0) {
+        try {
+          return JSON.parse(text);
+        } catch {
+          /* fall through to raw text */
+        }
+      }
+      return text;
+    },
+  };
+  setLLMClient(impl);
+}
 
 const g = globalThis as typeof globalThis & { _ws?: Workspace };
 
 export async function getWorkspace(): Promise<Workspace> {
   if (!g._ws) {
+    ensureLLMClient();
     g._ws = await Workspace.create(resolve(process.cwd(), "docs"));
   }
   return g._ws;
+}
+
+export function resetWorkspace(): void {
+  g._ws = undefined;
 }
