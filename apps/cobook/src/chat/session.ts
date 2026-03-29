@@ -1,4 +1,12 @@
-import type { Message, MessageNode, NewMessage, Participant } from "./types.js";
+import type {
+  ContextSource,
+  ContextSourceFactory,
+  Message,
+  MessageNode,
+  NewMessage,
+  Participant,
+  ResourceRef,
+} from "./types.js";
 
 let counter = 0;
 function genId(): string {
@@ -96,6 +104,9 @@ export class MessageTree {
 export interface SessionData {
   id: string;
   participants: Participant[];
+  contextSources: ContextSource[];
+  contextSourceFactories: ContextSourceFactory[];
+  activeResourceRefs: ResourceRef[];
   messageTree: MessageTree;
 }
 
@@ -103,6 +114,9 @@ export function createSession(id: string): SessionData {
   return {
     id,
     participants: [],
+    contextSources: [],
+    contextSourceFactories: [],
+    activeResourceRefs: [],
     messageTree: new MessageTree(),
   };
 }

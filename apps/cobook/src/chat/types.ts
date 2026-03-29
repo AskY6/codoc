@@ -40,7 +40,7 @@ export interface Message {
 
 export type NewMessage = Omit<Message, "id" | "timestamp">;
 
-// --- Context (types only; assembly logic comes in Phase 2) ---
+// --- Context ---
 
 export interface ContextRequirement {
   sourceKind: string;
@@ -63,6 +63,13 @@ export interface ContextSourceFactory {
   kind: string;
   create(ref: ResourceRef): ContextSource;
 }
+
+// --- Agent Handler (executor callback, implemented by application layer) ---
+
+export type AgentHandler = (
+  context: ContextData[],
+  triggerMessage: Message,
+) => Promise<ResponseAction | null>;
 
 // --- Trigger & Response ---
 
