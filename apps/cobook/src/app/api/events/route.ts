@@ -1,4 +1,4 @@
-import { getWorkspace } from "../_workspace";
+import { getWorkspace } from "@/workspace/api/_workspace";
 
 export const dynamic = "force-dynamic";
 

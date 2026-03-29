@@ -1,7 +1,16 @@
 "use client";
 
-import { useCurrentDocId } from "@/hooks/use-current-doc";
-import { useFieldSnapshot } from "@/hooks/use-field-snapshot";
+import { createContext, useContext } from "react";
+import { useFieldSnapshot } from "@/workspace/hooks/use-field-snapshot";
+
+const DocIdContext = createContext<string | null>(null);
+export const DocIdProvider = DocIdContext.Provider;
+
+function useDocId() {
+  const id = useContext(DocIdContext);
+  if (!id) throw new Error("CodataValue requires a DocIdProvider ancestor");
+  return id;
+}
 
 function format(value: unknown): string {
   if (typeof value === "object" && value !== null) {
@@ -11,7 +20,7 @@ function format(value: unknown): string {
 }
 
 export function CodataValue({ path }: { path: string }) {
-  const docId = useCurrentDocId();
+  const docId = useDocId();
   const snap = useFieldSnapshot(docId, path);
 
   if (!snap || snap.status === "idle" || snap.status === "pending") {

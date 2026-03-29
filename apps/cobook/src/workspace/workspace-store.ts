@@ -6,7 +6,7 @@ import type {
   DocMeta,
   FieldAddress,
   DepEdge,
-} from "./types";
+} from "@/shared/types";
 
 type Listener = () => void;
 

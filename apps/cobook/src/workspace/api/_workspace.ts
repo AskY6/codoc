@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { Workspace, setLLMClient } from "@codoc/core";
 import type { LLMClient } from "@codoc/core";
-import { getClient, getModel } from "@/lib/ai";
+import { getClient, getModel } from "@/shared/ai";
 
 function ensureLLMClient(): void {
   const client = getClient();
@@ -41,6 +41,7 @@ export async function getWorkspace(): Promise<Workspace> {
   return g._ws;
 }
 
-export function resetWorkspace(): void {
-  g._ws = undefined;
+export async function rescanWorkspace(): Promise<string[]> {
+  const ws = await getWorkspace();
+  return ws.rescan();
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
-import { useWorkspaceDocs, useWorkspaceGraph } from "@/hooks/use-workspace";
-import { cn } from "@/lib/utils";
+import { useWorkspaceDocs, useWorkspaceGraph } from "@/workspace/hooks/use-workspace";
+import { cn } from "@/shared/utils";
 import { Inbox } from "lucide-react";
-import type { DocMeta, FieldAddress, DepEdge } from "@/lib/types";
+import type { DocMeta, FieldAddress, DepEdge } from "@/shared/types";
 
 // ---------------------------------------------------------------------------
 // Props

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { fetchDoc } from "@/lib/api";
-import type { DocSnapshot, FieldSnapshot } from "@/lib/types";
+import { fetchDoc } from "@/workspace/api-client";
+import type { DocSnapshot, FieldSnapshot } from "@/shared/types";
 import { FileText, ChevronRight, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils";
 
 interface CodocCardProps {
   docId: string;

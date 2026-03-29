@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "../_workspace";
-import type { WorkspaceSnapshot, DocMeta } from "@/lib/types";
+import { getWorkspace } from "@/workspace/api/_workspace";
+import type { WorkspaceSnapshot, DocMeta } from "@/shared/types";
 
 export async function GET() {
   const ws = await getWorkspace();

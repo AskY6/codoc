@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "../../_workspace";
+import { getWorkspace } from "@/workspace/api/_workspace";
 import { scheduleForce } from "@codoc/core";
-import type { DocSnapshot, FieldSnapshot } from "@/lib/types";
+import type { DocSnapshot, FieldSnapshot } from "@/shared/types";
 
 export async function GET(
   _req: Request,

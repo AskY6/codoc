@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 import "./globals.css";
 
 export const metadata: Metadata = {

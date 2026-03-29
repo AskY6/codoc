@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useWorkspaceDocs, useWorkspaceGraph } from "@/hooks/use-workspace";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Input } from "@/components/ui/input";
+import { useWorkspaceDocs, useWorkspaceGraph } from "@/workspace/hooks/use-workspace";
+import { ScrollArea } from "@/shared/ui/scroll-area";
+import { Input } from "@/shared/ui/input";
 import { FileText, GitFork, Inbox, Check, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils";
 
 interface CodocListProps {
   references: string[];

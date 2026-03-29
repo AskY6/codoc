@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 import { getStore } from "./use-workspace";
-import type { FieldSnapshot } from "@/lib/types";
+import type { FieldSnapshot } from "@/shared/types";
 
 const EMPTY: FieldSnapshot = { status: "idle", loaderType: "unknown" };
 

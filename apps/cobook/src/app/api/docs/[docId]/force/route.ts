@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "../../../_workspace";
+import { getWorkspace } from "@/workspace/api/_workspace";
 import { scheduleForce, evictSourceCache } from "@codoc/core";
 
 export async function POST(

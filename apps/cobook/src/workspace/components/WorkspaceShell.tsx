@@ -1,23 +1,20 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useWorkspaceInit, useWorkspaceDocs } from "@/hooks/use-workspace";
+import { useWorkspaceInit, useWorkspaceDocs } from "@/workspace/hooks/use-workspace";
 import { CodocList } from "./CodocList";
 import { ChatPanel } from "./ChatPanel";
 import { AgentsPanel } from "./AgentsPanel";
 import { DagGraphView } from "./DagGraphView";
 
 export type CenterView = "chat" | "graph";
-import { ChatStore } from "@/lib/chat-store";
-import { PRESET_AGENTS } from "@/lib/agents";
-import { invokeAgentStream } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/shared/ui/button";
+import { Separator } from "@/shared/ui/separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/shared/ui/tooltip";
 import {
   Loader2,
   BookOpen,
@@ -28,9 +25,7 @@ import {
   List,
   Network,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-const chatStore = new ChatStore();
+import { cn } from "@/shared/utils";
 
 export function WorkspaceShell() {
   const { loading, error } = useWorkspaceInit();
@@ -49,47 +44,6 @@ export function WorkspaceShell() {
   const handleRemoveReference = useCallback((docId: string) => {
     setReferences((prev) => prev.filter((id) => id !== docId));
   }, []);
-
-  const handleInvokeAgent = useCallback(
-    (agentId: string) => {
-      const agent = PRESET_AGENTS.find((a) => a.id === agentId);
-      if (!agent) return;
-
-      chatStore.addMessage(
-        "user",
-        `Run ${agent.name} on referenced codocs`,
-        [...references],
-        agentId,
-      );
-
-      if (references.length === 0) {
-        chatStore.addMessage(
-          "assistant",
-          `No codocs referenced. Add codocs from the left panel first.`,
-          [],
-          agentId,
-        );
-        return;
-      }
-
-      const placeholder = chatStore.addMessage(
-        "assistant",
-        "Thinking…",
-        [...references],
-        agentId,
-      );
-
-      invokeAgentStream(agentId, references, chatStore, placeholder.id).catch(
-        (err) => {
-          chatStore.updateMessageContent(
-            placeholder.id,
-            `**Error:** ${err instanceof Error ? err.message : String(err)}`,
-          );
-        },
-      );
-    },
-    [references],
-  );
 
   if (loading) {
     return (
@@ -221,14 +175,7 @@ export function WorkspaceShell() {
         {/* Center – Chat or Graph */}
         <main className="flex-1 min-w-0">
           {centerView === "chat" ? (
-            <ChatPanel
-              store={chatStore}
-              references={references}
-              docs={docs}
-              onAddReference={handleAddReference}
-              onRemoveReference={handleRemoveReference}
-              onInvokeAgent={handleInvokeAgent}
-            />
+            <ChatPanel />
           ) : (
             <DagGraphView
               references={references}
@@ -245,7 +192,7 @@ export function WorkspaceShell() {
             rightOpen ? "w-72" : "w-0 border-l-0",
           )}
         >
-          <AgentsPanel onInvokeAgent={handleInvokeAgent} />
+          <AgentsPanel />
         </aside>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "../../../_workspace";
+import { getWorkspace } from "@/workspace/api/_workspace";
 import { propagateAndInvalidate, evictSourceCache } from "@codoc/core";
-import type { FieldAction } from "@/lib/types";
+import type { FieldAction } from "@/shared/types";
 
 export async function POST(
   req: Request,

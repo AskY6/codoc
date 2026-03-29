@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
-import { resetWorkspace } from "../_workspace";
+import { rescanWorkspace } from "@/workspace/api/_workspace";
 
 export async function POST(req: Request) {
   let body: { docId: string; content: string };
@@ -36,8 +36,8 @@ export async function POST(req: Request) {
 
   try {
     await writeFile(filePath, content, "utf-8");
-    resetWorkspace();
-    return NextResponse.json({ ok: true, docId });
+    const added = await rescanWorkspace();
+    return NextResponse.json({ ok: true, docId, added });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

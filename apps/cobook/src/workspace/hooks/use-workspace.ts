@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { WorkspaceStore } from "@/lib/workspace-store";
-import { fetchWorkspace } from "@/lib/api";
-import type { FieldEvent } from "@/lib/types";
+import { WorkspaceStore } from "@/workspace/workspace-store";
+import { fetchWorkspace } from "@/workspace/api-client";
+import type { FieldEvent } from "@/shared/types";
 
 // Singleton store
 const store = new WorkspaceStore();
