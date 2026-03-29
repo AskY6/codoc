@@ -1,26 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useWorkspaceDocs, useWorkspaceGraph } from "@/workspace/hooks/use-workspace";
+import {
+  useWorkspaceDocs,
+  useWorkspaceGraph,
+} from "@/workspace/hooks/use-workspace";
+import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
+import { addReference, removeReference } from "@/workspace/api-client";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
 import { FileText, GitFork, Inbox, Check, Search } from "lucide-react";
 import { cn } from "@/shared/utils";
 
-interface CodocListProps {
-  references: string[];
-  onAddReference: (docId: string) => void;
-  onRemoveReference: (docId: string) => void;
-}
-
-export function CodocList({
-  references,
-  onAddReference,
-  onRemoveReference,
-}: CodocListProps) {
+export function ResourcesPanel() {
   const docs = useWorkspaceDocs();
   const graph = useWorkspaceGraph();
+  const references = useChatReferences();
   const [search, setSearch] = useState("");
+
+  const referenceIds = references.map((r) => r.id);
 
   const filtered = search
     ? docs.filter(
@@ -31,6 +29,18 @@ export function CodocList({
           ),
       )
     : docs;
+
+  const handleToggleReference = async (docId: string) => {
+    const isRef = referenceIds.includes(docId);
+    if (isRef) {
+      getChatStore().removeReference(docId);
+      await removeReference(docId);
+    } else {
+      const ref = { kind: "codoc", id: docId, label: docId };
+      getChatStore().addReference(ref);
+      await addReference(ref);
+    }
+  };
 
   if (docs.length === 0) {
     return (
@@ -46,7 +56,7 @@ export function CodocList({
       {/* Header */}
       <div className="px-3 pt-4 pb-3">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Codocs
+          Resources
         </h2>
       </div>
 
@@ -67,15 +77,11 @@ export function CodocList({
       <ScrollArea className="flex-1">
         <div className="px-1.5 pb-2">
           {filtered.map((doc) => {
-            const isRef = references.includes(doc.docId);
+            const isRef = referenceIds.includes(doc.docId);
             return (
               <button
                 key={doc.docId}
-                onClick={() =>
-                  isRef
-                    ? onRemoveReference(doc.docId)
-                    : onAddReference(doc.docId)
-                }
+                onClick={() => handleToggleReference(doc.docId)}
                 className={cn(
                   "w-full text-left rounded-md px-3 py-2 mb-0.5 flex items-center gap-2.5 transition-colors group",
                   isRef
@@ -123,4 +129,13 @@ export function CodocList({
       </div>
     </div>
   );
+}
+
+// Backward compat export for DagGraphView which still uses the old name/props
+export function CodocList(props: {
+  references: string[];
+  onAddReference: (docId: string) => void;
+  onRemoveReference: (docId: string) => void;
+}) {
+  return <ResourcesPanel />;
 }

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { WorkspaceStore } from "@/workspace/workspace-store";
-import { fetchWorkspace } from "@/workspace/api-client";
+import { fetchWorkspace, fetchChatState } from "@/workspace/api-client";
+import { getChatStore } from "./use-session";
 import type { FieldEvent } from "@/shared/types";
+import type { ChatMessage } from "@/workspace/api-client";
 
 // Singleton store
 const store = new WorkspaceStore();
@@ -21,11 +23,26 @@ function startSSE(): void {
   sseStarted = true;
 
   const es = new EventSource("/api/events");
+  const chatStore = getChatStore();
 
   es.addEventListener("field", (e) => {
     try {
       const event: FieldEvent = JSON.parse(e.data);
       store.applyFieldEvent(event);
+    } catch { /* ignore malformed */ }
+  });
+
+  es.addEventListener("chat-message", (e) => {
+    try {
+      const msg: ChatMessage = JSON.parse(e.data);
+      chatStore.addMessage(msg);
+    } catch { /* ignore malformed */ }
+  });
+
+  es.addEventListener("chat-intent", (e) => {
+    try {
+      const { msgId, intentIdx, status } = JSON.parse(e.data);
+      chatStore.updateIntentStatus(msgId, intentIdx, status);
     } catch { /* ignore malformed */ }
   });
 
@@ -44,9 +61,10 @@ export function useWorkspaceInit(): { loading: boolean; error: string | null } {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchWorkspace()
-      .then((snapshot) => {
-        store.hydrateWorkspace(snapshot);
+    Promise.all([fetchWorkspace(), fetchChatState()])
+      .then(([wsSnapshot, chatState]) => {
+        store.hydrateWorkspace(wsSnapshot);
+        getChatStore().hydrate(chatState);
         setLoading(false);
       })
       .catch((e) => {

@@ -1,9 +1,12 @@
 import { getWorkspace } from "@/workspace/api/_workspace";
+import { onChatMessage, onIntentStatusChange, getChatAbility } from "@/workspace/api/_chat";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const ws = await getWorkspace();
+  // Ensure chat is initialized so we can subscribe to events
+  await getChatAbility();
 
   let cleanup: (() => void) | undefined;
 
@@ -11,14 +14,18 @@ export async function GET() {
     start(controller) {
       const encoder = new TextEncoder();
       const send = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // Stream closed
+        }
       };
 
       // Send initial heartbeat
       send("ping", { ts: Date.now() });
 
-      const unsub = ws.onFieldChange((event) => {
-        // Look up the current field state to include value/error
+      // Field change events
+      const unsubField = ws.onFieldChange((event) => {
         try {
           const { tree } = ws.loadDoc(event.docId);
           const field = tree.getField(event.fieldPath);
@@ -40,6 +47,16 @@ export async function GET() {
         }
       });
 
+      // Chat message events
+      const unsubChat = onChatMessage((msg) => {
+        send("chat-message", msg);
+      });
+
+      // Intent status change events
+      const unsubIntent = onIntentStatusChange((msgId, intentIdx, status) => {
+        send("chat-intent", { msgId, intentIdx, status });
+      });
+
       // Heartbeat every 30s to keep connection alive
       const heartbeat = setInterval(() => {
         try {
@@ -50,7 +67,9 @@ export async function GET() {
       }, 30_000);
 
       cleanup = () => {
-        unsub();
+        unsubField();
+        unsubChat();
+        unsubIntent();
         clearInterval(heartbeat);
       };
     },

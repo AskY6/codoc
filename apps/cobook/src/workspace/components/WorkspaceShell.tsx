@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useWorkspaceInit, useWorkspaceDocs } from "@/workspace/hooks/use-workspace";
-import { CodocList } from "./CodocList";
-import { ChatPanel } from "./ChatPanel";
-import { AgentsPanel } from "./AgentsPanel";
+import { useWorkspaceInit } from "@/workspace/hooks/use-workspace";
+import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
+import { addReference, removeReference } from "@/workspace/api-client";
+import { ResourcesPanel } from "./CodocList";
+import { ChatArea } from "./ChatArea";
+import { ParticipantsPanel } from "./AgentsPanel";
 import { DagGraphView } from "./DagGraphView";
 
 export type CenterView = "chat" | "graph";
@@ -29,20 +31,23 @@ import { cn } from "@/shared/utils";
 
 export function WorkspaceShell() {
   const { loading, error } = useWorkspaceInit();
-  const docs = useWorkspaceDocs();
-  const [references, setReferences] = useState<string[]>([]);
+  const references = useChatReferences();
   const [centerView, setCenterView] = useState<CenterView>("chat");
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
 
-  const handleAddReference = useCallback((docId: string) => {
-    setReferences((prev) =>
-      prev.includes(docId) ? prev : [...prev, docId],
-    );
+  // DagGraphView still uses the old callback interface for reference toggling
+  const referenceIds = references.map((r) => r.id);
+
+  const handleAddReference = useCallback(async (docId: string) => {
+    const ref = { kind: "codoc", id: docId, label: docId };
+    getChatStore().addReference(ref);
+    await addReference(ref);
   }, []);
 
-  const handleRemoveReference = useCallback((docId: string) => {
-    setReferences((prev) => prev.filter((id) => id !== docId));
+  const handleRemoveReference = useCallback(async (docId: string) => {
+    getChatStore().removeReference(docId);
+    await removeReference(docId);
   }, []);
 
   if (loading) {
@@ -131,7 +136,7 @@ export function WorkspaceShell() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {leftOpen ? "Hide codocs" : "Show codocs"}
+            {leftOpen ? "Hide resources" : "Show resources"}
           </TooltipContent>
         </Tooltip>
 
@@ -151,48 +156,44 @@ export function WorkspaceShell() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {rightOpen ? "Hide agents" : "Show agents"}
+            {rightOpen ? "Hide participants" : "Show participants"}
           </TooltipContent>
         </Tooltip>
       </header>
 
       {/* Three-column layout */}
       <div className="flex flex-1 min-h-0">
-        {/* Left sidebar – Codoc list */}
+        {/* Left sidebar – Resources */}
         <aside
           className={cn(
             "flex-shrink-0 border-r bg-sidebar transition-[width] duration-200 overflow-hidden",
             leftOpen ? "w-72" : "w-0 border-r-0",
           )}
         >
-          <CodocList
-            references={references}
-            onAddReference={handleAddReference}
-            onRemoveReference={handleRemoveReference}
-          />
+          <ResourcesPanel />
         </aside>
 
         {/* Center – Chat or Graph */}
         <main className="flex-1 min-w-0">
           {centerView === "chat" ? (
-            <ChatPanel />
+            <ChatArea />
           ) : (
             <DagGraphView
-              references={references}
+              references={referenceIds}
               onAddReference={handleAddReference}
               onRemoveReference={handleRemoveReference}
             />
           )}
         </main>
 
-        {/* Right sidebar – Agents */}
+        {/* Right sidebar – Participants */}
         <aside
           className={cn(
             "flex-shrink-0 border-l bg-sidebar transition-[width] duration-200 overflow-hidden",
             rightOpen ? "w-72" : "w-0 border-l-0",
           )}
         >
-          <AgentsPanel />
+          <ParticipantsPanel />
         </aside>
       </div>
     </div>
