@@ -35,6 +35,13 @@ describe("extractTemplateVars", () => {
   it("handles duplicate vars", () => {
     expect(extractTemplateVars("{a} and {a}")).toEqual(["a", "a"]);
   });
+
+  it("extracts dot-separated nested paths", () => {
+    expect(extractTemplateVars("From {origin.region} at {origin.altitude}")).toEqual([
+      "origin.region",
+      "origin.altitude",
+    ]);
+  });
 });
 
 describe("promptLoader", () => {
@@ -111,6 +118,26 @@ describe("promptLoader", () => {
 
     expect(mockClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: "Compare apple with banana" }),
+    );
+  });
+
+  it("resolves dot-separated nested paths", async () => {
+    const field = makePromptField("Coffee from {origin.region} at {origin.altitude}");
+    const forceImpl = vi.fn().mockImplementation((path: string) => {
+      if (path === "/origin/region") return Promise.resolve("Yirgacheffe, Sidamo");
+      if (path === "/origin/altitude") return Promise.resolve("1,700 – 2,200m");
+      return Promise.reject(new Error("unknown"));
+    });
+    const context: ForceContext = { force: forceImpl, forceStack: new Set() };
+
+    await promptLoader(field, context);
+
+    expect(forceImpl).toHaveBeenCalledWith("/origin/region");
+    expect(forceImpl).toHaveBeenCalledWith("/origin/altitude");
+    expect(mockClient.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Coffee from Yirgacheffe, Sidamo at 1,700 – 2,200m",
+      }),
     );
   });
 

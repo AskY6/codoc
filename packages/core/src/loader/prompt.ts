@@ -1,6 +1,6 @@
 import type { CodataField, FieldError, ForceContext, LLMClient, LoaderFn } from "../types.js";
 
-const TEMPLATE_VAR_RE = /\{(\w+)\}/g;
+const TEMPLATE_VAR_RE = /\{([\w.]+)\}/g;
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
 let llmClient: LLMClient | null = null;
@@ -47,10 +47,11 @@ export const promptLoader: LoaderFn = async (
   const { template, model } = decl.$prompt;
 
   // Resolve template variables by forcing their fields
+  // Supports both flat names ({name} → /name) and dot paths ({origin.region} → /origin/region)
   const vars = extractTemplateVars(template);
   const resolved = new Map<string, string>();
   for (const varName of vars) {
-    const path = `/${varName}`;
+    const path = `/${varName.replace(/\./g, "/")}`;
     const value = await context.force(path);
     resolved.set(varName, String(value));
   }

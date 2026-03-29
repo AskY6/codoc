@@ -221,6 +221,32 @@ export class Workspace {
     };
   }
 
+  /**
+   * Re-scan the workspace directory for new .codoc files.
+   * Only adds files that are not already indexed. Does not touch loaded docs.
+   */
+  async rescan(): Promise<string[]> {
+    const entries = await readdir(this.dir);
+    const codocFiles = entries.filter((e) => e.endsWith(".codoc"));
+    const added: string[] = [];
+
+    for (const filename of codocFiles) {
+      if (this.index.has(filename)) continue;
+      const filepath = join(this.dir, filename);
+      const content = await readFile(filepath, "utf-8");
+      try {
+        const codoc = parseCodoc(content);
+        this.parsed.set(filename, codoc);
+        this.index.set(filename, this.extractMeta(filename, codoc));
+        added.push(filename);
+      } catch {
+        // Skip files that fail to parse
+      }
+    }
+
+    return added;
+  }
+
   getRegistry(): DocRegistry {
     return this.registry;
   }
