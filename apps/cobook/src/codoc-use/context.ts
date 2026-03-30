@@ -1,4 +1,5 @@
 import type { Workspace, DocMeta, CodocRuntime } from "@codoc/core";
+import { listConnectors, getCredentialStore } from "@codoc/core";
 import type {
   ContextSource,
   ContextSourceFactory,
@@ -56,6 +57,27 @@ export function createCodocContextSourceFactory(
     kind: "codoc-snapshot",
     create(ref) {
       return createCodocContextSource(workspace, ref.id);
+    },
+  };
+}
+
+export function createConnectorContextSource(): ContextSource {
+  return {
+    kind: "connector-catalog",
+    async resolve() {
+      const metas = listConnectors();
+      if (metas.length === 0) {
+        return { kind: "connector-catalog", content: "(no connectors registered)" };
+      }
+
+      const store = getCredentialStore();
+      const lines: string[] = [];
+      for (const meta of metas) {
+        const authStatus = store.has(meta.name) ? "auth configured" : "auth NOT configured";
+        lines.push(`- **${meta.displayName}** (\`${meta.name}\`): ${authStatus}`);
+        lines.push(`  ${meta.description}`);
+      }
+      return { kind: "connector-catalog", content: lines.join("\n") };
     },
   };
 }

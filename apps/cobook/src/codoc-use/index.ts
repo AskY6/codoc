@@ -1,14 +1,14 @@
 import type { Workspace } from "@codoc/core";
 import type { ChatAbility, Unsubscribe } from "../chat/index.js";
-import { createCodocContextSourceFactory } from "./context.js";
+import { createCodocContextSourceFactory, createConnectorContextSource } from "./context.js";
 import { executeCodocIntent } from "./intent.js";
-import { bridgeWorkspaceEvents } from "./events.js";
+import { bridgeWorkspaceEvents, bridgeConnectorAuthErrors } from "./events.js";
 import { isCodocIntent } from "./types.js";
 
 export { listCodocResources } from "./resource.js";
-export { serializeCodocForLLM, createCodocContextSource } from "./context.js";
+export { serializeCodocForLLM, createCodocContextSource, createConnectorContextSource } from "./context.js";
 export { executeCodocIntent } from "./intent.js";
-export { bridgeWorkspaceEvents } from "./events.js";
+export { bridgeWorkspaceEvents, bridgeConnectorAuthErrors } from "./events.js";
 export { isCodocIntent } from "./types.js";
 export type {
   CodocIntentKind,
@@ -44,6 +44,9 @@ export function initCodocUse(
     createCodocContextSourceFactory(workspace),
   );
 
+  // Register connector catalog as a static context source
+  chat.registerContextSource(sessionId, createConnectorContextSource());
+
   // Listen for confirmed codoc intents and execute them
   const unsubIntent = chat.on(
     sessionId,
@@ -61,8 +64,12 @@ export function initCodocUse(
   // Bridge workspace field change events into chat
   const unsubEvents = bridgeWorkspaceEvents(workspace, chat, sessionId);
 
+  // Bridge connector auth errors into chat (one-time guidance per connector)
+  const unsubAuthErrors = bridgeConnectorAuthErrors(workspace, chat, sessionId);
+
   return () => {
     unsubIntent();
     unsubEvents();
+    unsubAuthErrors();
   };
 }

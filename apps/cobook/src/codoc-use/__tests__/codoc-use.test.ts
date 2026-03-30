@@ -18,7 +18,7 @@ function makeWorkspace(
     fields: Record<string, { status: string; value?: unknown }>;
   }>,
 ) {
-  let fieldChangeListener: ((e: WorkspaceChangeEvent) => void) | null = null;
+  const fieldChangeListeners: Array<(e: WorkspaceChangeEvent) => void> = [];
 
   const ws = {
     listDocs: () =>
@@ -64,15 +64,18 @@ function makeWorkspace(
     createDoc: vi.fn().mockResolvedValue({ docId: "new.codoc", type: {}, fields: [], externalRefs: [] }),
     rewriteDoc: vi.fn().mockResolvedValue({ docId: "doc.codoc", type: {}, fields: [], externalRefs: [] }),
     onFieldChange: vi.fn((cb: (e: WorkspaceChangeEvent) => void) => {
-      fieldChangeListener = cb;
-      return () => { fieldChangeListener = null; };
+      fieldChangeListeners.push(cb);
+      return () => {
+        const idx = fieldChangeListeners.indexOf(cb);
+        if (idx >= 0) fieldChangeListeners.splice(idx, 1);
+      };
     }),
   } as unknown as Workspace;
 
   return {
     ws,
     emitFieldChange(event: WorkspaceChangeEvent) {
-      fieldChangeListener?.(event);
+      for (const cb of [...fieldChangeListeners]) cb(event);
     },
   };
 }

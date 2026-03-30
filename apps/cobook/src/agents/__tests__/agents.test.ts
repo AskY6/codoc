@@ -58,6 +58,7 @@ describe("Participant definitions", () => {
     expect(codocAgentParticipant.contextRequirements).toEqual([
       { sourceKind: "chat-history", priority: "required", maxTokens: 3000 },
       { sourceKind: "codoc-snapshot", priority: "optional" },
+      { sourceKind: "connector-catalog", priority: "optional", maxTokens: 2000 },
     ]);
   });
 
