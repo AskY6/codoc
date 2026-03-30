@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   useWorkspaceDocs,
   useWorkspaceGraph,
@@ -9,7 +9,7 @@ import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
 import { addReference, removeReference } from "@/workspace/api-client";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
-import { FileText, GitFork, Inbox, Check, Search } from "lucide-react";
+import { FileText, GitFork, MessageSquarePlus, Check, Search } from "lucide-react";
 import { cn } from "@/shared/utils";
 
 export function ResourcesPanel() {
@@ -17,6 +17,27 @@ export function ResourcesPanel() {
   const graph = useWorkspaceGraph();
   const references = useChatReferences();
   const [search, setSearch] = useState("");
+
+  // Track newly appeared docs for highlight animation
+  const prevDocIdsRef = useRef<Set<string>>(new Set());
+  const [newDocIds, setNewDocIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const prev = prevDocIdsRef.current;
+    const currentIds = new Set(docs.map((d) => d.docId));
+    const added = new Set<string>();
+    for (const id of currentIds) {
+      if (!prev.has(id)) added.add(id);
+    }
+    prevDocIdsRef.current = currentIds;
+
+    if (added.size > 0) {
+      setNewDocIds(added);
+      // Clear highlights after animation
+      const timer = setTimeout(() => setNewDocIds(new Set()), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [docs]);
 
   const referenceIds = references.map((r) => r.id);
 
@@ -44,9 +65,16 @@ export function ResourcesPanel() {
 
   if (docs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground px-4">
-        <Inbox className="h-8 w-8 opacity-30" />
-        <p className="text-xs">No codocs in workspace</p>
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground px-6 text-center">
+        <MessageSquarePlus className="h-8 w-8 opacity-30" />
+        <div>
+          <p className="text-xs font-medium text-foreground/70">
+            在对话中创建你的第一个 codoc
+          </p>
+          <p className="text-[11px] mt-1.5 leading-relaxed">
+            创建完成后文档会出现在这里
+          </p>
+        </div>
       </div>
     );
   }
@@ -78,6 +106,7 @@ export function ResourcesPanel() {
         <div className="px-1.5 pb-2">
           {filtered.map((doc) => {
             const isRef = referenceIds.includes(doc.docId);
+            const isNew = newDocIds.has(doc.docId);
             return (
               <button
                 key={doc.docId}
@@ -87,6 +116,7 @@ export function ResourcesPanel() {
                   isRef
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "hover:bg-sidebar-accent/60 text-sidebar-foreground",
+                  isNew && "animate-highlight-fade",
                 )}
               >
                 <FileText

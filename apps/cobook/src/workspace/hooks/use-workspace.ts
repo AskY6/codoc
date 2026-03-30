@@ -43,6 +43,18 @@ function startSSE(): void {
     try {
       const { msgId, intentIdx, status } = JSON.parse(e.data);
       chatStore.updateIntentStatus(msgId, intentIdx, status);
+
+      // When a doc-mutating intent is confirmed, refresh workspace docs list
+      if (status === "confirmed") {
+        const msg = chatStore.getMessages().find((m) => m.id === msgId);
+        const intent = msg?.intents?.[intentIdx];
+        if (
+          intent &&
+          (intent.kind === "create-codoc" || intent.kind === "rewrite-codoc")
+        ) {
+          fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
+        }
+      }
     } catch { /* ignore malformed */ }
   });
 

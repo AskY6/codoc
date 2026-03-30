@@ -16,7 +16,12 @@ interface MentionOption {
   type: "participant" | "resource";
 }
 
-export function ChatInput() {
+interface ChatInputProps {
+  suggestedPrompt?: string;
+  onSuggestionConsumed?: () => void;
+}
+
+export function ChatInput({ suggestedPrompt, onSuggestionConsumed }: ChatInputProps = {}) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [showMentions, setShowMentions] = useState(false);
@@ -25,6 +30,15 @@ export function ChatInput() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const participants = useChatParticipants();
   const docs = useWorkspaceDocs();
+
+  // Apply suggested prompt from guide cards
+  useEffect(() => {
+    if (suggestedPrompt) {
+      setValue(suggestedPrompt);
+      onSuggestionConsumed?.();
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [suggestedPrompt, onSuggestionConsumed]);
 
   // Build mention options
   const allOptions: MentionOption[] = [
@@ -95,17 +109,26 @@ export function ChatInput() {
 
     setSending(true);
     try {
-      const { mentioned, resourceRefs } = extractMentions(text);
+      const { mentioned, resourceRefs: mentionRefs } = extractMentions(text);
 
-      // Register resource refs in session
-      for (const ref of resourceRefs) {
+      // Register any new resource refs from @mentions in session
+      for (const ref of mentionRefs) {
         getChatStore().addReference(ref);
         addReference(ref);
       }
 
+      // Merge active session refs with newly-mentioned refs
+      const activeRefs = getChatStore().getReferences();
+      const allRefs = [...activeRefs];
+      for (const ref of mentionRefs) {
+        if (!allRefs.some((r) => r.id === ref.id)) {
+          allRefs.push(ref);
+        }
+      }
+
       await sendChatMessage(text, {
         mentionedParticipants: mentioned.length > 0 ? mentioned : undefined,
-        resourceRefs: resourceRefs.length > 0 ? resourceRefs : undefined,
+        resourceRefs: allRefs.length > 0 ? allRefs : undefined,
       });
 
       setValue("");

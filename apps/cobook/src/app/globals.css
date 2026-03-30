@@ -45,6 +45,15 @@
   }
 }
 
+@keyframes highlight-fade {
+  0% { background-color: oklch(0.85 0.08 250); }
+  100% { background-color: transparent; }
+}
+
+.animate-highlight-fade {
+  animation: highlight-fade 2s ease-out;
+}
+
 .mention-chip {
   display: inline;
   border-radius: 0.25rem;
