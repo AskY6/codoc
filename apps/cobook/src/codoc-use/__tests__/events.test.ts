@@ -39,54 +39,104 @@ function makeChat() {
 }
 
 describe("bridgeWorkspaceEvents", () => {
-  it("sends system message on field change", () => {
+  it("batches field changes into a single system message", async () => {
     const { ws, emit } = makeWorkspace();
     const chat = makeChat();
 
-    bridgeWorkspaceEvents(ws, chat, "s1");
+    bridgeWorkspaceEvents(ws, chat, "s1", 50);
     emit({ docId: "report.codoc", fieldPath: "/title", timestamp: 1 });
+    emit({ docId: "report.codoc", fieldPath: "/body", timestamp: 2 });
 
-    expect(chat.sendMessage).toHaveBeenCalledWith("s1", {
-      sender: { id: "system", kind: "agent" },
-      content: "codoc **report.codoc** field `/title` changed.",
-      resourceRefs: [{ kind: "codoc", id: "report.codoc" }],
-    });
+    // Not yet flushed
+    expect(chat.sendMessage).not.toHaveBeenCalled();
+
+    // Wait for debounce
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(chat.sendMessage).toHaveBeenCalledTimes(1);
+    const call = (chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call[0]).toBe("s1");
+    expect(call[1].content).toContain("/title");
+    expect(call[1].content).toContain("/body");
+    expect(call[1].content).toContain("/downstream");
+    expect(call[1].resourceRefs).toEqual([{ kind: "codoc", id: "report.codoc" }]);
   });
 
-  it("sends downstream stale notifications", () => {
+  it("includes downstream stale notifications in the batch", async () => {
     const { ws, emit } = makeWorkspace();
     const chat = makeChat();
 
-    bridgeWorkspaceEvents(ws, chat, "s1");
+    bridgeWorkspaceEvents(ws, chat, "s1", 50);
     emit({ docId: "doc.codoc", fieldPath: "/name", timestamp: 1 });
 
-    // First call: the change itself, second: the downstream stale
-    expect(chat.sendMessage).toHaveBeenCalledTimes(2);
-    expect(chat.sendMessage).toHaveBeenCalledWith("s1", expect.objectContaining({
-      content: expect.stringContaining("/downstream"),
-    }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(chat.sendMessage).toHaveBeenCalledTimes(1);
+    const content = (chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    expect(content).toContain("/name");
+    expect(content).toContain("/downstream");
   });
 
   it("returns unsubscribe function", () => {
     const { ws, unsubscribe } = makeWorkspace();
     const chat = makeChat();
 
-    const unsub = bridgeWorkspaceEvents(ws, chat, "s1");
+    const unsub = bridgeWorkspaceEvents(ws, chat, "s1", 50);
     unsub();
     expect(unsubscribe).toHaveBeenCalled();
   });
 
-  it("handles loadDoc failure gracefully", () => {
+  it("handles loadDoc failure gracefully", async () => {
     const { ws, emit } = makeWorkspace();
     (ws.loadDoc as ReturnType<typeof vi.fn>).mockImplementation(() => {
       throw new Error("not loaded");
     });
     const chat = makeChat();
 
-    bridgeWorkspaceEvents(ws, chat, "s1");
+    bridgeWorkspaceEvents(ws, chat, "s1", 50);
     emit({ docId: "missing.codoc", fieldPath: "/x", timestamp: 1 });
+
+    await new Promise((r) => setTimeout(r, 80));
 
     // Only the change message, no downstream (loadDoc threw)
     expect(chat.sendMessage).toHaveBeenCalledTimes(1);
+    const content = (chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    expect(content).toContain("/x");
+    expect(content).not.toContain("downstream");
+  });
+
+  it("batches events across multiple documents", async () => {
+    const { ws, emit } = makeWorkspace();
+    const chat = makeChat();
+
+    bridgeWorkspaceEvents(ws, chat, "s1", 50);
+    emit({ docId: "a.codoc", fieldPath: "/x", timestamp: 1 });
+    emit({ docId: "b.codoc", fieldPath: "/y", timestamp: 2 });
+
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(chat.sendMessage).toHaveBeenCalledTimes(1);
+    const call = (chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(call.content).toContain("a.codoc");
+    expect(call.content).toContain("b.codoc");
+    expect(call.resourceRefs).toHaveLength(2);
+  });
+
+  it("deduplicates repeated field changes within a batch", async () => {
+    const { ws, emit } = makeWorkspace();
+    const chat = makeChat();
+
+    bridgeWorkspaceEvents(ws, chat, "s1", 50);
+    emit({ docId: "doc.codoc", fieldPath: "/title", timestamp: 1 });
+    emit({ docId: "doc.codoc", fieldPath: "/title", timestamp: 2 });
+    emit({ docId: "doc.codoc", fieldPath: "/title", timestamp: 3 });
+
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(chat.sendMessage).toHaveBeenCalledTimes(1);
+    const content = (chat.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0][1].content;
+    // /title should appear only once (deduplicated by Set)
+    const titleMatches = content.match(/`\/title`/g);
+    expect(titleMatches).toHaveLength(1);
   });
 });

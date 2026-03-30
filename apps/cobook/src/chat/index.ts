@@ -243,6 +243,17 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
     sendMessage(sessionId: string, msg: NewMessage): Message {
       const session = getSession(sessionId);
       const message = buildMessage(msg);
+
+      // Auto-merge message resourceRefs into session activeResourceRefs
+      // so context assembly can find matching context sources.
+      if (message.resourceRefs) {
+        for (const ref of message.resourceRefs) {
+          if (!session.activeResourceRefs.some((r) => r.id === ref.id)) {
+            session.activeResourceRefs.push(ref);
+          }
+        }
+      }
+
       const parentId = session.messageTree.getActiveLeafId();
       session.messageTree.addMessage(message, parentId);
       getEmitter(sessionId).emit("onMessage", message);
