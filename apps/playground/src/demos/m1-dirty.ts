@@ -1,9 +1,6 @@
-import {
-  DataTree,
-  DAG,
-  propagateDirty,
-  propagateAndInvalidate,
-} from "@codoc/core";
+import { DataTree } from "@codoc/core";
+import { propagateDirty } from "@codoc/graph";
+import { buildDAGFromTree, propagateAndInvalidate } from "@cobook/workspace";
 import { header, printField } from "../helpers.js";
 
 export async function run() {
@@ -36,7 +33,7 @@ export async function run() {
     printField(tree, path);
   }
 
-  const dag = DAG.buildFromTree(tree);
+  const dag = buildDAGFromTree(tree);
 
   console.log("\nGraphviz DOT (before dirty propagation):");
   console.log(dag.toDot({ title: "Before dirty" }));

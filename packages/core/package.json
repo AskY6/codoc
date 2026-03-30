@@ -5,16 +5,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/client.ts"
-  },
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
+    ".": "./src/index.ts"
   },
   "dependencies": {
-    "ajv": "^8.17.0",
-    "yaml": "^2.7.0"
+    "ajv": "^8.17.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

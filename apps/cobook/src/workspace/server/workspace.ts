@@ -1,6 +1,8 @@
 import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { Workspace, setLLMClient } from "@codoc/core";
+import { Workspace } from "@cobook/workspace";
+import { registerWorkspaceLoaders } from "@cobook/workspace";
+import { setLLMClient } from "@codoc/source";
 import type { LLMClient } from "@codoc/core";
 import { getClient, getModel } from "@/shared/ai";
 import { loadCredentials } from "./credentials.js";
@@ -38,6 +40,7 @@ const g = globalThis as typeof globalThis & { _ws?: Workspace };
 
 export async function getWorkspace(): Promise<Workspace> {
   if (!g._ws) {
+    registerWorkspaceLoaders();
     ensureLLMClient();
     const docsDir = resolve(process.cwd(), "docs");
     await mkdir(docsDir, { recursive: true });

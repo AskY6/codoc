@@ -7,7 +7,7 @@ import {
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { getCredentialStore } from "@codoc/core";
+import { getCredentialStore } from "@codoc/source";
 
 const ALGORITHM = "aes-256-gcm";
 const ENCRYPTED_PREFIX = "enc:v1:";

@@ -1,4 +1,6 @@
-import { DataTree, DAG, topoLayers, propagateDirty } from "@codoc/core";
+import { DataTree } from "@codoc/core";
+import { DAG, topoLayers, propagateDirty } from "@codoc/graph";
+import { buildDAGFromTree } from "@cobook/workspace";
 import { header } from "../helpers.js";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -297,7 +299,7 @@ export async function run() {
     },
   });
 
-  const dag = DAG.buildFromTree(tree);
+  const dag = buildDAGFromTree(tree);
   const layers = topoLayers(dag);
   const visNodes = buildVisData(dag);
 

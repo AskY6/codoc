@@ -1,4 +1,4 @@
-import { connectors as feishuConnectors } from "@codoc/connector-feishu";
+import { feishuConnectors } from "@codoc/source";
 import { getConnectorCatalog } from "./connector-catalog.js";
 
 /**

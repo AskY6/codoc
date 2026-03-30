@@ -1,4 +1,6 @@
-import { DataTree, DAG, topoSort, topoLayers } from "@codoc/core";
+import { DataTree } from "@codoc/core";
+import { topoSort, topoLayers } from "@codoc/graph";
+import { buildDAGFromTree } from "@cobook/workspace";
 import { header } from "../helpers.js";
 
 export async function run() {
@@ -21,7 +23,7 @@ export async function run() {
     },
   });
 
-  const dag = DAG.buildFromTree(tree);
+  const dag = buildDAGFromTree(tree);
 
   console.log("\nDAG nodes:", dag.getNodes().sort());
   console.log("\nDependency edges:");

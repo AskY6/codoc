@@ -1,5 +1,5 @@
-import type { Workspace, DocMeta, CodocRuntime } from "@codoc/core";
-import { listConnectors, getCredentialStore } from "@codoc/core";
+import type { Workspace, DocMeta, CodocRuntime } from "@cobook/workspace";
+import { listConnectors, getCredentialStore } from "@codoc/source";
 import type {
   ContextSource,
   ContextSourceFactory,

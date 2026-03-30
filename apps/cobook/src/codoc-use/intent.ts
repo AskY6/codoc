@@ -1,5 +1,5 @@
-import type { Workspace } from "@codoc/core";
-import { propagateAndInvalidate } from "@codoc/core";
+import type { Workspace } from "@cobook/workspace";
+import { propagateAndInvalidate } from "@cobook/workspace";
 import type { Intent } from "../chat/types.js";
 import type {
   WriteFieldPayload,

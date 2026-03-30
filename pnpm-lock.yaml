@@ -23,12 +23,18 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.80.0
         version: 0.80.0(zod@3.25.76)
-      '@codoc/connector-feishu':
+      '@cobook/workspace':
         specifier: workspace:*
-        version: link:../../packages/connectors/feishu
+        version: link:../../packages/workspace
       '@codoc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@codoc/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
+      '@codoc/source':
+        specifier: workspace:*
+        version: link:../../packages/source
       '@mdx-js/mdx':
         specifier: ^3.1.1
         version: 3.1.1
@@ -99,9 +105,15 @@ importers:
 
   apps/playground:
     dependencies:
+      '@cobook/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
       '@codoc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@codoc/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
     devDependencies:
       '@types/node':
         specifier: ^25.5.0
@@ -113,25 +125,60 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
-  packages/connectors/feishu:
-    dependencies:
-      '@codoc/core':
-        specifier: workspace:*
-        version: link:../../core
-    devDependencies:
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-
   packages/core:
     dependencies:
       ajv:
         specifier: ^8.17.0
         version: 8.18.0
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/graph:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/render:
+    dependencies:
+      '@codoc/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/source:
+    dependencies:
+      '@codoc/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/workspace:
+    dependencies:
+      '@codoc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@codoc/graph':
+        specifier: workspace:*
+        version: link:../graph
+      '@codoc/source':
+        specifier: workspace:*
+        version: link:../source
       yaml:
         specifier: ^2.7.0
         version: 2.8.3
     devDependencies:
+      '@types/node':
+        specifier: ^22
+        version: 22.19.15
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

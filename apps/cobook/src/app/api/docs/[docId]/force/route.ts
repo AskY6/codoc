@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getWorkspace } from "@/workspace/server/workspace";
-import { scheduleForce, evictSourceCache } from "@codoc/core";
+import { scheduleForce } from "@cobook/workspace";
+import { evictSourceCache } from "@codoc/source";
 
 export async function POST(
   _req: Request,

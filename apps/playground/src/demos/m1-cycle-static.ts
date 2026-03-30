@@ -1,4 +1,5 @@
-import { DataTree, DAG } from "@codoc/core";
+import { DataTree } from "@codoc/core";
+import { buildDAGFromTree } from "@cobook/workspace";
 import { header } from "../helpers.js";
 
 export async function run() {
@@ -21,7 +22,7 @@ export async function run() {
     },
   });
 
-  const dag = DAG.buildFromTree(tree);
+  const dag = buildDAGFromTree(tree);
   const cycle = dag.detectCycle();
 
   if (cycle) {

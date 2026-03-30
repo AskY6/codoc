@@ -1,6 +1,6 @@
 import type { AgentHandler } from "../chat/types.js";
 import type { Participant } from "../chat/types.js";
-import { listConnectors, getCredentialStore } from "@codoc/core";
+import { listConnectors, getCredentialStore } from "@codoc/source";
 import { createLLMAgentHandler } from "./types.js";
 
 export const codocAgentParticipant: Participant = {

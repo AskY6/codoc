@@ -1,4 +1,4 @@
-import type { Workspace } from "@codoc/core";
+import type { Workspace } from "@cobook/workspace";
 import type { ChatAbility, Unsubscribe } from "../chat/index.js";
 import { createCodocContextSourceFactory, createConnectorContextSource } from "./context.js";
 import { executeCodocIntent } from "./intent.js";

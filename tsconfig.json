@@ -13,6 +13,10 @@
     "rootDir": "."
   },
   "references": [
-    { "path": "./packages/core" }
+    { "path": "./packages/graph" },
+    { "path": "./packages/core" },
+    { "path": "./packages/source" },
+    { "path": "./packages/render" },
+    { "path": "./packages/workspace" }
   ]
 }

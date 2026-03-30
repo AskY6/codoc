@@ -1,4 +1,4 @@
-import type { CodataField, ForceContext, LoaderFn } from "../types.js";
+import type { CodataField, ForceContext, LoaderFn } from "../model/types.js";
 
 export const refLoader: LoaderFn = async (
   field: CodataField,

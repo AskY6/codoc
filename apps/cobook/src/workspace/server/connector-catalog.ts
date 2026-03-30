@@ -5,8 +5,8 @@ import {
   registerConnector,
   unregisterConnector,
   getCredentialStore,
-} from "@codoc/core";
-import type { ConnectorDefinition } from "@codoc/core";
+} from "@codoc/source";
+import type { ConnectorDefinition } from "@codoc/source";
 
 type StatusListener = () => void;
 

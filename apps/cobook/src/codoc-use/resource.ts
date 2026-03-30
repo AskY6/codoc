@@ -1,4 +1,4 @@
-import type { Workspace } from "@codoc/core";
+import type { Workspace } from "@cobook/workspace";
 import type { ResourceRef } from "../chat/types.js";
 
 export function listCodocResources(workspace: Workspace): ResourceRef[] {

@@ -1,5 +1,6 @@
-import type { Workspace, WorkspaceChangeEvent, FieldError } from "@codoc/core";
-import { propagateDirty } from "@codoc/core";
+import type { Workspace, WorkspaceChangeEvent } from "@cobook/workspace";
+import type { FieldError } from "@codoc/core";
+import { propagateDirty } from "@codoc/graph";
 import type { ChatAbility, Unsubscribe } from "../chat/index.js";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
