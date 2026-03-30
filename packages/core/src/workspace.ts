@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseCodoc } from "./codoc-loader.js";
 import { DataTree } from "./data-tree.js";
@@ -183,6 +183,17 @@ export class Workspace {
     const tree = new DataTree({ type: codoc.type, data: codoc.data });
     const dag = DAG.buildFromTree(tree);
     this.registry.register(docId, tree, dag);
+
+    // Ensure dependency documents are loaded so externalLoader can resolve $ref
+    const meta = this.index.get(docId);
+    if (meta) {
+      for (const ref of meta.externalRefs) {
+        if (!this.registry.has(ref.docRef) && this.parsed.has(ref.docRef)) {
+          this.loadDoc(ref.docRef);
+        }
+      }
+    }
+
     wireExternalDeps(this.registry, docId);
 
     // Per-field subscriptions for workspace-level change notifications
@@ -219,6 +230,59 @@ export class Workspace {
     return () => {
       this.changeListeners.delete(callback);
     };
+  }
+
+  /**
+   * Create a new codoc file and register it in the index.
+   * Writes YAML to the docs directory, parses, and updates internal index.
+   * Throws if docId already exists or YAML is invalid.
+   */
+  async createDoc(docId: string, yamlContent: string): Promise<DocMeta> {
+    if (!docId.endsWith(".codoc")) {
+      throw new Error(`Invalid docId: must end with .codoc`);
+    }
+    if (docId.includes("/") || docId.includes("\\")) {
+      throw new Error(`Invalid docId: must not contain path separators`);
+    }
+    if (this.index.has(docId)) {
+      throw new Error(`Document already exists: "${docId}"`);
+    }
+
+    const codoc = parseCodoc(yamlContent); // validates YAML
+    await writeFile(join(this.dir, docId), yamlContent, "utf-8");
+    this.parsed.set(docId, codoc);
+    const meta = this.extractMeta(docId, codoc);
+    this.index.set(docId, meta);
+    return meta;
+  }
+
+  /**
+   * Overwrite an existing codoc file's entire content.
+   * Re-parses, updates index, and unloads runtime (if loaded).
+   * Throws if docId does not exist or YAML is invalid.
+   */
+  async rewriteDoc(docId: string, yamlContent: string): Promise<DocMeta> {
+    if (!this.index.has(docId)) {
+      throw new Error(`Document not found: "${docId}"`);
+    }
+
+    const codoc = parseCodoc(yamlContent); // validates before writing
+
+    // Teardown loaded runtime if present
+    if (this.registry.has(docId)) {
+      const unsub = this.docUnsubs.get(docId);
+      if (unsub) {
+        unsub();
+        this.docUnsubs.delete(docId);
+      }
+      this.registry.unregister(docId);
+    }
+
+    await writeFile(join(this.dir, docId), yamlContent, "utf-8");
+    this.parsed.set(docId, codoc);
+    const meta = this.extractMeta(docId, codoc);
+    this.index.set(docId, meta);
+    return meta;
   }
 
   /**

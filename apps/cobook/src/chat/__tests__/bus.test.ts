@@ -122,8 +122,8 @@ describe("findTriggeredParticipants", () => {
   });
 });
 
-describe("matchesTriggerFilter", () => {
-  it("matches when all specified filters pass", () => {
+describe("matchesTriggerFilter (OR semantics across dimensions)", () => {
+  it("matches when all specified dimensions pass", () => {
     const filter: TriggerFilter = {
       fromParticipants: ["user-1"],
       keywords: ["hello"],
@@ -132,27 +132,39 @@ describe("matchesTriggerFilter", () => {
     expect(matchesTriggerFilter(msg, filter)).toBe(true);
   });
 
-  it("rejects when fromParticipants does not match", () => {
+  it("matches when only keywords match (resources absent)", () => {
+    const filter: TriggerFilter = {
+      resourceKinds: ["codoc"],
+      keywords: ["hello"],
+    };
+    const msg = makeMessage({ content: "hello world", resourceRefs: [] });
+    expect(matchesTriggerFilter(msg, filter)).toBe(true);
+  });
+
+  it("matches when only resourceKinds match (keywords absent)", () => {
+    const filter: TriggerFilter = {
+      resourceKinds: ["codoc"],
+      keywords: ["banana"],
+    };
+    const msg = makeMessage({
+      content: "hello world",
+      resourceRefs: [{ kind: "codoc", id: "d1" }],
+    });
+    expect(matchesTriggerFilter(msg, filter)).toBe(true);
+  });
+
+  it("rejects when no dimension matches", () => {
+    const filter: TriggerFilter = {
+      resourceKinds: ["codoc"],
+      keywords: ["banana"],
+    };
+    const msg = makeMessage({ content: "hello world", resourceRefs: [] });
+    expect(matchesTriggerFilter(msg, filter)).toBe(false);
+  });
+
+  it("rejects single-dimension filter that does not match", () => {
     const filter: TriggerFilter = { fromParticipants: ["other-user"] };
     const msg = makeMessage();
-    expect(matchesTriggerFilter(msg, filter)).toBe(false);
-  });
-
-  it("rejects when resourceKinds does not match", () => {
-    const filter: TriggerFilter = { resourceKinds: ["codoc"] };
-    const msg = makeMessage({ resourceRefs: [] });
-    expect(matchesTriggerFilter(msg, filter)).toBe(false);
-  });
-
-  it("rejects when intentKinds does not match", () => {
-    const filter: TriggerFilter = { intentKinds: ["write-codoc-field"] };
-    const msg = makeMessage({ intents: [] });
-    expect(matchesTriggerFilter(msg, filter)).toBe(false);
-  });
-
-  it("rejects when keywords do not match", () => {
-    const filter: TriggerFilter = { keywords: ["banana"] };
-    const msg = makeMessage({ content: "hello world" });
     expect(matchesTriggerFilter(msg, filter)).toBe(false);
   });
 
@@ -168,7 +180,7 @@ describe("matchesTriggerFilter", () => {
     expect(matchesTriggerFilter(msg, filter)).toBe(true);
   });
 
-  it("uses OR logic within a filter dimension", () => {
+  it("uses OR logic within a single dimension", () => {
     const filter: TriggerFilter = { resourceKinds: ["codoc", "code-snippet"] };
     const msg = makeMessage({
       resourceRefs: [{ kind: "code-snippet", id: "s1" }],

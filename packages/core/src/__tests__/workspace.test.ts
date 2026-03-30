@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Workspace } from "../workspace.js";
@@ -326,6 +326,19 @@ describe("M5-core: Workspace", () => {
       expect(() => ws.loadDoc("missing.codoc")).toThrow("Document not found");
     });
 
+    it("loadDoc auto-loads dependency docs for external refs", async () => {
+      const ws = await Workspace.create(wsDir);
+
+      // Load only the consumer — dependency (metrics.codoc) should auto-load
+      const { tree } = ws.loadDoc("dashboard.codoc");
+
+      const totalUsers = await tree.observe("/totalUsers");
+      expect(totalUsers).toBe(1000);
+
+      const totalRevenue = await tree.observe("/totalRevenue");
+      expect(totalRevenue).toBe(50000);
+    });
+
     it("chain: report → dashboard → metrics resolves end-to-end", async () => {
       const ws = await Workspace.create(wsDir);
 
@@ -338,6 +351,19 @@ describe("M5-core: Workspace", () => {
       expect(teamName).toBe("Core Team");
 
       // report → dashboard → metrics
+      const userCount = await tree.observe("/userCount");
+      expect(userCount).toBe(1000);
+    });
+
+    it("chain auto-loads: report → dashboard → metrics without manual pre-loading", async () => {
+      const ws = await Workspace.create(wsDir);
+
+      // Load only report — should recursively load team, dashboard, metrics
+      const { tree } = ws.loadDoc("report.codoc");
+
+      const teamName = await tree.observe("/teamName");
+      expect(teamName).toBe("Core Team");
+
       const userCount = await tree.observe("/userCount");
       expect(userCount).toBe(1000);
     });
@@ -388,7 +414,203 @@ describe("M5-core: Workspace", () => {
     });
   });
 
-  describe("e. Workspace Change Subscription", () => {
+  describe("e. createDoc", () => {
+    it("creates a new document and indexes it", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-create-"));
+      try {
+        const ws = await Workspace.create(dir);
+        expect(ws.listDocs()).toHaveLength(0);
+
+        const yaml = codocYaml({
+          type: { properties: { title: { type: "string" } } },
+          data: { title: "Hello" },
+        });
+        const meta = await ws.createDoc("new.codoc", yaml);
+
+        expect(meta.docId).toBe("new.codoc");
+        expect(meta.fields).toHaveLength(1);
+        expect(meta.fields[0].path).toBe("/title");
+        expect(ws.listDocs()).toHaveLength(1);
+
+        // File written to disk
+        const onDisk = await readFile(join(dir, "new.codoc"), "utf-8");
+        expect(onDisk).toBe(yaml);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws if docId already exists", async () => {
+      const ws = await Workspace.create(wsDir);
+      const yaml = codocYaml({
+        type: { properties: { x: { type: "string" } } },
+        data: { x: "val" },
+      });
+      await expect(ws.createDoc("team.codoc", yaml)).rejects.toThrow(
+        "already exists",
+      );
+    });
+
+    it("throws if docId does not end with .codoc", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-create-"));
+      try {
+        const ws = await Workspace.create(dir);
+        await expect(ws.createDoc("bad.txt", "")).rejects.toThrow(
+          "must end with .codoc",
+        );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws if docId contains path separators", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-create-"));
+      try {
+        const ws = await Workspace.create(dir);
+        await expect(ws.createDoc("sub/doc.codoc", "")).rejects.toThrow(
+          "path separators",
+        );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws on invalid YAML content", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-create-"));
+      try {
+        const ws = await Workspace.create(dir);
+        await expect(
+          ws.createDoc("bad.codoc", "not: valid: yaml: [[["),
+        ).rejects.toThrow();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("loadDoc works on newly created doc", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-create-"));
+      try {
+        const ws = await Workspace.create(dir);
+        const yaml = codocYaml({
+          type: { properties: { name: { type: "string" } } },
+          data: { name: "test" },
+        });
+        await ws.createDoc("fresh.codoc", yaml);
+        const { tree } = ws.loadDoc("fresh.codoc");
+        const val = await tree.observe("/name");
+        expect(val).toBe("test");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("f. rewriteDoc", () => {
+    it("rewrites an existing document and re-indexes", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-rewrite-"));
+      try {
+        await writeFile(
+          join(dir, "doc.codoc"),
+          codocYaml({
+            type: { properties: { name: { type: "string" } } },
+            data: { name: "old" },
+          }),
+        );
+        const ws = await Workspace.create(dir);
+        expect(ws.getDocMeta("doc.codoc")!.fields).toHaveLength(1);
+
+        const newYaml = codocYaml({
+          type: {
+            properties: {
+              name: { type: "string" },
+              age: { type: "number" },
+            },
+          },
+          data: { name: "new", age: 10 },
+        });
+        const meta = await ws.rewriteDoc("doc.codoc", newYaml);
+
+        expect(meta.fields).toHaveLength(2);
+        expect(meta.fields.map((f) => f.path).sort()).toEqual(["/age", "/name"]);
+
+        // File on disk is updated
+        const onDisk = await readFile(join(dir, "doc.codoc"), "utf-8");
+        expect(onDisk).toBe(newYaml);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws if docId does not exist", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-rewrite-"));
+      try {
+        const ws = await Workspace.create(dir);
+        await expect(
+          ws.rewriteDoc("nope.codoc", "anything"),
+        ).rejects.toThrow("not found");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("unloads runtime when rewriting a loaded doc", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-rewrite-"));
+      try {
+        await writeFile(
+          join(dir, "doc.codoc"),
+          codocYaml({
+            type: { properties: { v: { type: "number" } } },
+            data: { v: 1 },
+          }),
+        );
+        const ws = await Workspace.create(dir);
+        const { tree: oldTree } = ws.loadDoc("doc.codoc");
+        const oldVal = await oldTree.observe("/v");
+        expect(oldVal).toBe(1);
+
+        // Rewrite with new schema
+        await ws.rewriteDoc(
+          "doc.codoc",
+          codocYaml({
+            type: { properties: { v: { type: "number" } } },
+            data: { v: 99 },
+          }),
+        );
+
+        // loadDoc should return a fresh runtime
+        const { tree: newTree } = ws.loadDoc("doc.codoc");
+        expect(newTree).not.toBe(oldTree);
+        const newVal = await newTree.observe("/v");
+        expect(newVal).toBe(99);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws on invalid YAML content without writing to disk", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "codoc-rewrite-"));
+      try {
+        const originalYaml = codocYaml({
+          type: { properties: { x: { type: "string" } } },
+          data: { x: "keep" },
+        });
+        await writeFile(join(dir, "doc.codoc"), originalYaml);
+        const ws = await Workspace.create(dir);
+
+        await expect(
+          ws.rewriteDoc("doc.codoc", "not: valid: yaml: [[["),
+        ).rejects.toThrow();
+
+        // Original file should be unchanged
+        const onDisk = await readFile(join(dir, "doc.codoc"), "utf-8");
+        expect(onDisk).toBe(originalYaml);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("g. Workspace Change Subscription", () => {
     it("onFieldChange fires when a loaded doc's field resolves", async () => {
       const ws = await Workspace.create(wsDir);
       const events: WorkspaceChangeEvent[] = [];

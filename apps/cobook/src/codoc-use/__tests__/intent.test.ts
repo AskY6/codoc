@@ -61,13 +61,42 @@ describe("executeCodocIntent", () => {
     expect(tree.observe).toHaveBeenCalledWith("/body");
   });
 
-  it("no-ops for create-codoc and delete-codoc (not yet implemented)", async () => {
-    const ws = {} as unknown as Workspace;
+  it("executes create-codoc intent", async () => {
+    const tree = makeTree();
+    const ws = {
+      createDoc: vi.fn().mockResolvedValue({ docId: "new.codoc" }),
+      loadDoc: vi.fn().mockReturnValue({ tree, dag: makeDag() }),
+    } as unknown as Workspace;
+
     await executeCodocIntent(ws, {
       kind: "create-codoc",
-      payload: { docId: "new.codoc", content: "" },
+      payload: { docId: "new.codoc", content: "yaml-content" },
       status: "confirmed",
     });
+
+    expect(ws.createDoc).toHaveBeenCalledWith("new.codoc", "yaml-content");
+    expect(ws.loadDoc).toHaveBeenCalledWith("new.codoc");
+  });
+
+  it("executes rewrite-codoc intent", async () => {
+    const tree = makeTree();
+    const ws = {
+      rewriteDoc: vi.fn().mockResolvedValue({ docId: "doc.codoc" }),
+      loadDoc: vi.fn().mockReturnValue({ tree, dag: makeDag() }),
+    } as unknown as Workspace;
+
+    await executeCodocIntent(ws, {
+      kind: "rewrite-codoc",
+      payload: { docId: "doc.codoc", content: "new-yaml", changelog: "added field" },
+      status: "confirmed",
+    });
+
+    expect(ws.rewriteDoc).toHaveBeenCalledWith("doc.codoc", "new-yaml");
+    expect(ws.loadDoc).toHaveBeenCalledWith("doc.codoc");
+  });
+
+  it("no-ops for delete-codoc (not yet implemented)", async () => {
+    const ws = {} as unknown as Workspace;
     await executeCodocIntent(ws, {
       kind: "delete-codoc",
       payload: { docId: "old.codoc" },

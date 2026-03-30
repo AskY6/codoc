@@ -56,8 +56,8 @@ describe("Participant definitions", () => {
       expect(mode.filter.resourceKinds).toContain("codoc");
     }
     expect(codocAgentParticipant.contextRequirements).toEqual([
-      { sourceKind: "codoc-snapshot", priority: "required" },
-      { sourceKind: "chat-history", priority: "optional", maxTokens: 1000 },
+      { sourceKind: "chat-history", priority: "required", maxTokens: 3000 },
+      { sourceKind: "codoc-snapshot", priority: "optional" },
     ]);
   });
 

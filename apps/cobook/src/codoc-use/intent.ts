@@ -4,6 +4,8 @@ import type { Intent } from "../chat/types.js";
 import type {
   WriteFieldPayload,
   ForceFieldPayload,
+  CreateCodocPayload,
+  RewriteCodocPayload,
 } from "./types.js";
 
 export async function executeCodocIntent(
@@ -28,9 +30,20 @@ export async function executeCodocIntent(
       await tree.observe(field);
       break;
     }
-    case "create-codoc":
+    case "create-codoc": {
+      const { docId, content } = intent.payload as CreateCodocPayload;
+      await workspace.createDoc(docId, content);
+      workspace.loadDoc(docId);
+      break;
+    }
+    case "rewrite-codoc": {
+      const { docId, content } = intent.payload as RewriteCodocPayload;
+      await workspace.rewriteDoc(docId, content);
+      workspace.loadDoc(docId);
+      break;
+    }
     case "delete-codoc":
-      // TODO: filesystem operations not yet exposed by Workspace API
+      // TODO: filesystem delete not yet implemented
       break;
   }
 }

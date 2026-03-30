@@ -15,6 +15,7 @@ export type {
   WriteFieldPayload,
   ForceFieldPayload,
   CreateCodocPayload,
+  RewriteCodocPayload,
   DeleteCodocPayload,
 } from "./types.js";
 

@@ -47,42 +47,38 @@ export function findTriggeredParticipants(
 
 /**
  * Check if a message passes a daemon's TriggerFilter.
+ *
+ * Uses OR semantics across filter dimensions: if any declared dimension
+ * matches, the filter passes. An empty filter (no dimensions specified)
+ * matches all messages.
  */
 export function matchesTriggerFilter(
   message: Message,
   filter: TriggerFilter,
 ): boolean {
-  // All specified filters must match (AND logic).
-  // An empty/unspecified filter field means "don't filter on this dimension".
+  const checks: boolean[] = [];
 
   if (filter.fromParticipants && filter.fromParticipants.length > 0) {
-    if (!filter.fromParticipants.includes(message.sender.id)) {
-      return false;
-    }
+    checks.push(filter.fromParticipants.includes(message.sender.id));
   }
 
   if (filter.resourceKinds && filter.resourceKinds.length > 0) {
     const msgKinds = message.resourceRefs?.map((r) => r.kind) ?? [];
-    if (!filter.resourceKinds.some((k) => msgKinds.includes(k))) {
-      return false;
-    }
+    checks.push(filter.resourceKinds.some((k) => msgKinds.includes(k)));
   }
 
   if (filter.intentKinds && filter.intentKinds.length > 0) {
     const msgIntentKinds = message.intents?.map((i) => i.kind) ?? [];
-    if (!filter.intentKinds.some((k) => msgIntentKinds.includes(k))) {
-      return false;
-    }
+    checks.push(filter.intentKinds.some((k) => msgIntentKinds.includes(k)));
   }
 
   if (filter.keywords && filter.keywords.length > 0) {
     const lower = message.content.toLowerCase();
-    if (!filter.keywords.some((kw) => lower.includes(kw.toLowerCase()))) {
-      return false;
-    }
+    checks.push(filter.keywords.some((kw) => lower.includes(kw.toLowerCase())));
   }
 
-  return true;
+  // No dimensions specified → match all; otherwise OR across dimensions
+  return checks.length === 0 || checks.some(Boolean);
 }
 
 /**

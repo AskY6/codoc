@@ -3,6 +3,7 @@ import type { Intent } from "../chat/types.js";
 export type CodocIntentKind =
   | "write-codoc-field"
   | "create-codoc"
+  | "rewrite-codoc"
   | "delete-codoc"
   | "force-codoc-field";
 
@@ -22,6 +23,12 @@ export interface CreateCodocPayload {
   content: string;
 }
 
+export interface RewriteCodocPayload {
+  docId: string;
+  content: string;
+  changelog?: string;
+}
+
 export interface DeleteCodocPayload {
   docId: string;
 }
@@ -29,6 +36,7 @@ export interface DeleteCodocPayload {
 const CODOC_INTENT_KINDS = new Set<string>([
   "write-codoc-field",
   "create-codoc",
+  "rewrite-codoc",
   "delete-codoc",
   "force-codoc-field",
 ]);

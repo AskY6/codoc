@@ -8,39 +8,63 @@ export const codocAgentParticipant: Participant = {
   name: "Codoc",
   description: "管理 codoc 的创建、读取、更新和删除。",
   contextRequirements: [
-    { sourceKind: "codoc-snapshot", priority: "required" },
-    { sourceKind: "chat-history", priority: "optional", maxTokens: 1000 },
+    { sourceKind: "chat-history", priority: "required", maxTokens: 3000 },
+    { sourceKind: "codoc-snapshot", priority: "optional" },
   ],
-  // Bus uses AND across filter fields; design wants OR (intents OR resources).
-  // Use resourceKinds only — in practice, messages with codoc intents also
-  // carry codoc resource refs (from UI or bridged workspace events).
   responseMode: {
     type: "daemon",
     filter: {
       resourceKinds: ["codoc"],
+      keywords: ["创建", "新建", "搭建", "做一个", "create", "build", "make"],
     },
   },
 };
 
-const SYSTEM_PROMPT = `You are Codoc, a codoc document management agent. You handle creating, reading, updating, and deleting codoc documents.
+const SYSTEM_PROMPT = `You are Codoc, a structured document management agent.
 
-Your responsibilities:
-- Respond to user requests about codoc operations
-- Review write intents proposed by other agents
-- Suggest re-forcing stale fields when workspace changes are detected
+You handle the full lifecycle of codoc documents: creating from scratch, iterating structure, and modifying field values.
 
-When you need to modify a codoc field, include an intent block in your response:
+## Creating a new codoc
+
+When the user describes a need, design a codoc structure:
+1. Identify the core entities and fields
+2. Choose field types in the type section (JSON Schema)
+3. In data, use literal values for user-provided data, $prompt for AI-generated values, and $ref for derived values
+4. Write a view template in MDX
+
+Then propose creation:
 <intent>
-{"kind": "write-codoc-field", "payload": {"docId": "DOC_ID", "field": "/field/path", "value": "new value"}}
+{"kind": "create-codoc", "payload": {"docId": "name.codoc", "content": "YAML content"}}
 </intent>
 
-When you need to force-refresh a stale field:
+## Rewriting an existing codoc (adding fields, changing types, restructuring view)
+
+When the user wants structural changes, rewrite the entire document:
 <intent>
-{"kind": "force-codoc-field", "payload": {"docId": "DOC_ID", "field": "/field/path"}}
+{"kind": "rewrite-codoc", "payload": {"docId": "name.codoc", "content": "full YAML", "changelog": "what changed"}}
 </intent>
 
-Do not perform content analysis, summarization, or polishing — those are handled by other agents.
-Respond concisely. Use Chinese when the user writes in Chinese.`;
+## Modifying a single field value
+
+When only a value needs to change (no structural change):
+<intent>
+{"kind": "write-codoc-field", "payload": {"docId": "name.codoc", "field": "/path", "value": "new value"}}
+</intent>
+
+## Force-refreshing a stale field
+<intent>
+{"kind": "force-codoc-field", "payload": {"docId": "name.codoc", "field": "/path"}}
+</intent>
+
+## Design principles
+- type: JSON Schema defining field types
+- data: literal (explicit values), $prompt (AI-generated, use template vars like {{/otherField}}), $ref (derived from other fields or docs via [[doc.codoc]]/path)
+- view: MDX template; available components: Badge, InfoRow, Highlight, AIBlock
+- Naming: English kebab-case for docId (e.g. team-board.codoc)
+- Explain your design decisions before proposing intents
+- If requirements are vague, ask clarifying questions first
+- Do not perform content analysis, summarization, or polishing — those are handled by other agents
+- Use Chinese when the user writes in Chinese`;
 
 export function createCodocAgentHandler(): AgentHandler {
   return createLLMAgentHandler({

@@ -44,7 +44,7 @@ function makeWorkspace(
         externalRefs: [],
       };
     },
-    loadDoc: (id: string) => {
+    loadDoc: vi.fn((id: string) => {
       const doc = docs.find((d) => d.docId === id);
       if (!doc) throw new Error(`Doc not found: ${id}`);
       return {
@@ -60,7 +60,9 @@ function makeWorkspace(
         },
         dag: {},
       };
-    },
+    }),
+    createDoc: vi.fn().mockResolvedValue({ docId: "new.codoc", type: {}, fields: [], externalRefs: [] }),
+    rewriteDoc: vi.fn().mockResolvedValue({ docId: "doc.codoc", type: {}, fields: [], externalRefs: [] }),
     onFieldChange: vi.fn((cb: (e: WorkspaceChangeEvent) => void) => {
       fieldChangeListener = cb;
       return () => { fieldChangeListener = null; };
@@ -154,7 +156,7 @@ describe("initCodocUse", () => {
     expect(runtime.tree.updateField).toBeDefined();
   });
 
-  it("bridges workspace events to chat messages", () => {
+  it("bridges workspace events to chat messages", async () => {
     const { ws, emitFieldChange } = makeWorkspace([
       { docId: "r.codoc", fields: { "/x": { status: "resolved", value: 1 } } },
     ]);
@@ -164,6 +166,9 @@ describe("initCodocUse", () => {
     initCodocUse(ws, chat, sessionId);
 
     emitFieldChange({ docId: "r.codoc", fieldPath: "/x", timestamp: 1 });
+
+    // Events are debounced — wait for flush
+    await new Promise((r) => setTimeout(r, 2500));
 
     const messages = chat.getMessages(sessionId);
     expect(messages.some((m) => m.content.includes("r.codoc"))).toBe(true);
@@ -180,6 +185,74 @@ describe("initCodocUse", () => {
 
     // Workspace onFieldChange should have been unsubbed
     // (no error on subsequent field changes)
+  });
+});
+
+describe("create-codoc intent execution", () => {
+  it("calls workspace.createDoc and loadDoc on confirm", async () => {
+    const { ws } = makeWorkspace([
+      { docId: "new.codoc", fields: { "/x": { status: "resolved", value: "hello" } } },
+    ]);
+    const chat = createChatAbility();
+    const sessionId = chat.createSession();
+
+    initCodocUse(ws, chat, sessionId);
+
+    const yamlContent = "type:\n  properties:\n    x:\n      type: string\ndata:\n  x: hello\nview: \"# hi\"";
+    const msg = chat.sendMessage(sessionId, {
+      sender: { id: "codoc-agent", kind: "agent" },
+      content: "Creating a new doc",
+      intents: [
+        {
+          kind: "create-codoc",
+          payload: { docId: "new.codoc", content: yamlContent },
+          status: "proposed",
+        },
+      ],
+    });
+
+    chat.updateIntentStatus(sessionId, msg.id, 0, "confirmed");
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect((ws as any).createDoc).toHaveBeenCalledWith("new.codoc", yamlContent);
+    expect((ws as any).loadDoc).toHaveBeenCalledWith("new.codoc");
+  });
+});
+
+describe("rewrite-codoc intent execution", () => {
+  it("calls workspace.rewriteDoc and loadDoc on confirm", async () => {
+    const { ws } = makeWorkspace([
+      { docId: "doc.codoc", fields: { "/x": { status: "resolved", value: "old" } } },
+    ]);
+    const chat = createChatAbility();
+    const sessionId = chat.createSession();
+
+    initCodocUse(ws, chat, sessionId);
+
+    const msg = chat.sendMessage(sessionId, {
+      sender: { id: "codoc-agent", kind: "agent" },
+      content: "Rewriting doc",
+      intents: [
+        {
+          kind: "rewrite-codoc",
+          payload: {
+            docId: "doc.codoc",
+            content: "type:\n  properties:\n    x:\n      type: string\ndata:\n  x: new\nview: \"# hi\"",
+            changelog: "updated x",
+          },
+          status: "proposed",
+        },
+      ],
+    });
+
+    chat.updateIntentStatus(sessionId, msg.id, 0, "confirmed");
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect((ws as any).rewriteDoc).toHaveBeenCalledWith(
+      "doc.codoc",
+      expect.any(String),
+    );
+    expect((ws as any).loadDoc).toHaveBeenCalledWith("doc.codoc");
   });
 });
 
