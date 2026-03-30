@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { Workspace, setLLMClient } from "@codoc/core";
 import type { LLMClient } from "@codoc/core";
 import { getClient, getModel } from "@/shared/ai";
@@ -36,7 +37,9 @@ const g = globalThis as typeof globalThis & { _ws?: Workspace };
 export async function getWorkspace(): Promise<Workspace> {
   if (!g._ws) {
     ensureLLMClient();
-    g._ws = await Workspace.create(resolve(process.cwd(), "docs"));
+    const docsDir = resolve(process.cwd(), "docs");
+    await mkdir(docsDir, { recursive: true });
+    g._ws = await Workspace.create(docsDir);
   }
   return g._ws;
 }
