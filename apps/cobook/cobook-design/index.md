@@ -2,7 +2,7 @@
 
 Cobook 是 CoDoc 的第一个应用层产品——以对话为中心、以 codoc 为知识资产、以多 agent 为能力层的知识工作台。
 
-详细设计见四份子文档：[chat-ability.md](./chat-ability.md) | [codoc-use.md](./codoc-use.md) | [agents.md](./agents.md) | [cobook-workspace.md](./cobook-workspace.md)
+详细设计见五份子文档：[chat-ability.md](./chat-ability.md) | [codoc-use.md](./codoc-use.md) | [agents.md](./agents.md) | [cobook-workspace.md](./cobook-workspace.md) | [conversational-creation.md](./conversational-creation.md)
 
 ---
 
