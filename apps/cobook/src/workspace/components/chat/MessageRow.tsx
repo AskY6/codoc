@@ -9,18 +9,14 @@ import { User, Bot, Radio } from "lucide-react";
 
 const AGENT_COLORS: Record<string, string> = {
   "codoc-agent": "bg-blue-500",
-  "summary-agent": "bg-violet-500",
-  "info-check-agent": "bg-amber-500",
-  "polish-agent": "bg-emerald-500",
+  "claude-code-log-agent": "bg-violet-500",
   system: "bg-muted-foreground",
 };
 
 function agentDisplayName(id: string): string {
   const names: Record<string, string> = {
     "codoc-agent": "Codoc",
-    "summary-agent": "Summary",
-    "info-check-agent": "Info Check",
-    "polish-agent": "Polish",
+    "claude-code-log-agent": "Claude Code Log",
     system: "System",
     user: "You",
   };
