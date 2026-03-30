@@ -203,7 +203,7 @@ export class Workspace {
         const field = tree.getField(path);
         if (!field) return;
         const { status } = field.state;
-        if (status === "resolved" || status === "dirty") {
+        if (status === "resolved" || status === "dirty" || status === "error") {
           const event: WorkspaceChangeEvent = {
             docId,
             fieldPath: path,
