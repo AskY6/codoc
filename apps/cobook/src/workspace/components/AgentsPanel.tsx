@@ -18,8 +18,8 @@ import {
 } from "@/shared/ui/tooltip";
 
 const AGENT_COLORS: Record<string, string> = {
-  "codoc-assistant": "bg-blue-500",
-  "codoc-structure": "bg-blue-500",
+  "cobook-assistant": "bg-blue-500",
+  "codoc-agent": "bg-blue-500",
   "claude-log": "bg-violet-500",
 };
 
@@ -44,7 +44,7 @@ export function ParticipantsPanel({ onMentionAgent }: ParticipantsPanelProps) {
 
       <div className="px-1.5 pb-2">
         {chatAgents
-          .filter((a) => a.id === "codoc-assistant")
+          .filter((a) => a.id === "cobook-assistant")
           .map((agent) => (
             <button
               key={agent.id}
@@ -191,7 +191,7 @@ export function ParticipantsPanel({ onMentionAgent }: ParticipantsPanelProps) {
               })
             // Fallback: show legacy chat agents if no scene agents are loaded yet
             : chatAgents
-                .filter((a) => a.id !== "codoc-agent")
+                .filter((a) => a.id !== "cobook-assistant")
                 .map((agent) => {
                   const color = AGENT_COLORS[agent.id] ?? "bg-muted-foreground";
                   return (
@@ -218,7 +218,7 @@ export function ParticipantsPanel({ onMentionAgent }: ParticipantsPanelProps) {
                   );
                 })}
 
-          {sceneAgents.length === 0 && chatAgents.filter((a) => a.id !== "codoc-agent").length === 0 && (
+          {sceneAgents.length === 0 && chatAgents.filter((a) => a.id !== "cobook-assistant").length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 px-4 text-muted-foreground gap-3">
               <Bot className="h-8 w-8 opacity-30" />
               <p className="text-xs text-center">No scene agents registered</p>

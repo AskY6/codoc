@@ -13,9 +13,9 @@ import { claudeLogAgent } from "./claude-log-agent.js";
 // ---------------------------------------------------------------------------
 
 const assistantParticipant: Participant = {
-  id: "codoc-assistant",
+  id: "cobook-assistant",
   kind: "agent",
-  name: "Codoc Assistant",
+  name: "Cobook Assistant",
   description: "Workspace assistant that routes requests to specialized agents.",
   contextRequirements: [
     { sourceKind: "chat-history", priority: "required", maxTokens: 3000 },
@@ -48,7 +48,7 @@ export interface AgentSystem {
 /**
  * Initialize the agent system.
  *
- * Registers a single chat participant ("codoc-assistant") whose handler
+ * Registers a single chat participant ("cobook-assistant") whose handler
  * routes user messages through:
  *   NLRouter → SceneAgent.handle() → IntentQueue → IntentExecutor → Workspace
  */
@@ -124,14 +124,14 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
     return {
       type: "reply" as const,
       message: {
-        sender: { id: "codoc-assistant", kind: "agent" as const },
+        sender: { id: agentId, kind: "agent" as const },
         content: result.reply,
         intents: intents.length > 0 ? intents : undefined,
       },
     };
   };
 
-  chat.registerAgentHandler(sessionId, "codoc-assistant", handler);
+  chat.registerAgentHandler(sessionId, "cobook-assistant", handler);
 
   // Bridge: sync chat intent status changes to the intent queue
   chat.on(sessionId, "onIntentStatusChange", (msgId, intentIdx, status) => {

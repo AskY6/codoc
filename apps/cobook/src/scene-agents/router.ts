@@ -45,7 +45,7 @@ export class NLRouter {
         "接入",
         "导入",
       ],
-      "codoc-structure": [
+      "codoc-agent": [
         "创建",
         "新建",
         "搭建",

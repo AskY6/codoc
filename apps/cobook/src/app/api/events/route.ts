@@ -1,5 +1,5 @@
 import { getWorkspace } from "@/workspace/server/workspace";
-import { onChatMessage, onIntentStatusChange, onTypingChange, getChatAbility } from "@/workspace/server/chat";
+import { onChatMessage, onIntentStatusChange, onTypingChange, getChatAbility, getAgentSystem } from "@/workspace/server/chat";
 import { getConnectorCatalog } from "@/workspace/server/connector-catalog";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +8,7 @@ export async function GET() {
   const ws = await getWorkspace();
   // Ensure chat is initialized so we can subscribe to events
   await getChatAbility();
+  const { sceneRegistry } = await getAgentSystem();
 
   let cleanup: (() => void) | undefined;
 
@@ -68,6 +69,20 @@ export async function GET() {
         send("connector-status", getConnectorCatalog().getStatuses());
       });
 
+      // Scene agent events — send initial state + subscribe to changes
+      const serializeAgents = () =>
+        sceneRegistry.listAll().map((e) => ({
+          id: e.agent.id,
+          name: e.agent.name,
+          description: e.agent.description,
+          active: e.active,
+          trusted: e.agent.trusted,
+        }));
+      send("scene-agents", serializeAgents());
+      const unsubAgents = sceneRegistry.subscribe(() => {
+        send("scene-agents", serializeAgents());
+      });
+
       // Heartbeat every 30s to keep connection alive
       const heartbeat = setInterval(() => {
         try {
@@ -83,6 +98,7 @@ export async function GET() {
         unsubIntent();
         unsubTyping();
         unsubConnectors();
+        unsubAgents();
         clearInterval(heartbeat);
       };
     },

@@ -73,8 +73,8 @@ A codoc has four parts:
 - Use Chinese when the user writes in Chinese`;
 
 export const codocStructureAgent: SceneAgent = {
-  id: "codoc-structure",
-  name: "Codoc Structure",
+  id: "codoc-agent",
+  name: "Codoc Agent",
   description: "管理 codoc 的创建、结构设计、字段修改和重写。",
   trusted: false,
 

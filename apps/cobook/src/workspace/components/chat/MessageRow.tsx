@@ -8,13 +8,17 @@ import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { User, Bot, Radio } from "lucide-react";
 
 const AGENT_COLORS: Record<string, string> = {
-  "codoc-assistant": "bg-blue-500",
+  "cobook-assistant": "bg-blue-500",
+  "codoc-agent": "bg-blue-500",
+  "claude-log": "bg-violet-500",
   system: "bg-muted-foreground",
 };
 
 function agentDisplayName(id: string): string {
   const names: Record<string, string> = {
-    "codoc-assistant": "Codoc",
+    "cobook-assistant": "Cobook",
+    "codoc-agent": "Codoc",
+    "claude-log": "Claude Code Log",
     system: "System",
     user: "You",
   };
