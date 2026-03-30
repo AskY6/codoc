@@ -43,18 +43,22 @@ function resolveLoaderDeclaration(value: unknown): LoaderDeclaration {
       }
       return { type: "ref", $ref: ref };
     }
-    if ("$source" in obj && typeof obj["$source"] === "string") {
-      return {
-        type: "source",
-        $source: obj["$source"],
-        ttl: typeof obj["ttl"] === "number" ? obj["ttl"] : undefined,
-        staleWhileRevalidate: typeof obj["staleWhileRevalidate"] === "boolean"
-          ? obj["staleWhileRevalidate"]
-          : undefined,
-        refresh: obj["refresh"] === "eager" || obj["refresh"] === "lazy"
-          ? obj["refresh"]
-          : undefined,
-      };
+    if ("$source" in obj) {
+      const raw = obj["$source"];
+      // string → URL fetch; object with connector → connector dispatch
+      if (typeof raw === "string" || (typeof raw === "object" && raw !== null && "connector" in (raw as Record<string, unknown>))) {
+        return {
+          type: "source",
+          $source: raw as string | import("./types.js").SourceConnectorConfig,
+          ttl: typeof obj["ttl"] === "number" ? obj["ttl"] : undefined,
+          staleWhileRevalidate: typeof obj["staleWhileRevalidate"] === "boolean"
+            ? obj["staleWhileRevalidate"]
+            : undefined,
+          refresh: obj["refresh"] === "eager" || obj["refresh"] === "lazy"
+            ? obj["refresh"]
+            : undefined,
+        };
+      }
     }
     if ("$prompt" in obj && typeof obj["$prompt"] === "object" && obj["$prompt"] !== null) {
       const prompt = obj["$prompt"] as Record<string, unknown>;

@@ -2,7 +2,7 @@ export { DataTree } from "./data-tree.js";
 export { validate } from "./schema.js";
 export { literalLoader } from "./loader/literal.js";
 export { refLoader } from "./loader/ref.js";
-export { sourceLoader, clearSourceCache, evictSourceCache, getSourceCacheSize } from "./loader/source.js";
+export { sourceLoader, clearSourceCache, evictSourceCache, getSourceCacheSize, stableStringify, buildConnectorCacheKey } from "./loader/source.js";
 export { promptLoader, setLLMClient, getLLMClient, extractTemplateVars } from "./loader/prompt.js";
 export { externalLoader } from "./loader/external.js";
 export { getLoader, registerLoader } from "./loader/registry.js";
@@ -50,7 +50,17 @@ export type {
   LoaderDeclaration,
   LoaderFn,
   PromptDeclaration,
+  SourceConnectorConfig,
   ValidationResult,
   ValidationSuccess,
   ValidationFailure,
 } from "./types.js";
+export type { ConnectorFn, ConnectorAuth, ConnectorMeta } from "./connector/types.js";
+export {
+  registerConnector,
+  getConnector,
+  getConnectorMeta,
+  listConnectors,
+  clearConnectorRegistry,
+} from "./connector/registry.js";
+export { getCredentialStore } from "./connector/credential-store.js";

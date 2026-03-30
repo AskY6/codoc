@@ -1,7 +1,7 @@
 import type { DataTree } from "./data-tree.js";
 import type { DAG } from "./dag.js";
 import { propagateAndInvalidate } from "./dirty-propagator.js";
-import { evictSourceCache } from "./loader/source.js";
+import { evictSourceCache, buildConnectorCacheKey } from "./loader/source.js";
 
 export interface SourceSchedulerOptions {
   tree: DataTree;
@@ -56,10 +56,12 @@ export class SourceScheduler {
 
     const ttlMs = decl.ttl * 1000;
     const strategy = decl.refresh ?? "lazy";
+    const source = decl.$source;
+    const cacheKey = typeof source === "string" ? source : buildConnectorCacheKey(source);
 
     const timerId = setInterval(() => {
       if (strategy === "eager") {
-        this.eagerRefresh(path, decl.$source);
+        this.eagerRefresh(path, cacheKey);
       } else {
         this.lazyRefresh(path);
       }
@@ -76,8 +78,8 @@ export class SourceScheduler {
     }
   }
 
-  private eagerRefresh(path: string, url: string): void {
-    evictSourceCache(url);
+  private eagerRefresh(path: string, cacheKey: string): void {
+    evictSourceCache(cacheKey);
     this.tree.refreshField(path);
 
     // Fire-and-forget: observe triggers fetch, then propagate
