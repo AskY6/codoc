@@ -268,3 +268,7 @@ cobook
 graph 不依赖 core。workspace 负责适配 graph interface → core runtime。
 
 ---
+
+
+## claude code log viewer
+todo
