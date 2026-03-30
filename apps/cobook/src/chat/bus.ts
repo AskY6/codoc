@@ -32,6 +32,10 @@ export function findTriggeredParticipants(
 
     const mode = p.responseMode;
 
+    // Daemon agents only respond to human messages, not other agents' replies.
+    // Agent-to-agent chaining requires explicit @mention.
+    if (mode.type === "daemon" && message.sender.kind === "agent") continue;
+
     if (mode.type === "on-mention") {
       if (message.mentionedParticipants?.includes(p.id)) {
         triggered.push(p.id);
