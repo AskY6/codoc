@@ -16,7 +16,7 @@ export type FieldError =
   | { kind: "prompt"; message: string; retryable: boolean; cause?: unknown }
   | { kind: "external_ref"; message: string; docRef: string; fieldPath: string };
 
-// --- Codata Meta ---
+// --- Source / Loader Declarations ---
 
 export interface SourceConnectorConfig {
   connector: string;
@@ -37,6 +37,8 @@ export interface PromptDeclaration {
   model?: string;
 }
 
+// --- Codata Meta & Field ---
+
 export interface CodataMeta {
   /** JSON Schema for this field's value */
   schema?: Record<string, unknown>;
@@ -46,65 +48,8 @@ export interface CodataMeta {
   loader: LoaderDeclaration;
 }
 
-// --- Codata Field ---
-
 export interface CodataField<T = unknown> {
   readonly path: string;
   readonly meta: CodataMeta;
   state: FieldState<T>;
-}
-
-// --- Loader ---
-
-export interface ForceContext {
-  /** Force another field by path (for $ref resolution) */
-  force: (path: string) => Promise<unknown>;
-  /** Track paths currently being forced (cycle detection) */
-  forceStack: Set<string>;
-}
-
-export type LoaderFn = (
-  field: CodataField,
-  context: ForceContext
-) => Promise<unknown>;
-
-// --- LLM Client (injected, not SDK-coupled) ---
-
-export interface LLMClient {
-  /**
-   * Generate structured output from a prompt.
-   * The implementation should enforce the provided JSON Schema on the output.
-   */
-  generate(options: {
-    model: string;
-    prompt: string;
-    schema: Record<string, unknown>;
-  }): Promise<unknown>;
-}
-
-// --- Validation ---
-
-export interface ValidationSuccess<T> {
-  ok: true;
-  value: T;
-}
-
-export interface ValidationFailure {
-  ok: false;
-  error: FieldError & { kind: "validation" };
-}
-
-export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
-
-// --- Data Tree Definition ---
-
-export interface CodataDefinition {
-  type: Record<string, unknown>;
-  data: Record<string, unknown>;
-}
-
-export interface CodocFile {
-  type: Record<string, unknown>;
-  data: Record<string, unknown>;
-  view: string;
 }

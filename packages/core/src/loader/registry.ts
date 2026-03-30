@@ -1,4 +1,5 @@
-import type { LoaderDeclaration, LoaderFn } from "../model/types.js";
+import type { LoaderDeclaration } from "../model/data.js";
+import type { LoaderFn } from "../model/codoc.js";
 import { literalLoader } from "./literal.js";
 import { refLoader } from "./ref.js";
 

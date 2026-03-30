@@ -41,3 +41,5 @@ export { propagateAndInvalidate } from "./wiring/dirty-helpers.js";
 // Watch
 export { SourceScheduler } from "./watch/source-binding.js";
 export type { SourceSchedulerOptions } from "./watch/source-binding.js";
+export { WatchOrchestrator } from "./watch/orchestrator.js";
+export type { WatchEvent, WatchHandler } from "./watch/orchestrator.js";

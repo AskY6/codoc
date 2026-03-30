@@ -1,5 +1,5 @@
 import Ajv from "ajv";
-import type { ValidationResult } from "../model/types.js";
+import type { ValidationResult } from "../model/schema.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 

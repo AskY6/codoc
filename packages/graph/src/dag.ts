@@ -1,8 +1,5 @@
-export interface CyclicDependencyError {
-  kind: "cyclic_dependency";
-  message: string;
-  cycle: string[];
-}
+import type { CyclicDependencyError } from "./types.js";
+import { detectCycle as detectCycleImpl } from "./cycle-detection.js";
 
 export class DAG {
   /** node -> set of nodes it depends on (upstream) */
@@ -69,70 +66,11 @@ export class DAG {
    * or a CyclicDependencyError with the cycle path.
    */
   detectCycle(): CyclicDependencyError | null {
-    const inDegree = new Map<string, number>();
-    for (const [node, deps] of this.deps) {
-      inDegree.set(node, deps.size);
-    }
-
-    const queue: string[] = [];
-    for (const [node, degree] of inDegree) {
-      if (degree === 0) queue.push(node);
-    }
-
-    let processed = 0;
-    while (queue.length > 0) {
-      const node = queue.shift()!;
-      processed++;
-      for (const dependent of this.dependents.get(node) ?? []) {
-        const newDegree = inDegree.get(dependent)! - 1;
-        inDegree.set(dependent, newDegree);
-        if (newDegree === 0) queue.push(dependent);
-      }
-    }
-
-    if (processed === this.deps.size) return null;
-
-    const cycle = this.findCyclePath(inDegree);
-    return {
-      kind: "cyclic_dependency",
-      message: `Cyclic dependency detected: ${cycle.join(" → ")}`,
-      cycle,
-    };
-  }
-
-  private findCyclePath(inDegree: Map<string, number>): string[] {
-    const inCycle = new Set<string>();
-    for (const [node, degree] of inDegree) {
-      if (degree > 0) inCycle.add(node);
-    }
-
-    if (inCycle.size === 0) return [];
-
-    const start = inCycle.values().next().value!;
-    const visited = new Set<string>();
-    const path: string[] = [];
-
-    const dfs = (node: string): string[] | null => {
-      if (visited.has(node)) {
-        const cycleStart = path.indexOf(node);
-        if (cycleStart !== -1) {
-          return [...path.slice(cycleStart), node];
-        }
-        return null;
-      }
-      visited.add(node);
-      path.push(node);
-      for (const dep of this.deps.get(node) ?? []) {
-        if (inCycle.has(dep)) {
-          const result = dfs(dep);
-          if (result) return result;
-        }
-      }
-      path.pop();
-      return null;
-    };
-
-    return dfs(start) ?? [start];
+    return detectCycleImpl(
+      this.getNodes(),
+      (id) => this.getDirectDeps(id),
+      (id) => this.getDependents(id),
+    );
   }
 
   /**
