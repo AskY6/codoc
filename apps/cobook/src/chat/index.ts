@@ -140,17 +140,36 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
       const handler = bus.getHandler(agentId);
       if (!handler) continue;
 
+      // Signal that this agent is thinking
+      emitter.emit("onTypingChange", agentId, true);
+
       // Assemble context for this agent
       const requirements = participant?.contextRequirements ?? [];
-      const contextData = await assembleContext(
-        requirements,
-        session.contextSources,
-        session.contextSourceFactories,
-        session.activeResourceRefs,
-      );
+      let contextData: ContextData[];
+      try {
+        contextData = await assembleContext(
+          requirements,
+          session.contextSources,
+          session.contextSourceFactories,
+          session.activeResourceRefs,
+        );
+      } catch {
+        emitter.emit("onTypingChange", agentId, false);
+        continue;
+      }
 
       // Call the agent handler
-      const action = await handler(contextData, message);
+      let action: Awaited<ReturnType<AgentHandler>>;
+      try {
+        action = await handler(contextData, message);
+      } catch {
+        emitter.emit("onTypingChange", agentId, false);
+        continue;
+      }
+
+      // Done thinking
+      emitter.emit("onTypingChange", agentId, false);
+
       if (!action) continue;
 
       if (action.type === "reply") {

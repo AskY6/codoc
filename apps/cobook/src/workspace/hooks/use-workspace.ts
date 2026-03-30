@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { WorkspaceStore } from "@/workspace/workspace-store";
-import { fetchWorkspace, fetchChatState } from "@/workspace/api-client";
+import { WorkspaceStore } from "@/workspace/stores/workspace-store";
+import { fetchWorkspace, fetchChatState, fetchConnectorStatuses } from "@/workspace/stores/api-client";
+import type { ConnectorStatus } from "@/workspace/stores/api-client";
 import { getChatStore } from "./use-session";
 import type { FieldEvent } from "@/shared/types";
-import type { ChatMessage } from "@/workspace/api-client";
+import type { ChatMessage } from "@/workspace/stores/api-client";
 
 // Singleton store
 const store = new WorkspaceStore();
@@ -36,6 +37,20 @@ function startSSE(): void {
     try {
       const msg: ChatMessage = JSON.parse(e.data);
       chatStore.addMessage(msg);
+    } catch { /* ignore malformed */ }
+  });
+
+  es.addEventListener("chat-typing", (e) => {
+    try {
+      const { agentId, isTyping } = JSON.parse(e.data);
+      chatStore.setTyping(agentId, isTyping);
+    } catch { /* ignore malformed */ }
+  });
+
+  es.addEventListener("connector-status", (e) => {
+    try {
+      const statuses: ConnectorStatus[] = JSON.parse(e.data);
+      store.hydrateConnectors(statuses);
     } catch { /* ignore malformed */ }
   });
 
@@ -73,10 +88,11 @@ export function useWorkspaceInit(): { loading: boolean; error: string | null } {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchWorkspace(), fetchChatState()])
-      .then(([wsSnapshot, chatState]) => {
+    Promise.all([fetchWorkspace(), fetchChatState(), fetchConnectorStatuses()])
+      .then(([wsSnapshot, chatState, connectors]) => {
         store.hydrateWorkspace(wsSnapshot);
         getChatStore().hydrate(chatState);
+        store.hydrateConnectors(connectors);
         setLoading(false);
       })
       .catch((e) => {
@@ -94,6 +110,7 @@ export function useWorkspaceInit(): { loading: boolean; error: string | null } {
 
 const EMPTY_DOCS: ReturnType<WorkspaceStore["getDocs"]> = [];
 const EMPTY_GRAPH: ReturnType<WorkspaceStore["getGraph"]> = { nodes: [], edges: [] };
+const EMPTY_CONNECTORS: ConnectorStatus[] = [];
 
 export function useWorkspaceDocs() {
   const subscribe = useCallback((cb: () => void) => store.subscribe(cb), []);
@@ -105,4 +122,10 @@ export function useWorkspaceGraph() {
   const subscribe = useCallback((cb: () => void) => store.subscribe(cb), []);
   const getSnapshot = useCallback(() => store.getGraph(), []);
   return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_GRAPH);
+}
+
+export function useConnectorStatuses() {
+  const subscribe = useCallback((cb: () => void) => store.subscribe(cb), []);
+  const getSnapshot = useCallback(() => store.getConnectorStatuses(), []);
+  return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_CONNECTORS);
 }

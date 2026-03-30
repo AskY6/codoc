@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useChatMessages } from "@/workspace/hooks/use-session";
+import { useChatMessages, useTypingAgents } from "@/workspace/hooks/use-session";
 import { useWorkspaceDocs } from "@/workspace/hooks/use-workspace";
 import { MessageRow } from "./MessageRow";
 import { ContextBar } from "./ContextBar";
@@ -13,6 +13,7 @@ import {
   Wrench,
   BarChart3,
   PenLine,
+  Loader2,
 } from "lucide-react";
 
 const GUIDE_CARDS = [
@@ -44,13 +45,16 @@ const GUIDE_CARDS = [
 
 export function ChatArea() {
   const messages = useChatMessages();
+  const typingAgents = useTypingAgents();
   const docs = useWorkspaceDocs();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [suggestedPrompt, setSuggestedPrompt] = useState<string | undefined>();
 
+  const isTyping = typingAgents.size > 0;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, isTyping]);
 
   const handleCardClick = useCallback((prompt: string) => {
     if (prompt) {
@@ -125,12 +129,22 @@ export function ChatArea() {
             </div>
           )
         ) : (
-          <div className="divide-y">
-            {messages.map((msg) => (
-              <MessageRow key={msg.id} message={msg} />
-            ))}
+          <>
+            <div className="divide-y">
+              {messages.map((msg) => (
+                <MessageRow key={msg.id} message={msg} />
+              ))}
+            </div>
+            {isTyping && (
+              <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="text-sm">
+                  {Array.from(typingAgents).join(", ")} 思考中…
+                </span>
+              </div>
+            )}
             <div ref={bottomRef} />
-          </div>
+          </>
         )}
       </ScrollArea>
 

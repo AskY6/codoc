@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/api/_workspace";
+import { getWorkspace } from "@/workspace/server/workspace";
 import { scheduleForce } from "@codoc/core";
 import type { DocSnapshot, FieldSnapshot } from "@/shared/types";
 

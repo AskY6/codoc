@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/api/_workspace";
+import { getWorkspace } from "@/workspace/server/workspace";
 import { propagateAndInvalidate, evictSourceCache } from "@codoc/core";
 import type { FieldAction } from "@/shared/types";
 

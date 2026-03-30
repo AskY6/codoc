@@ -39,6 +39,35 @@ export async function createDoc(docId: string, content: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to create doc: ${res.status}`);
 }
 
+// --- Connector API ---
+
+export interface ConnectorStatus {
+  name: string;
+  displayName: string;
+  description: string;
+  active: boolean;
+  authConfigured: boolean;
+}
+
+export async function fetchConnectorStatuses(): Promise<ConnectorStatus[]> {
+  const res = await fetch("/api/connectors");
+  if (!res.ok) throw new Error(`Failed to fetch connectors: ${res.status}`);
+  return res.json();
+}
+
+export async function setConnectorActive(
+  name: string,
+  active: boolean,
+): Promise<ConnectorStatus[]> {
+  const res = await fetch("/api/connectors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, active }),
+  });
+  if (!res.ok) throw new Error(`Failed to update connector: ${res.status}`);
+  return res.json();
+}
+
 // --- Chat API ---
 
 export interface ChatMessage {

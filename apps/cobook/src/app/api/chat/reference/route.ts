@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getChatAbility, getSessionId } from "@/workspace/api/_chat";
+import { getChatAbility, getSessionId } from "@/workspace/server/chat";
 
 export async function POST(req: Request) {
   const body: { kind: string; id: string; label?: string } = await req.json();

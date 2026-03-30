@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fetchDoc } from "@/workspace/api-client";
+import { fetchDoc } from "@/workspace/stores/api-client";
 import type { DocSnapshot, FieldSnapshot } from "@/shared/types";
 import { FileText, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/shared/utils";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import type { ChatMessage, ChatParticipant } from "@/workspace/api-client";
+import type { ChatMessage, ChatParticipant } from "@/workspace/stores/api-client";
 
 type Listener = () => void;
 
@@ -9,6 +9,7 @@ export class ChatSessionStore {
   private messages: ChatMessage[] = [];
   private participants: ChatParticipant[] = [];
   private references: Array<{ kind: string; id: string; label?: string }> = [];
+  private typingAgents = new Set<string>();
   private listeners = new Set<Listener>();
 
   // --- Hydration ---
@@ -46,6 +47,26 @@ export class ChatSessionStore {
       return { ...msg, intents };
     });
     this.notify();
+  }
+
+  // --- Typing state ---
+
+  setTyping(agentId: string, isTyping: boolean): void {
+    const changed = isTyping
+      ? !this.typingAgents.has(agentId)
+      : this.typingAgents.has(agentId);
+    if (!changed) return;
+    this.typingAgents = new Set(this.typingAgents);
+    if (isTyping) {
+      this.typingAgents.add(agentId);
+    } else {
+      this.typingAgents.delete(agentId);
+    }
+    this.notify();
+  }
+
+  getTypingAgents(): Set<string> {
+    return this.typingAgents;
   }
 
   // --- Reference management (local tracking) ---
@@ -102,6 +123,7 @@ export function getChatStore(): ChatSessionStore {
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_PARTICIPANTS: ChatParticipant[] = [];
 const EMPTY_REFERENCES: Array<{ kind: string; id: string; label?: string }> = [];
+const EMPTY_TYPING = new Set<string>();
 
 export function useChatMessages(): ChatMessage[] {
   const s = getChatStore();
@@ -126,4 +148,11 @@ export function useChatReferences(): Array<{
   const subscribe = useCallback((cb: () => void) => s.subscribe(cb), [s]);
   const getSnapshot = useCallback(() => s.getReferences(), [s]);
   return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_REFERENCES);
+}
+
+export function useTypingAgents(): Set<string> {
+  const s = getChatStore();
+  const subscribe = useCallback((cb: () => void) => s.subscribe(cb), [s]);
+  const getSnapshot = useCallback(() => s.getTypingAgents(), [s]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => EMPTY_TYPING);
 }

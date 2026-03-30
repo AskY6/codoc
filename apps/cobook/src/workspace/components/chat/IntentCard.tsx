@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { updateIntent } from "@/workspace/api-client";
+import { updateIntent } from "@/workspace/stores/api-client";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils";
 import { Check, X, Pencil, RefreshCw, Loader2 } from "lucide-react";

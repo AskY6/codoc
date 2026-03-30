@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/api/_workspace";
+import { getWorkspace } from "@/workspace/server/workspace";
 import type { WorkspaceSnapshot, DocMeta } from "@/shared/types";
 
 export async function GET() {

@@ -55,9 +55,10 @@ export type {
   ValidationSuccess,
   ValidationFailure,
 } from "./types.js";
-export type { ConnectorFn, ConnectorAuth, ConnectorMeta } from "./connector/types.js";
+export type { ConnectorFn, ConnectorAuth, ConnectorMeta, ConnectorDefinition } from "./connector/types.js";
 export {
   registerConnector,
+  unregisterConnector,
   getConnector,
   getConnectorMeta,
   listConnectors,

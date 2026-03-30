@@ -4,7 +4,7 @@ import {
   registerPresetAgents,
   registerPresetAgentHandlers,
 } from "@/agents/register";
-import { getWorkspace } from "./_workspace";
+import { getWorkspace } from "./workspace";
 
 type ChatListener = (msg: Message) => void;
 type IntentListener = (
@@ -12,17 +12,20 @@ type IntentListener = (
   intentIdx: number,
   status: "proposed" | "confirmed" | "rejected",
 ) => void;
+type TypingListener = (agentId: string, isTyping: boolean) => void;
 
 const g = globalThis as typeof globalThis & {
   _chat?: ChatAbility;
   _sessionId?: string;
   _chatListeners?: Set<ChatListener>;
   _intentListeners?: Set<IntentListener>;
+  _typingListeners?: Set<TypingListener>;
   _chatInitPromise?: Promise<void>;
 };
 
 if (!g._chatListeners) g._chatListeners = new Set();
 if (!g._intentListeners) g._intentListeners = new Set();
+if (!g._typingListeners) g._typingListeners = new Set();
 
 async function initChat(): Promise<void> {
   if (g._chat && g._sessionId) return;
@@ -45,6 +48,10 @@ async function initChat(): Promise<void> {
 
   chat.on(sessionId, "onIntentStatusChange", (msgId, idx, status) => {
     for (const fn of g._intentListeners!) fn(msgId, idx, status);
+  });
+
+  chat.on(sessionId, "onTypingChange", (agentId, isTyping) => {
+    for (const fn of g._typingListeners!) fn(agentId, isTyping);
   });
 
   g._chat = chat;
@@ -72,4 +79,9 @@ export function onChatMessage(fn: ChatListener): () => void {
 export function onIntentStatusChange(fn: IntentListener): () => void {
   g._intentListeners!.add(fn);
   return () => { g._intentListeners!.delete(fn); };
+}
+
+export function onTypingChange(fn: TypingListener): () => void {
+  g._typingListeners!.add(fn);
+  return () => { g._typingListeners!.delete(fn); };
 }

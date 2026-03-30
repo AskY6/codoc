@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChatMessage } from "@/workspace/api-client";
+import type { ChatMessage } from "@/workspace/stores/api-client";
 import { IntentCard } from "./IntentCard";
 import { CodocCard } from "./CodocCard";
 import { cn } from "@/shared/utils";

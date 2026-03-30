@@ -3,9 +3,9 @@
 import { useState, useCallback } from "react";
 import { useWorkspaceInit } from "@/workspace/hooks/use-workspace";
 import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
-import { addReference, removeReference } from "@/workspace/api-client";
-import { ResourcesPanel } from "./CodocList";
-import { ChatArea } from "./ChatArea";
+import { addReference, removeReference } from "@/workspace/stores/api-client";
+import { ResourcesPanel } from "./codoc/CodocList";
+import { ChatArea } from "./chat/ChatArea";
 import { ParticipantsPanel } from "./AgentsPanel";
 import { DagGraphView } from "./DagGraphView";
 

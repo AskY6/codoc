@@ -1,7 +1,7 @@
 "use client";
 
 import { useChatReferences } from "@/workspace/hooks/use-session";
-import { removeReference } from "@/workspace/api-client";
+import { removeReference } from "@/workspace/stores/api-client";
 import { getChatStore } from "@/workspace/hooks/use-session";
 import { Badge } from "@/shared/ui/badge";
 import { X, FileText } from "lucide-react";

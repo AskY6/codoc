@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
-import { rescanWorkspace } from "@/workspace/api/_workspace";
+import { rescanWorkspace } from "@/workspace/server/workspace";
 
 export async function POST(req: Request) {
   let body: { docId: string; content: string };

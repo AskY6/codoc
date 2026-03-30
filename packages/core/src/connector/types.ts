@@ -24,3 +24,14 @@ export interface ConnectorMeta {
   authSchema: Record<string, unknown>;
   exampleYaml: string;
 }
+
+/**
+ * A connector definition exported by connector packages.
+ * Pairs metadata with the connector function and optional env var bindings.
+ */
+export interface ConnectorDefinition {
+  meta: ConnectorMeta;
+  fn: ConnectorFn;
+  /** Env var names to load as credentials. e.g. { appId: "FEISHU_APP_ID" } */
+  envAuth?: Record<string, string>;
+}

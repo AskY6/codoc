@@ -127,6 +127,7 @@ export interface ChatEvents {
     intentIdx: number,
     status: Intent["status"],
   ) => void;
+  onTypingChange: (agentId: string, isTyping: boolean) => void;
   onBranchSwitch: (activePath: string[]) => void;
   onParticipantJoin: (participant: Participant) => void;
   onParticipantLeave: (participantId: string) => void;

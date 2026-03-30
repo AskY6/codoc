@@ -7,6 +7,7 @@ import type {
   FieldAddress,
   DepEdge,
 } from "@/shared/types";
+import type { ConnectorStatus } from "./api-client";
 
 type Listener = () => void;
 
@@ -17,6 +18,7 @@ export class WorkspaceStore {
   private docViews = new Map<string, string>();
   private listeners = new Set<Listener>();
   private fieldListeners = new Map<string, Set<Listener>>();
+  private connectorStatuses: ConnectorStatus[] = [];
   private feedEvents: FieldEvent[] = [];
   private feedListeners = new Set<Listener>();
 
@@ -84,6 +86,15 @@ export class WorkspaceStore {
 
   getFieldSnapshot(docId: string, path: string): FieldSnapshot | undefined {
     return this.docFields.get(docId)?.[path];
+  }
+
+  getConnectorStatuses(): ConnectorStatus[] {
+    return this.connectorStatuses;
+  }
+
+  hydrateConnectors(statuses: ConnectorStatus[]): void {
+    this.connectorStatuses = statuses;
+    this.notifyAll();
   }
 
   getFeedEvents(): FieldEvent[] {

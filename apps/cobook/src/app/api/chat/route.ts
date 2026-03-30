@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getChatAbility, getSessionId } from "@/workspace/api/_chat";
+import { getChatAbility, getSessionId } from "@/workspace/server/chat";
 import { listCodocResources } from "@/codoc-use/index";
-import { getWorkspace } from "@/workspace/api/_workspace";
+import { getWorkspace } from "@/workspace/server/workspace";
 
 interface ChatRequest {
   content: string;

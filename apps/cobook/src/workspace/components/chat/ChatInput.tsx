@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { sendChatMessage, addReference } from "@/workspace/api-client";
+import { sendChatMessage, addReference } from "@/workspace/stores/api-client";
 import {
   useChatParticipants,
   getChatStore,

@@ -6,11 +6,12 @@ import {
   useWorkspaceGraph,
 } from "@/workspace/hooks/use-workspace";
 import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
-import { addReference, removeReference } from "@/workspace/api-client";
+import { addReference, removeReference } from "@/workspace/stores/api-client";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
 import { FileText, GitFork, MessageSquarePlus, Check, Search } from "lucide-react";
 import { cn } from "@/shared/utils";
+import { ConnectorHealth } from "./ConnectorHealth";
 
 export function ResourcesPanel() {
   const docs = useWorkspaceDocs();
@@ -146,6 +147,9 @@ export function ResourcesPanel() {
           })}
         </div>
       </ScrollArea>
+
+      {/* Connector health */}
+      <ConnectorHealth />
 
       {/* Footer stats */}
       <div className="px-3 py-3 flex items-center gap-3 text-[11px] text-muted-foreground border-t border-sidebar-border">

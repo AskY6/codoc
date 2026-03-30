@@ -1,5 +1,6 @@
-import { getWorkspace } from "@/workspace/api/_workspace";
-import { onChatMessage, onIntentStatusChange, getChatAbility } from "@/workspace/api/_chat";
+import { getWorkspace } from "@/workspace/server/workspace";
+import { onChatMessage, onIntentStatusChange, onTypingChange, getChatAbility } from "@/workspace/server/chat";
+import { getConnectorCatalog } from "@/workspace/server/connector-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,16 @@ export async function GET() {
         send("chat-intent", { msgId, intentIdx, status });
       });
 
+      // Typing indicator events
+      const unsubTyping = onTypingChange((agentId, isTyping) => {
+        send("chat-typing", { agentId, isTyping });
+      });
+
+      // Connector activation/deactivation events
+      const unsubConnectors = getConnectorCatalog().onChange(() => {
+        send("connector-status", getConnectorCatalog().getStatuses());
+      });
+
       // Heartbeat every 30s to keep connection alive
       const heartbeat = setInterval(() => {
         try {
@@ -70,6 +81,8 @@ export async function GET() {
         unsubField();
         unsubChat();
         unsubIntent();
+        unsubTyping();
+        unsubConnectors();
         clearInterval(heartbeat);
       };
     },
