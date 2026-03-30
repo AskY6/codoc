@@ -20,27 +20,45 @@ export class NLRouter {
     this.registry = registry;
   }
 
-  /**
-   * Try to route a user message to an active scene agent.
-   * First tries keyword matching (fast path), then LLM routing (slow path).
-   */
   async route(userMessage: string): Promise<RouteResult> {
     const activeAgents = this.registry.listActive();
     if (activeAgents.length === 0) return { type: "none" };
-    if (activeAgents.length === 1) return { type: "matched", agentId: activeAgents[0].id };
+    if (activeAgents.length === 1)
+      return { type: "matched", agentId: activeAgents[0].id };
 
-    // Fast path: keyword matching
     const keywordResult = this.keywordMatch(userMessage, activeAgents);
     if (keywordResult.type === "matched") return keywordResult;
 
-    // Slow path: LLM-based classification
     return this.llmRoute(userMessage, activeAgents);
   }
 
   private keywordMatch(message: string, agents: SceneAgent[]): RouteResult {
     const lower = message.toLowerCase();
     const KEYWORD_MAP: Record<string, string[]> = {
-      "claude-code-log-agent": ["日志", "session", "log", "会话", "claude code", "分析", "analyze"],
+      "claude-log": [
+        "日志",
+        "session",
+        "log",
+        "会话",
+        "claude code",
+        "ingest",
+        "接入",
+        "导入",
+      ],
+      "codoc-structure": [
+        "创建",
+        "新建",
+        "搭建",
+        "做一个",
+        "create",
+        "build",
+        "make",
+        "修改",
+        "rewrite",
+        "重写",
+        "字段",
+        "field",
+      ],
     };
 
     const matches: string[] = [];
@@ -56,7 +74,10 @@ export class NLRouter {
     return { type: "none" };
   }
 
-  private async llmRoute(message: string, agents: SceneAgent[]): Promise<RouteResult> {
+  private async llmRoute(
+    message: string,
+    agents: SceneAgent[],
+  ): Promise<RouteResult> {
     const agentList = agents
       .map((a) => `- ${a.id}: ${a.description}`)
       .join("\n");
@@ -81,11 +102,13 @@ export class NLRouter {
 
     if (text === "NONE") return { type: "none" };
     if (text.startsWith("AMBIGUOUS:")) {
-      const candidates = text.slice("AMBIGUOUS:".length).split(",").map((s) => s.trim());
+      const candidates = text
+        .slice("AMBIGUOUS:".length)
+        .split(",")
+        .map((s) => s.trim());
       return { type: "ambiguous", candidates };
     }
 
-    // Validate the returned agent ID
     const matchedAgent = agents.find((a) => a.id === text);
     if (matchedAgent) return { type: "matched", agentId: matchedAgent.id };
 

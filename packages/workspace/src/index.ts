@@ -8,6 +8,7 @@ export type {
   WorkspaceChangeEvent,
   CodocRuntime,
 } from "./api/types.js";
+export type { CodocFile } from "@codoc/core";
 
 // Lifecycle
 export { parseCodoc } from "./lifecycle/codoc-factory.js";
@@ -43,3 +44,24 @@ export { SourceScheduler } from "./watch/source-binding.js";
 export type { SourceSchedulerOptions } from "./watch/source-binding.js";
 export { WatchOrchestrator } from "./watch/orchestrator.js";
 export type { WatchEvent, WatchHandler } from "./watch/orchestrator.js";
+
+// Skill system
+export type { Skill } from "./skill/types.js";
+export { registerSkill, getSkill, listSkills, identifySkill } from "./skill/registry.js";
+export { claudeCodeLogSkill } from "./skill/claude-code-log.js";
+export { ingestDirectory } from "./skill/ingest.js";
+export type { IngestResult } from "./skill/ingest.js";
+
+// Component library
+export { ComponentLibrary } from "./component-library/library.js";
+export type { WorkspaceComponent } from "./component-library/library.js";
+export {
+  diffSignature,
+  checkCompatibility,
+} from "./component-library/compat.js";
+export type {
+  SignatureChange,
+  BreakingChangeKind,
+  CompatIssue,
+  CompatReport,
+} from "./component-library/compat.js";

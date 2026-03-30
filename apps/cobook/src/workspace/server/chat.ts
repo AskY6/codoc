@@ -1,9 +1,11 @@
-import { createChatAbility, type ChatAbility, type Message } from "@/chat/index";
-import { initCodocUse } from "@/codoc-use/index";
 import {
-  registerPresetAgents,
-  registerPresetAgentHandlers,
-} from "@/agents/register";
+  createChatAbility,
+  type ChatAbility,
+  type Message,
+} from "@/chat/index";
+import { initCodocUse } from "@/codoc-use/index";
+import { initAgentSystem, type AgentSystem } from "@/agents/register";
+import { IntentQueue } from "@/intent-queue/index";
 import { getWorkspace } from "./workspace";
 
 type ChatListener = (msg: Message) => void;
@@ -17,6 +19,8 @@ type TypingListener = (agentId: string, isTyping: boolean) => void;
 const g = globalThis as typeof globalThis & {
   _chat?: ChatAbility;
   _sessionId?: string;
+  _intentQueue?: IntentQueue;
+  _agentSystem?: AgentSystem;
   _chatListeners?: Set<ChatListener>;
   _intentListeners?: Set<IntentListener>;
   _typingListeners?: Set<TypingListener>;
@@ -32,14 +36,16 @@ async function initChat(): Promise<void> {
 
   const chat = createChatAbility();
   const sessionId = chat.createSession({ id: "main" });
-
-  // Step 3: Codoc Use
   const workspace = await getWorkspace();
+
+  // Context sources and event bridges
   initCodocUse(workspace, chat, sessionId);
 
-  // Step 4: Agents
-  registerPresetAgents(chat, sessionId);
-  registerPresetAgentHandlers(chat, sessionId);
+  // Agent system (single unified path)
+  const intentQueue = new IntentQueue();
+  const agentSystem = initAgentSystem({ workspace, chat, sessionId, intentQueue });
+  g._intentQueue = intentQueue;
+  g._agentSystem = agentSystem;
 
   // Subscribe to events for SSE broadcasting
   chat.on(sessionId, "onMessage", (msg) => {
@@ -73,15 +79,31 @@ export async function getSessionId(): Promise<string> {
 
 export function onChatMessage(fn: ChatListener): () => void {
   g._chatListeners!.add(fn);
-  return () => { g._chatListeners!.delete(fn); };
+  return () => {
+    g._chatListeners!.delete(fn);
+  };
 }
 
 export function onIntentStatusChange(fn: IntentListener): () => void {
   g._intentListeners!.add(fn);
-  return () => { g._intentListeners!.delete(fn); };
+  return () => {
+    g._intentListeners!.delete(fn);
+  };
 }
 
 export function onTypingChange(fn: TypingListener): () => void {
   g._typingListeners!.add(fn);
-  return () => { g._typingListeners!.delete(fn); };
+  return () => {
+    g._typingListeners!.delete(fn);
+  };
+}
+
+export async function getIntentQueue(): Promise<IntentQueue> {
+  await getChatAbility();
+  return g._intentQueue!;
+}
+
+export async function getAgentSystem(): Promise<AgentSystem> {
+  await getChatAbility();
+  return g._agentSystem!;
 }

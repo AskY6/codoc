@@ -13,10 +13,36 @@ export type {
 export type {
   CodataDefinition,
   CodocFile,
+  CodocMeta,
   ForceContext,
   LoaderFn,
   LLMClient,
 } from "./model/codoc.js";
+export {
+  getDataSchema,
+  getComponentsMeta,
+  getComponentsBody,
+  normalizeCodocFile,
+} from "./model/codoc.js";
+
+// Model — component types
+export type {
+  PropMeta,
+  ComponentSignature,
+  ComponentsMeta,
+  WorkspaceComponentRef,
+  LocalBundleRef,
+  RegistryBundleRef,
+  ComponentRef,
+  ComponentDeclaration,
+  ComponentsBody,
+} from "./model/component.js";
+export {
+  isWorkspaceRef,
+  isLocalBundleRef,
+  isRegistryBundleRef,
+  parseComponentRef,
+} from "./model/component.js";
 
 // Model — schema / validation types
 export type {
@@ -46,6 +72,8 @@ export { observe } from "./codata/observe.js";
 
 // Validation
 export { validate } from "./validation/schema-validator.js";
+export { validateComponents, extractComponentUsages } from "./validation/component-validator.js";
+export type { ComponentValidationResult, ComponentIssue } from "./validation/component-validator.js";
 
 // Runtime
 export { executeForce } from "./runtime/runtime.js";

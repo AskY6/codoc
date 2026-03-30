@@ -3,13 +3,16 @@
 import { useState, useCallback } from "react";
 import { useWorkspaceInit } from "@/workspace/hooks/use-workspace";
 import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
+import { usePendingIntentCount } from "@/workspace/hooks/use-intent-queue";
 import { addReference, removeReference } from "@/workspace/stores/api-client";
 import { ResourcesPanel } from "./codoc/CodocList";
+import { SessionDetail } from "./codoc/SessionDetail";
 import { ChatArea } from "./chat/ChatArea";
 import { ParticipantsPanel } from "./AgentsPanel";
 import { DagGraphView } from "./DagGraphView";
+import { IntentQueuePanel } from "./IntentQueuePanel";
 
-export type CenterView = "chat" | "graph";
+export type CenterView = "chat" | "graph" | "doc";
 import { Button } from "@/shared/ui/button";
 import { Separator } from "@/shared/ui/separator";
 import {
@@ -26,15 +29,25 @@ import {
   PanelRightOpen,
   List,
   Network,
+  FileText,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/shared/utils";
 
 export function WorkspaceShell() {
   const { loading, error } = useWorkspaceInit();
   const references = useChatReferences();
+  const pendingIntentCount = usePendingIntentCount();
   const [centerView, setCenterView] = useState<CenterView>("chat");
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
+  const [intentQueueOpen, setIntentQueueOpen] = useState(false);
+
+  const handleSelectDoc = useCallback((docId: string) => {
+    setSelectedDocId(docId);
+    setCenterView("doc");
+  }, []);
 
   // DagGraphView still uses the old callback interface for reference toggling
   const referenceIds = references.map((r) => r.id);
@@ -82,6 +95,33 @@ export function WorkspaceShell() {
 
         <div className="flex-1" />
 
+        {/* Intent Queue badge */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={intentQueueOpen ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 relative"
+              onClick={() => setIntentQueueOpen((v) => !v)}
+            >
+              <Zap className="h-3.5 w-3.5" />
+              <span className="text-xs">Intents</span>
+              {pendingIntentCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-[10px] font-bold rounded-full h-4 min-w-4 flex items-center justify-center px-1">
+                  {pendingIntentCount}
+                </span>
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {pendingIntentCount > 0
+              ? `${pendingIntentCount} pending intent${pendingIntentCount > 1 ? "s" : ""}`
+              : "Intent queue"}
+          </TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" className="h-4 mx-1" />
+
         {/* Center view switcher */}
         <div className="flex gap-0.5 rounded-md border border-border p-0.5">
           <Tooltip>
@@ -100,6 +140,24 @@ export function WorkspaceShell() {
             </TooltipTrigger>
             <TooltipContent side="bottom">Chat</TooltipContent>
           </Tooltip>
+          {selectedDocId && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setCenterView("doc")}
+                  className={cn(
+                    "h-6 w-6 flex items-center justify-center rounded transition-colors",
+                    centerView === "doc"
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Document</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -156,7 +214,7 @@ export function WorkspaceShell() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
-            {rightOpen ? "Hide participants" : "Show participants"}
+            {rightOpen ? "Hide agents" : "Show agents"}
           </TooltipContent>
         </Tooltip>
       </header>
@@ -170,27 +228,45 @@ export function WorkspaceShell() {
             leftOpen ? "w-72" : "w-0 border-r-0",
           )}
         >
-          <ResourcesPanel />
+          <ResourcesPanel
+            selectedDocId={selectedDocId}
+            onSelectDoc={handleSelectDoc}
+          />
         </aside>
 
-        {/* Center – Chat or Graph */}
+        {/* Center – Chat, Graph, or Doc */}
         <main className="flex-1 min-w-0">
-          {centerView === "chat" ? (
-            <ChatArea />
-          ) : (
+          {centerView === "doc" && selectedDocId ? (
+            <SessionDetail
+              docId={selectedDocId}
+              onClose={() => {
+                setSelectedDocId(null);
+                setCenterView("chat");
+              }}
+            />
+          ) : centerView === "graph" ? (
             <DagGraphView
               references={referenceIds}
               onAddReference={handleAddReference}
               onRemoveReference={handleRemoveReference}
             />
+          ) : (
+            <ChatArea />
           )}
         </main>
 
-        {/* Right sidebar – Participants */}
+        {/* Intent Queue Panel (overlay on right side when open) */}
+        {intentQueueOpen && (
+          <aside className="flex-shrink-0 w-80 border-l bg-sidebar overflow-hidden">
+            <IntentQueuePanel onClose={() => setIntentQueueOpen(false)} />
+          </aside>
+        )}
+
+        {/* Right sidebar – Agents */}
         <aside
           className={cn(
             "flex-shrink-0 border-l bg-sidebar transition-[width] duration-200 overflow-hidden",
-            rightOpen ? "w-72" : "w-0 border-l-0",
+            rightOpen && !intentQueueOpen ? "w-72" : "w-0 border-l-0",
           )}
         >
           <ParticipantsPanel />

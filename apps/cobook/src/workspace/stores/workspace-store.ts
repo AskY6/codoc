@@ -41,6 +41,10 @@ export class WorkspaceStore {
 
   // --- SSE events ---
 
+  // Callback for requesting a workspace rescan (set externally)
+  onUnknownDoc: (() => void) | null = null;
+  private pendingRescan = false;
+
   applyFieldEvent(event: FieldEvent): void {
     // New array reference so useSyncExternalStore detects the change
     this.feedEvents = [...this.feedEvents, event];
@@ -50,7 +54,18 @@ export class WorkspaceStore {
     for (const fn of this.feedListeners) fn();
 
     const fields = this.docFields.get(event.docId);
-    if (!fields) return;
+    if (!fields) {
+      // Unknown docId — new docs were added (e.g. by ingest).
+      // Debounce: request workspace rescan once.
+      if (!this.pendingRescan && this.onUnknownDoc) {
+        this.pendingRescan = true;
+        setTimeout(() => {
+          this.pendingRescan = false;
+          this.onUnknownDoc?.();
+        }, 500);
+      }
+      return;
+    }
 
     const existing = fields[event.path];
     if (!existing) return;

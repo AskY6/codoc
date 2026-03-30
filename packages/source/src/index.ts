@@ -28,6 +28,20 @@ export { parseJsonl } from "./parsers/jsonl.js";
 // Providers — HTTP
 export { fetchUrl } from "./providers/http/loader.js";
 
+// Providers — Local file
+export { loadLocalFile } from "./providers/local-file/loader.js";
+export type { LocalFileOptions } from "./providers/local-file/loader.js";
+export { createLocalFileWatcher } from "./providers/local-file/watcher.js";
+export type { LocalFileWatcher } from "./providers/local-file/watcher.js";
+export { localFileConnector, localFileMeta, connector as localFileConnectorDef } from "./providers/local-file/setup.js";
+
+// Providers — Local directory
+export { loadLocalDirectory } from "./providers/local-directory/loader.js";
+export type { LocalDirectoryOptions, DirectoryEntry } from "./providers/local-directory/loader.js";
+export { createLocalDirectoryWatcher } from "./providers/local-directory/watcher.js";
+export type { DirectoryChangeEvent, LocalDirectoryWatcher } from "./providers/local-directory/watcher.js";
+export { localDirectoryConnector, localDirectoryMeta, connector as localDirectoryConnectorDef } from "./providers/local-directory/setup.js";
+
 // Providers — LLM / prompt
 export { promptLoader, setLLMClient, getLLMClient, extractTemplateVars } from "./providers/llm/loader.js";
 

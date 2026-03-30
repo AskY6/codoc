@@ -18,8 +18,9 @@ import {
 } from "@/shared/ui/tooltip";
 
 const AGENT_COLORS: Record<string, string> = {
-  "codoc-agent": "bg-blue-500",
-  "claude-code-log-agent": "bg-violet-500",
+  "codoc-assistant": "bg-blue-500",
+  "codoc-structure": "bg-blue-500",
+  "claude-log": "bg-violet-500",
 };
 
 interface ParticipantsPanelProps {
@@ -43,7 +44,7 @@ export function ParticipantsPanel({ onMentionAgent }: ParticipantsPanelProps) {
 
       <div className="px-1.5 pb-2">
         {chatAgents
-          .filter((a) => a.id === "codoc-agent")
+          .filter((a) => a.id === "codoc-assistant")
           .map((agent) => (
             <button
               key={agent.id}

@@ -11,6 +11,7 @@
     "@codoc/core": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22",
     "typescript": "^5.7.0"
   }
 }

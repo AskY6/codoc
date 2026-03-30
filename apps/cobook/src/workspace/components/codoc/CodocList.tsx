@@ -13,7 +13,12 @@ import { FileText, GitFork, MessageSquarePlus, Check, Search } from "lucide-reac
 import { cn } from "@/shared/utils";
 import { ConnectorHealth } from "./ConnectorHealth";
 
-export function ResourcesPanel() {
+interface ResourcesPanelProps {
+  selectedDocId?: string | null;
+  onSelectDoc?: (docId: string) => void;
+}
+
+export function ResourcesPanel({ selectedDocId, onSelectDoc }: ResourcesPanelProps) {
   const docs = useWorkspaceDocs();
   const graph = useWorkspaceGraph();
   const references = useChatReferences();
@@ -34,7 +39,6 @@ export function ResourcesPanel() {
 
     if (added.size > 0) {
       setNewDocIds(added);
-      // Clear highlights after animation
       const timer = setTimeout(() => setNewDocIds(new Set()), 2000);
       return () => clearTimeout(timer);
     }
@@ -52,7 +56,8 @@ export function ResourcesPanel() {
       )
     : docs;
 
-  const handleToggleReference = async (docId: string) => {
+  const handleToggleReference = async (e: React.MouseEvent, docId: string) => {
+    e.stopPropagation();
     const isRef = referenceIds.includes(docId);
     if (isRef) {
       getChatStore().removeReference(docId);
@@ -70,10 +75,10 @@ export function ResourcesPanel() {
         <MessageSquarePlus className="h-8 w-8 opacity-30" />
         <div>
           <p className="text-xs font-medium text-foreground/70">
-            在对话中创建你的第一个 codoc
+            No documents yet
           </p>
           <p className="text-[11px] mt-1.5 leading-relaxed">
-            创建完成后文档会出现在这里
+            Create a codoc in chat, or ask the agent to ingest external data
           </p>
         </div>
       </div>
@@ -96,7 +101,7 @@ export function ResourcesPanel() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search..."
             className="h-8 pl-8 text-xs bg-sidebar-accent border-0 focus-visible:ring-1"
           />
         </div>
@@ -108,29 +113,36 @@ export function ResourcesPanel() {
           {filtered.map((doc) => {
             const isRef = referenceIds.includes(doc.docId);
             const isNew = newDocIds.has(doc.docId);
+            const isSelected = selectedDocId === doc.docId;
             return (
               <button
                 key={doc.docId}
-                onClick={() => handleToggleReference(doc.docId)}
+                onClick={() => onSelectDoc?.(doc.docId)}
                 className={cn(
                   "w-full text-left rounded-md px-3 py-2 mb-0.5 flex items-center gap-2.5 transition-colors group",
-                  isRef
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "hover:bg-sidebar-accent/60 text-sidebar-foreground",
+                  isSelected
+                    ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                    : isRef
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "hover:bg-sidebar-accent/60 text-sidebar-foreground",
                   isNew && "animate-highlight-fade",
                 )}
               >
                 <FileText
                   className={cn(
                     "h-4 w-4 flex-shrink-0",
-                    isRef ? "text-foreground" : "text-muted-foreground",
+                    isSelected
+                      ? "text-primary"
+                      : isRef
+                        ? "text-foreground"
+                        : "text-muted-foreground",
                   )}
                 />
                 <div className="min-w-0 flex-1">
                   <div
                     className={cn(
                       "text-sm font-medium truncate",
-                      isRef && "text-foreground",
+                      (isRef || isSelected) && "text-foreground",
                     )}
                   >
                     {doc.docId}
@@ -139,9 +151,18 @@ export function ResourcesPanel() {
                     {doc.fields.map((f) => f.path).join(" · ")}
                   </div>
                 </div>
-                {isRef && (
-                  <Check className="h-3.5 w-3.5 flex-shrink-0 text-foreground" />
-                )}
+                <button
+                  onClick={(e) => handleToggleReference(e, doc.docId)}
+                  className={cn(
+                    "h-5 w-5 flex items-center justify-center rounded transition-opacity flex-shrink-0",
+                    isRef
+                      ? "text-foreground opacity-100"
+                      : "text-muted-foreground opacity-0 group-hover:opacity-60 hover:!opacity-100",
+                  )}
+                  title={isRef ? "Remove from chat" : "Add to chat"}
+                >
+                  <Check className="h-3 w-3" />
+                </button>
               </button>
             );
           })}

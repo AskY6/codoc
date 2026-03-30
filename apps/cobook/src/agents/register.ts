@@ -2,43 +2,34 @@ import type { Workspace } from "@cobook/workspace";
 import type { ChatAbility } from "../chat/index.js";
 import type { IntentQueue } from "../intent-queue/index.js";
 import { IntentQueueConsumer } from "../intent-queue/index.js";
-import { SceneAgentRegistry } from "../scene-agents/index.js";
-import { NLRouter } from "../scene-agents/index.js";
-import { codocAgentParticipant, createCodocAgentHandler, codocAgentExecuteIntent } from "./codoc-agent.js";
-import {
-  claudeCodeLogAgentParticipant,
-  createClaudeCodeLogAgentHandler,
-  claudeCodeLogSceneAgent,
-} from "./claude-code-log-agent.js";
-
-export const presetAgents = [
-  codocAgentParticipant,
-  claudeCodeLogAgentParticipant,
-];
+import { SceneAgentRegistry, NLRouter } from "../scene-agents/index.js";
+import type { Participant, AgentHandler } from "../chat/types.js";
+import { formatContextForPrompt } from "./utils.js";
+import { codocStructureAgent } from "./codoc-structure-agent.js";
+import { claudeLogAgent } from "./claude-log-agent.js";
 
 // ---------------------------------------------------------------------------
-// Phase 0–1: Register chat participants + handlers (backward compat)
+// Single chat participant — routes to scene agents via NLRouter
 // ---------------------------------------------------------------------------
 
-export function registerPresetAgents(
-  chat: ChatAbility,
-  sessionId: string,
-): void {
-  for (const agent of presetAgents) {
-    chat.registerParticipant(sessionId, agent);
-  }
-}
-
-export function registerPresetAgentHandlers(
-  chat: ChatAbility,
-  sessionId: string,
-): void {
-  chat.registerAgentHandler(sessionId, "codoc-agent", createCodocAgentHandler());
-  chat.registerAgentHandler(sessionId, "claude-code-log-agent", createClaudeCodeLogAgentHandler());
-}
+const assistantParticipant: Participant = {
+  id: "codoc-assistant",
+  kind: "agent",
+  name: "Codoc Assistant",
+  description: "Workspace assistant that routes requests to specialized agents.",
+  contextRequirements: [
+    { sourceKind: "chat-history", priority: "required", maxTokens: 3000 },
+    { sourceKind: "codoc-snapshot", priority: "optional" },
+    { sourceKind: "connector-catalog", priority: "optional", maxTokens: 2000 },
+  ],
+  responseMode: {
+    type: "daemon",
+    filter: {},
+  },
+};
 
 // ---------------------------------------------------------------------------
-// Phase 2–4: Full two-layer architecture setup
+// Agent system config & init
 // ---------------------------------------------------------------------------
 
 export interface AgentSystemConfig {
@@ -52,59 +43,98 @@ export interface AgentSystem {
   consumer: IntentQueueConsumer;
   sceneRegistry: SceneAgentRegistry;
   router: NLRouter;
-  /** Dispatch a user message through the scene agent layer */
-  dispatchToSceneAgents(
-    userMessage: string,
-    targetDocIds?: string[],
-  ): Promise<void>;
 }
 
 /**
- * Initialize the full two-layer agent architecture.
+ * Initialize the agent system.
  *
- * 1. Register chat participants + handlers (legacy)
- * 2. Set up IntentQueueConsumer (codoc agent as consumer)
- * 3. Register scene agents
- * 4. Wire up NL router
+ * Registers a single chat participant ("codoc-assistant") whose handler
+ * routes user messages through:
+ *   NLRouter → SceneAgent.handle() → IntentQueue → IntentExecutor → Workspace
  */
 export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
   const { workspace, chat, sessionId, intentQueue } = config;
 
-  // Phase 0–1: Legacy chat integration
-  registerPresetAgents(chat, sessionId);
-  registerPresetAgentHandlers(chat, sessionId);
+  // --- Scene agent layer ---
 
-  // Phase 1: Intent queue consumer (codoc agent as infrastructure layer)
-  const consumer = new IntentQueueConsumer(workspace, intentQueue);
-  consumer.setNLExecutor(codocAgentExecuteIntent);
-
-  // Phase 2: Scene agent registry
   const sceneRegistry = new SceneAgentRegistry();
-  sceneRegistry.register(claudeCodeLogSceneAgent);
+  sceneRegistry.register(codocStructureAgent);
+  sceneRegistry.register(claudeLogAgent);
+  sceneRegistry.activate(codocStructureAgent.id);
+  sceneRegistry.activate(claudeLogAgent.id);
 
-  // Phase 4: NL router
   const router = new NLRouter(sceneRegistry);
 
-  // Bridge: when intents are proposed in chat messages, mirror them to the queue
-  chat.on(sessionId, "onMessage", (msg) => {
-    if (!msg.intents) return;
-    for (const intent of msg.intents) {
-      if (intent.status !== "proposed") continue;
-      const payload = intent.payload as any;
-      const docId = payload?.docId ?? payload?.payload?.docId ?? "unknown";
-      const field = payload?.field ?? payload?.payload?.field;
-      intentQueue.enqueue({
-        source: msg.sender.id,
-        target: { docId, field },
-        content: `${intent.kind}: ${JSON.stringify(payload)}`,
-        payload: { kind: intent.kind, payload },
-      });
-    }
-  });
+  // --- Intent queue consumer ---
 
-  // Bridge: when intent status changes in chat, sync to queue
+  const consumer = new IntentQueueConsumer(workspace, intentQueue);
+
+  // --- Chat integration ---
+
+  chat.registerParticipant(sessionId, assistantParticipant);
+
+  const handler: AgentHandler = async (context, triggerMessage) => {
+    const routeResult = await router.route(triggerMessage.content);
+    if (routeResult.type === "none") return null;
+
+    const agentId =
+      routeResult.type === "matched"
+        ? routeResult.agentId
+        : routeResult.candidates[0];
+
+    const agent = sceneRegistry.getAgent(agentId);
+    if (!agent) return null;
+
+    // Build scene agent context from workspace
+    const schemas: Record<string, Record<string, unknown>> = {};
+    const data: Record<string, Record<string, unknown>> = {};
+    for (const doc of workspace.listDocs()) {
+      const schema = workspace.getDocSchema(doc.docId);
+      const docData = workspace.getDocData(doc.docId);
+      if (schema) schemas[doc.docId] = schema;
+      if (docData) data[doc.docId] = docData;
+    }
+
+    const result = await agent.handle({
+      schemas,
+      data,
+      userMessage: triggerMessage.content,
+      additionalContext: formatContextForPrompt(context),
+    });
+
+    // Enqueue proposals into intent queue
+    const intents = [];
+    for (const proposal of result.proposals) {
+      intentQueue.enqueue({
+        source: agentId,
+        target: { docId: proposal.targetDocId, field: proposal.targetField },
+        content: proposal.content,
+        payload: proposal.payload,
+        trusted: agent.trusted,
+      });
+      if (proposal.payload) {
+        intents.push({
+          kind: proposal.payload.kind,
+          payload: proposal.payload.payload,
+          status: "proposed" as const,
+        });
+      }
+    }
+
+    return {
+      type: "reply" as const,
+      message: {
+        sender: { id: "codoc-assistant", kind: "agent" as const },
+        content: result.reply,
+        intents: intents.length > 0 ? intents : undefined,
+      },
+    };
+  };
+
+  chat.registerAgentHandler(sessionId, "codoc-assistant", handler);
+
+  // Bridge: sync chat intent status changes to the intent queue
   chat.on(sessionId, "onIntentStatusChange", (msgId, intentIdx, status) => {
-    // Find the corresponding queue record and transition it
     const chatIntent = chat.getIntent(sessionId, msgId, intentIdx);
     if (!chatIntent) return;
     const payload = chatIntent.payload as any;
@@ -123,60 +153,5 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
     }
   });
 
-  /**
-   * Dispatch a user message through scene agents.
-   * Routes to the appropriate scene agent, runs it, and enqueues the produced intents.
-   */
-  async function dispatchToSceneAgents(
-    userMessage: string,
-    targetDocIds?: string[],
-  ): Promise<void> {
-    // Determine target docs
-    const docs = targetDocIds ?? workspace.listDocs().map((d) => d.docId);
-
-    // Build context
-    const schemas: Record<string, Record<string, unknown>> = {};
-    const data: Record<string, Record<string, unknown>> = {};
-    for (const docId of docs) {
-      const schema = workspace.getDocSchema(docId);
-      const docData = workspace.getDocData(docId);
-      if (schema) schemas[docId] = schema;
-      if (docData) data[docId] = docData;
-    }
-
-    // Route to a scene agent
-    const routeResult = await router.route(userMessage);
-
-    if (routeResult.type === "none") return;
-
-    const agentIds =
-      routeResult.type === "matched"
-        ? [routeResult.agentId]
-        : routeResult.candidates;
-
-    for (const agentId of agentIds) {
-      const agent = sceneRegistry.getAgent(agentId);
-      if (!agent) continue;
-
-      const proposals = await agent.handle({
-        schemas,
-        data,
-        userMessage,
-      });
-
-      for (const proposal of proposals) {
-        intentQueue.enqueue({
-          source: agentId,
-          target: {
-            docId: proposal.targetDocId,
-            field: proposal.targetField,
-          },
-          content: proposal.naturalLanguageIntent,
-          trusted: agent.trusted,
-        });
-      }
-    }
-  }
-
-  return { consumer, sceneRegistry, router, dispatchToSceneAgents };
+  return { consumer, sceneRegistry, router };
 }

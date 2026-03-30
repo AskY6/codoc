@@ -5,7 +5,8 @@ export type CodocIntentKind =
   | "create-codoc"
   | "rewrite-codoc"
   | "delete-codoc"
-  | "force-codoc-field";
+  | "force-codoc-field"
+  | "ingest";
 
 export interface WriteFieldPayload {
   docId: string;
@@ -33,12 +34,18 @@ export interface DeleteCodocPayload {
   docId: string;
 }
 
+export interface IngestPayload {
+  skill: string;
+  path: string;
+}
+
 const CODOC_INTENT_KINDS = new Set<string>([
   "write-codoc-field",
   "create-codoc",
   "rewrite-codoc",
   "delete-codoc",
   "force-codoc-field",
+  "ingest",
 ]);
 
 export function isCodocIntent(intent: Intent): boolean {

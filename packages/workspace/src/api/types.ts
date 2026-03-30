@@ -1,4 +1,4 @@
-import type { DataTree, LoaderDeclaration } from "@codoc/core";
+import type { DataTree, LoaderDeclaration, ComponentsMeta, ComponentsBody } from "@codoc/core";
 import type { DAG } from "@codoc/graph";
 
 export interface FieldMeta {
@@ -13,6 +13,10 @@ export interface DocMeta {
   type: Record<string, unknown>;
   fields: FieldMeta[];
   externalRefs: Array<{ localPath: string; docRef: string; fieldPath: string }>;
+  /** Component signatures declared in meta.components */
+  componentsMeta?: ComponentsMeta;
+  /** Component bundle references declared in components */
+  componentsBody?: ComponentsBody;
 }
 
 export interface FieldAddress {

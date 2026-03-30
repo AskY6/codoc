@@ -1,13 +1,17 @@
 import type { Workspace } from "@cobook/workspace";
 import type { ChatAbility, Unsubscribe } from "../chat/index.js";
-import { createCodocContextSourceFactory, createConnectorContextSource } from "./context.js";
-import { executeCodocIntent } from "./intent.js";
+import {
+  createCodocContextSourceFactory,
+  createConnectorContextSource,
+} from "./context.js";
 import { bridgeWorkspaceEvents, bridgeConnectorAuthErrors } from "./events.js";
-import { isCodocIntent } from "./types.js";
 
 export { listCodocResources } from "./resource.js";
-export { serializeCodocForLLM, createCodocContextSource, createConnectorContextSource } from "./context.js";
-export { executeCodocIntent } from "./intent.js";
+export {
+  serializeCodocForLLM,
+  createCodocContextSource,
+  createConnectorContextSource,
+} from "./context.js";
 export { bridgeWorkspaceEvents, bridgeConnectorAuthErrors } from "./events.js";
 export { isCodocIntent } from "./types.js";
 export type {
@@ -17,6 +21,7 @@ export type {
   CreateCodocPayload,
   RewriteCodocPayload,
   DeleteCodocPayload,
+  IngestPayload,
 } from "./types.js";
 
 export function isFieldStale(
@@ -33,42 +38,32 @@ export function isFieldStale(
   }
 }
 
+/**
+ * Register context sources and event bridges for the chat layer.
+ *
+ * This does NOT handle intent execution — that flows through
+ * IntentQueue → IntentQueueConsumer → IntentExecutor.
+ */
 export function initCodocUse(
   workspace: Workspace,
   chat: ChatAbility,
   sessionId: string,
 ): Unsubscribe {
-  // Register codoc-snapshot context source factory
   chat.registerContextSourceFactory(
     sessionId,
     createCodocContextSourceFactory(workspace),
   );
 
-  // Register connector catalog as a static context source
   chat.registerContextSource(sessionId, createConnectorContextSource());
 
-  // Listen for confirmed codoc intents and execute them
-  const unsubIntent = chat.on(
+  const unsubEvents = bridgeWorkspaceEvents(workspace, chat, sessionId);
+  const unsubAuthErrors = bridgeConnectorAuthErrors(
+    workspace,
+    chat,
     sessionId,
-    "onIntentStatusChange",
-    (msgId, idx, status) => {
-      if (status === "confirmed") {
-        const intent = chat.getIntent(sessionId, msgId, idx);
-        if (isCodocIntent(intent)) {
-          executeCodocIntent(workspace, intent);
-        }
-      }
-    },
   );
 
-  // Bridge workspace field change events into chat
-  const unsubEvents = bridgeWorkspaceEvents(workspace, chat, sessionId);
-
-  // Bridge connector auth errors into chat (one-time guidance per connector)
-  const unsubAuthErrors = bridgeConnectorAuthErrors(workspace, chat, sessionId);
-
   return () => {
-    unsubIntent();
     unsubEvents();
     unsubAuthErrors();
   };

@@ -39,6 +39,29 @@ export async function createDoc(docId: string, content: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to create doc: ${res.status}`);
 }
 
+// --- Discover & Ingest API ---
+
+export interface ProjectEntry {
+  name: string;
+  path: string;
+}
+
+export async function fetchProjects(): Promise<ProjectEntry[]> {
+  const res = await fetch("/api/discover");
+  if (!res.ok) throw new Error(`Failed to discover projects: ${res.status}`);
+  return res.json();
+}
+
+export async function ingestProject(path: string): Promise<{ docIds: string[] }> {
+  const res = await fetch("/api/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) throw new Error(`Failed to ingest: ${res.status}`);
+  return res.json();
+}
+
 // --- Connector API ---
 
 export interface ConnectorStatus {

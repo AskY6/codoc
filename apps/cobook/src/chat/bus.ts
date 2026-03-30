@@ -27,6 +27,8 @@ export function findTriggeredParticipants(
 
   for (const p of participants) {
     if (p.kind !== "agent") continue;
+    // Never trigger an agent on its own messages
+    if (message.sender.id === p.id) continue;
 
     const mode = p.responseMode;
 

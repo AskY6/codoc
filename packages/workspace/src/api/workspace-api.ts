@@ -1,13 +1,19 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DataTree } from "@codoc/core";
+import { DataTree, getComponentsMeta, getComponentsBody } from "@codoc/core";
 import { DAG } from "@codoc/graph";
 import { parseCodoc } from "../lifecycle/codoc-factory.js";
 import { DocRegistry, setDocRegistry } from "../lifecycle/instance-store.js";
 import { extractExternalDeps } from "../lifecycle/dep-extractor.js";
 import { wireExternalDeps } from "../lifecycle/manager.js";
 import { buildDAGFromTree } from "../wiring/bootstrap.js";
+import { WatchOrchestrator } from "../watch/orchestrator.js";
+import { ingestDirectory, type IngestResult } from "../skill/ingest.js";
+import type { Skill } from "../skill/types.js";
+import { getSkill, registerSkill } from "../skill/registry.js";
+import { claudeCodeLogSkill } from "../skill/claude-code-log.js";
 import type { CodocFile } from "@codoc/core";
+import { ComponentLibrary } from "../component-library/library.js";
 import type {
   FieldMeta,
   DocMeta,
@@ -26,6 +32,8 @@ export class Workspace {
   private registry = new DocRegistry();
   private changeListeners = new Set<(event: WorkspaceChangeEvent) => void>();
   private docUnsubs = new Map<string, Unsubscribe>();
+  private ingestions: IngestResult[] = [];
+  private componentLibrary = new ComponentLibrary();
 
   private constructor(dir: string) {
     this.dir = dir;
@@ -35,6 +43,8 @@ export class Workspace {
     const ws = new Workspace(dir);
     await ws.scan();
     setDocRegistry(ws.registry);
+    // Register built-in skills
+    registerSkill(claudeCodeLogSkill);
     return ws;
   }
 
@@ -74,8 +84,17 @@ export class Workspace {
     }
 
     const externalRefs = extractExternalDeps(tree);
+    const componentsMeta = getComponentsMeta(codoc);
+    const componentsBody = getComponentsBody(codoc);
 
-    return { docId, type: codoc.type, fields, externalRefs };
+    return {
+      docId,
+      type: codoc.type,
+      fields,
+      externalRefs,
+      componentsMeta: Object.keys(componentsMeta).length > 0 ? componentsMeta : undefined,
+      componentsBody: Object.keys(componentsBody).length > 0 ? componentsBody : undefined,
+    };
   }
 
   // --- Public API ---
@@ -260,7 +279,119 @@ export class Workspace {
     return added;
   }
 
+  /**
+   * Ingest an external directory using a skill.
+   * Scans for matching files, creates codoc instances, starts watchers.
+   * Returns the list of created docIds.
+   */
+  async ingestSkillDirectory(
+    dirPath: string,
+    skill: Skill,
+  ): Promise<string[]> {
+    const orchestrator = new WatchOrchestrator(this.registry);
+
+    // Bridge orchestrator events to workspace change listeners
+    orchestrator.onEvent((event) => {
+      if (event.kind === "source_changed" && event.fieldPath) {
+        const wsEvent: WorkspaceChangeEvent = {
+          docId: event.docId,
+          fieldPath: event.fieldPath,
+          timestamp: Date.now(),
+        };
+        for (const cb of this.changeListeners) {
+          cb(wsEvent);
+        }
+      }
+    });
+
+    const result = await ingestDirectory(
+      dirPath,
+      skill,
+      this.registry,
+      orchestrator,
+    );
+    this.ingestions.push(result);
+
+    // Register ingested docs into the workspace index
+    for (const docId of result.docIds) {
+      const entry = this.registry.get(docId);
+      if (!entry) continue;
+
+      const codoc = skill.mapToCodoc(
+        "", // path not needed for meta extraction
+        docId.replace(/^session-/, "").replace(/\.codoc$/, "") + skill.extension,
+      );
+      this.parsed.set(docId, codoc);
+      this.index.set(docId, this.extractMeta(docId, codoc));
+
+      // Wire change listeners for each field
+      const unsubs: Unsubscribe[] = [];
+      for (const path of entry.tree.getAllPaths()) {
+        const unsub = entry.tree.subscribeField(path, () => {
+          const field = entry.tree.getField(path);
+          if (!field) return;
+          const { status } = field.state;
+          if (status === "resolved" || status === "dirty" || status === "error") {
+            const event: WorkspaceChangeEvent = {
+              docId,
+              fieldPath: path,
+              timestamp: Date.now(),
+            };
+            for (const cb of this.changeListeners) {
+              cb(event);
+            }
+          }
+        });
+        unsubs.push(unsub);
+      }
+      this.docUnsubs.set(docId, () => {
+        for (const u of unsubs) u();
+      });
+    }
+
+    return result.docIds;
+  }
+
+  /**
+   * Ingest a directory using a skill name (resolved from skill registry).
+   */
+  async ingestBySkillName(
+    skillName: string,
+    dirPath: string,
+  ): Promise<string[]> {
+    const skill = getSkill(skillName);
+    if (!skill) {
+      throw new Error(`Unknown skill: "${skillName}". Register it first.`);
+    }
+    return this.ingestSkillDirectory(dirPath, skill);
+  }
+
   getRegistry(): DocRegistry {
     return this.registry;
+  }
+
+  /** Return the JSON Schema (type definition) for a codoc */
+  getDocSchema(docId: string): Record<string, unknown> | undefined {
+    const meta = this.index.get(docId);
+    return meta?.type;
+  }
+
+  /** Return the current data snapshot for a loaded codoc */
+  getDocData(docId: string): Record<string, unknown> | undefined {
+    const entry = this.registry.get(docId);
+    if (!entry) return undefined;
+    const result: Record<string, unknown> = {};
+    for (const path of entry.tree.getAllPaths()) {
+      const field = entry.tree.getField(path);
+      if (field && "value" in field.state) {
+        result[path] = field.state.value;
+      }
+    }
+    return result;
+  }
+
+  /** Get the workspace-level component library */
+  getComponentLibrary(): ComponentLibrary {
+    return this.componentLibrary;
   }
 }

@@ -118,22 +118,33 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
     const emitter = getEmitter(sessionId);
     const busConfig = bus.getConfig();
 
-    if (chainDepth >= busConfig.maxChainDepth) return;
+    if (chainDepth >= busConfig.maxChainDepth) {
+      console.log(`[chat-bus] chain depth ${chainDepth} >= max ${busConfig.maxChainDepth}, skipping`);
+      return;
+    }
 
     const triggered = findTriggeredParticipants(
       message,
       session.participants,
     );
 
+    console.log(
+      `[chat-bus] routeMessage from="${message.sender.id}" content="${message.content.slice(0, 50)}" triggered=[${triggered.join(",")}]`,
+    );
+
     for (const agentId of triggered) {
       // Dedup: same agent + same trigger message
       const dedupKey = `${agentId}:${message.id}`;
-      if (triggeredInChain.has(dedupKey)) continue;
+      if (triggeredInChain.has(dedupKey)) {
+        console.log(`[chat-bus] ${agentId} deduped (key=${dedupKey})`);
+        continue;
+      }
       triggeredInChain.add(dedupKey);
 
       // Cooldown check for daemon agents
       const participant = session.participants.find((p) => p.id === agentId);
       if (participant?.responseMode.type === "daemon" && bus.isOnCooldown(agentId)) {
+        console.log(`[chat-bus] ${agentId} on cooldown, skipping`);
         continue;
       }
 
@@ -279,7 +290,9 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
 
       // Fire-and-forget: route message through bus asynchronously.
       // Agent responses are added to the session as they complete.
-      routeMessage(sessionId, message, 0, new Set());
+      routeMessage(sessionId, message, 0, new Set()).catch((err) => {
+        console.error("[chat-bus] routeMessage error:", err);
+      });
 
       return message;
     },
