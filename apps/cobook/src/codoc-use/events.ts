@@ -4,6 +4,9 @@ import { propagateDirty } from "@codoc/graph";
 import type { ChatAbility, Unsubscribe } from "../chat/index.js";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
+const DEFAULT_COOLDOWN_MS = 30_000;
+const MAX_COOLDOWN_MS = 10 * 60_000; // 10 minutes cap
+const IDLE_RESET_MS = 15 * 60_000;   // reset counter after 15min idle
 
 interface PendingBatch {
   changed: Map<string, Set<string>>; // docId → set of changed fieldPaths
@@ -15,25 +18,76 @@ export function bridgeWorkspaceEvents(
   chat: ChatAbility,
   sessionId: string,
   debounceMs: number = DEFAULT_DEBOUNCE_MS,
+  cooldownMs: number = DEFAULT_COOLDOWN_MS,
 ): Unsubscribe {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let batch: PendingBatch = { changed: new Map(), stale: new Map() };
+  const lastNotified = new Map<string, number>();
+  const notifyCount = new Map<string, number>();
+
+  /** Exponential cooldown: doubles each time, capped at MAX_COOLDOWN_MS. */
+  function effectiveCooldown(key: string, now: number): number {
+    const last = lastNotified.get(key);
+    // Reset counter after long idle period
+    if (last && now - last >= IDLE_RESET_MS) {
+      notifyCount.delete(key);
+    }
+    const count = notifyCount.get(key) ?? 0;
+    if (count === 0) return 0; // first notification goes through immediately
+    return Math.min(cooldownMs * Math.pow(2, count - 1), MAX_COOLDOWN_MS);
+  }
+
+  function recordNotify(key: string, now: number): void {
+    lastNotified.set(key, now);
+    notifyCount.set(key, (notifyCount.get(key) ?? 0) + 1);
+  }
 
   function flush() {
     timer = null;
     const { changed, stale } = batch;
     batch = { changed: new Map(), stale: new Map() };
 
+    const now = Date.now();
+
+    // Filter out fields notified within their cooldown window
+    const filteredChanged = new Map<string, Set<string>>();
+    for (const [docId, fields] of changed) {
+      for (const field of fields) {
+        const key = `${docId}:${field}`;
+        const last = lastNotified.get(key);
+        const cd = effectiveCooldown(key, now);
+        if (!last || now - last >= cd) {
+          if (!filteredChanged.has(docId)) filteredChanged.set(docId, new Set());
+          filteredChanged.get(docId)!.add(field);
+          recordNotify(key, now);
+        }
+      }
+    }
+
+    const filteredStale = new Map<string, Set<string>>();
+    for (const [docId, fields] of stale) {
+      for (const field of fields) {
+        const key = `${docId}:${field}:stale`;
+        const last = lastNotified.get(key);
+        const cd = effectiveCooldown(key, now);
+        if (!last || now - last >= cd) {
+          if (!filteredStale.has(docId)) filteredStale.set(docId, new Set());
+          filteredStale.get(docId)!.add(field);
+          recordNotify(key, now);
+        }
+      }
+    }
+
     // Collect all affected docIds for resourceRefs
-    const docIds = new Set([...changed.keys(), ...stale.keys()]);
+    const docIds = new Set([...filteredChanged.keys(), ...filteredStale.keys()]);
 
     // Build a single consolidated message
     const lines: string[] = [];
-    for (const [docId, fields] of changed) {
+    for (const [docId, fields] of filteredChanged) {
       const paths = [...fields].map((p) => `\`${p}\``).join(", ");
       lines.push(`codoc **${docId}** fields ${paths} changed.`);
     }
-    for (const [docId, fields] of stale) {
+    for (const [docId, fields] of filteredStale) {
       const paths = [...fields].map((p) => `\`${p}\``).join(", ");
       lines.push(`downstream **${docId}** fields ${paths} marked stale.`);
     }

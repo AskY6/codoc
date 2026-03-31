@@ -22,10 +22,6 @@ const assistantParticipant: Participant = {
     { sourceKind: "codoc-snapshot", priority: "optional" },
     { sourceKind: "connector-catalog", priority: "optional", maxTokens: 2000 },
   ],
-  responseMode: {
-    type: "daemon",
-    filter: {},
-  },
 };
 
 // ---------------------------------------------------------------------------
@@ -74,7 +70,9 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
   chat.registerParticipant(sessionId, assistantParticipant);
 
   const handler: AgentHandler = async (context, triggerMessage) => {
-    const routeResult = await router.route(triggerMessage.content);
+    const routeResult = await router.route(triggerMessage.content, {
+      resourceRefs: triggerMessage.resourceRefs,
+    });
     if (routeResult.type === "none") return null;
 
     const agentId =

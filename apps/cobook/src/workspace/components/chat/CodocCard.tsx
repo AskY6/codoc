@@ -93,7 +93,30 @@ export function CodocCard({ docId, defaultExpanded = false }: CodocCardProps) {
   );
 }
 
+function summarizeArray(arr: unknown[]): string {
+  const typeCounts = new Map<string, number>();
+  for (const item of arr) {
+    const t =
+      typeof item === "object" && item !== null && "type" in item
+        ? String((item as Record<string, unknown>).type)
+        : typeof item;
+    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
+  }
+  const parts = [...typeCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => `${type}: ${count}`)
+    .join(", ");
+  return `${arr.length} items (${parts})`;
+}
+
+const LARGE_ARRAY_THRESHOLD = 10;
+
 function FieldRow({ path, field }: { path: string; field: FieldSnapshot }) {
+  const isLargeArray =
+    field.status === "resolved" &&
+    Array.isArray(field.value) &&
+    field.value.length > LARGE_ARRAY_THRESHOLD;
+
   return (
     <div className="flex items-start gap-2 text-xs">
       <div
@@ -105,9 +128,15 @@ function FieldRow({ path, field }: { path: string; field: FieldSnapshot }) {
       <div className="min-w-0 flex-1">
         <span className="font-mono text-muted-foreground">{path}</span>
         {field.status === "resolved" && field.value !== undefined && (
-          <pre className="mt-0.5 text-foreground whitespace-pre-wrap break-words leading-relaxed">
-            {formatValue(field.value)}
-          </pre>
+          isLargeArray ? (
+            <p className="mt-0.5 text-foreground">
+              {summarizeArray(field.value as unknown[])}
+            </p>
+          ) : (
+            <pre className="mt-0.5 text-foreground whitespace-pre-wrap break-words leading-relaxed">
+              {formatValue(field.value)}
+            </pre>
+          )
         )}
         {field.status === "error" && field.error && (
           <p className="mt-0.5 text-destructive">{field.error}</p>
