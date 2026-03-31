@@ -12,7 +12,7 @@ export interface Participant {
   name: string;
   description: string;
   contextRequirements?: ContextRequirement[];
-  responseMode: ResponseMode;
+  responseMode?: ResponseMode;
 }
 
 export interface ResourceRef {

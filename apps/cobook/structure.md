@@ -29,7 +29,7 @@
   ├── chat/                            # Domain-agnostic chat ability (clean, no codoc knowledge)
   │   ├── index.ts                     # createChatAbility(), ChatAbility interface
   │   ├── types.ts                     # Participant, Message, Intent, AgentHandler, ResponseMode...
-  │   ├── bus.ts                       # ChatBus — findTriggeredParticipants, matchesTriggerFilter
+  │   ├── bus.ts                       # HandlerRegistry — agent handler storage
   │   ├── session.ts                   # MessageTree, SessionData, buildMessage
   │   ├── context.ts                   # assembleContext() — matches requirements to sources
   │   └── events.ts                    # SessionEventEmitter

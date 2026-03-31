@@ -1,7 +1,10 @@
-import { ChatBus, findTriggeredParticipants } from "./bus.js";
+import { HandlerRegistry } from "./bus.js";
 import { assembleContext } from "./context.js";
 import { SessionEventEmitter } from "./events.js";
 import { type SessionData, buildMessage, createSession } from "./session.js";
+import { createLogger } from "../shared/logger.js";
+
+const log = createLogger("chat");
 import type {
   AgentHandler,
   ChatEvents,
@@ -23,8 +26,6 @@ export type { ContextRequirement, ContextSource, ContextData } from "./types.js"
 export type { ContextSourceFactory, AgentHandler } from "./types.js";
 export type { SessionConfig, Unsubscribe } from "./types.js";
 export { assembleContext } from "./context.js";
-export { findTriggeredParticipants, matchesTriggerFilter } from "./bus.js";
-export type { BusConfig } from "./bus.js";
 
 export interface ChatAbility {
   createSession(config?: SessionConfig): string;
@@ -75,14 +76,16 @@ export interface ChatAbility {
 let sessionCounter = 0;
 
 export interface ChatAbilityConfig {
-  maxChainDepth?: number;
-  cooldownMs?: number;
+  /** The participant ID that handles all human messages. */
+  handlerId?: string;
 }
 
 export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
   const sessions = new Map<string, SessionData>();
   const emitters = new Map<string, SessionEventEmitter>();
-  const buses = new Map<string, ChatBus>();
+  const registries = new Map<string, HandlerRegistry>();
+
+  const handlerId = config?.handlerId ?? "cobook-assistant";
 
   function getSession(sessionId: string): SessionData {
     const s = sessions.get(sessionId);
@@ -96,109 +99,82 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
     return e;
   }
 
-  function getBus(sessionId: string): ChatBus {
-    const b = buses.get(sessionId);
-    if (!b) throw new Error(`Session not found: ${sessionId}`);
-    return b;
+  function getRegistry(sessionId: string): HandlerRegistry {
+    const r = registries.get(sessionId);
+    if (!r) throw new Error(`Session not found: ${sessionId}`);
+    return r;
   }
 
   /**
-   * Internal: run message through the bus, assembling context and calling
-   * agent handlers. Fires agent replies back into the session recursively
-   * with chain depth tracking.
+   * Internal: dispatch a human message to the registered handler.
+   *
+   * Only human messages are dispatched. Agent replies are stored and
+   * broadcast but never re-routed — agent-to-agent chaining is handled
+   * inside the handler itself (via NLRouter / scene agents).
    */
-  async function routeMessage(
+  async function dispatchToHandler(
     sessionId: string,
     message: Message,
-    chainDepth: number,
-    triggeredInChain: Set<string>,
   ): Promise<void> {
-    const session = getSession(sessionId);
-    const bus = getBus(sessionId);
-    const emitter = getEmitter(sessionId);
-    const busConfig = bus.getConfig();
+    // Only route human messages to the handler
+    if (message.sender.kind !== "human") return;
 
-    if (chainDepth >= busConfig.maxChainDepth) {
-      console.log(`[chat-bus] chain depth ${chainDepth} >= max ${busConfig.maxChainDepth}, skipping`);
+    const session = getSession(sessionId);
+    const registry = getRegistry(sessionId);
+    const emitter = getEmitter(sessionId);
+
+    const handler = registry.get(handlerId);
+    if (!handler) return;
+
+    const participant = session.participants.find((p) => p.id === handlerId);
+
+    // Signal that the handler is thinking
+    emitter.emit("onTypingChange", handlerId, true);
+
+    // Assemble context
+    const requirements = participant?.contextRequirements ?? [];
+    let contextData: ContextData[];
+    try {
+      contextData = await assembleContext(
+        requirements,
+        session.contextSources,
+        session.contextSourceFactories,
+        session.activeResourceRefs,
+      );
+    } catch (err) {
+      log.error("context assembly failed", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      emitter.emit("onTypingChange", handlerId, false);
       return;
     }
 
-    const triggered = findTriggeredParticipants(
-      message,
-      session.participants,
-    );
+    // Call the handler
+    let action: Awaited<ReturnType<AgentHandler>>;
+    try {
+      action = await handler(contextData, message);
+    } catch (handlerErr) {
+      log.error("handler threw", {
+        sessionId,
+        handlerId,
+        error: handlerErr instanceof Error ? handlerErr.message : String(handlerErr),
+      });
+      emitter.emit("onTypingChange", handlerId, false);
+      return;
+    }
 
-    console.log(
-      `[chat-bus] routeMessage from="${message.sender.id}" content="${message.content.slice(0, 50)}" triggered=[${triggered.join(",")}]`,
-    );
+    // Done thinking
+    emitter.emit("onTypingChange", handlerId, false);
 
-    for (const agentId of triggered) {
-      // Dedup: same agent + same trigger message
-      const dedupKey = `${agentId}:${message.id}`;
-      if (triggeredInChain.has(dedupKey)) {
-        console.log(`[chat-bus] ${agentId} deduped (key=${dedupKey})`);
-        continue;
-      }
-      triggeredInChain.add(dedupKey);
+    if (!action) return;
 
-      // Cooldown check for daemon agents
-      const participant = session.participants.find((p) => p.id === agentId);
-      if (participant?.responseMode.type === "daemon" && bus.isOnCooldown(agentId)) {
-        console.log(`[chat-bus] ${agentId} on cooldown, skipping`);
-        continue;
-      }
-
-      const handler = bus.getHandler(agentId);
-      if (!handler) continue;
-
-      // Signal that this agent is thinking
-      emitter.emit("onTypingChange", agentId, true);
-
-      // Assemble context for this agent
-      const requirements = participant?.contextRequirements ?? [];
-      let contextData: ContextData[];
-      try {
-        contextData = await assembleContext(
-          requirements,
-          session.contextSources,
-          session.contextSourceFactories,
-          session.activeResourceRefs,
-        );
-      } catch {
-        emitter.emit("onTypingChange", agentId, false);
-        continue;
-      }
-
-      // Call the agent handler
-      let action: Awaited<ReturnType<AgentHandler>>;
-      try {
-        action = await handler(contextData, message);
-      } catch {
-        emitter.emit("onTypingChange", agentId, false);
-        continue;
-      }
-
-      // Done thinking
-      emitter.emit("onTypingChange", agentId, false);
-
-      if (!action) continue;
-
-      if (action.type === "reply") {
-        bus.recordResponse(agentId);
-        const replyMessage = buildMessage(action.message);
-        const parentId = session.messageTree.getActiveLeafId();
-        session.messageTree.addMessage(replyMessage, parentId);
-        emitter.emit("onMessage", replyMessage);
-
-        // Recurse: agent reply may trigger other agents
-        await routeMessage(
-          sessionId,
-          replyMessage,
-          chainDepth + 1,
-          triggeredInChain,
-        );
-      }
-      // "open-thread" action — deferred to Phase 6
+    if (action.type === "reply") {
+      registry.recordResponse(handlerId);
+      const replyMessage = buildMessage(action.message);
+      const parentId = session.messageTree.getActiveLeafId();
+      session.messageTree.addMessage(replyMessage, parentId);
+      emitter.emit("onMessage", replyMessage);
     }
   }
 
@@ -210,13 +186,7 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
       }
       sessions.set(id, createSession(id));
       emitters.set(id, new SessionEventEmitter());
-      buses.set(
-        id,
-        new ChatBus({
-          maxChainDepth: config?.maxChainDepth,
-          cooldownMs: config?.cooldownMs,
-        }),
-      );
+      registries.set(id, new HandlerRegistry());
       return id;
     },
 
@@ -267,7 +237,7 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
       if (!session.participants.some((p) => p.id === participantId)) {
         throw new Error(`Participant not registered: ${participantId}`);
       }
-      getBus(sessionId).registerHandler(participantId, handler);
+      getRegistry(sessionId).register(participantId, handler);
     },
 
     sendMessage(sessionId: string, msg: NewMessage): Message {
@@ -288,10 +258,14 @@ export function createChatAbility(config?: ChatAbilityConfig): ChatAbility {
       session.messageTree.addMessage(message, parentId);
       getEmitter(sessionId).emit("onMessage", message);
 
-      // Fire-and-forget: route message through bus asynchronously.
+      // Fire-and-forget: dispatch to handler asynchronously.
       // Agent responses are added to the session as they complete.
-      routeMessage(sessionId, message, 0, new Set()).catch((err) => {
-        console.error("[chat-bus] routeMessage error:", err);
+      dispatchToHandler(sessionId, message).catch((err) => {
+        log.error("dispatch failed", {
+          sessionId,
+          messageId: message.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
 
       return message;
