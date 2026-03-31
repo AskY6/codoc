@@ -24,7 +24,9 @@ export interface SceneAgentContext {
   data: Record<string, Record<string, unknown>>;
   /** The user's message or trigger that activated this agent */
   userMessage: string;
-  /** Additional context (chat history, referenced docs, etc.) */
+  /** Recent conversation history (formatted text) */
+  chatHistory: string;
+  /** Additional context (referenced docs, connector catalog, etc.) */
   additionalContext?: string;
 }
 

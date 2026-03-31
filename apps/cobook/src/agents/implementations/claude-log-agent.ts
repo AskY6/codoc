@@ -6,9 +6,12 @@ import type {
   SceneAgentContext,
   SceneAgentResult,
   IntentProposal,
-} from "../scene-agents/types.js";
-import { getClient, getModel } from "../shared/ai.js";
-import { parseIntentBlocks, stripIntentBlocks } from "./utils.js";
+} from "../framework/types.js";
+import { getClient, getModel } from "../../shared/ai.js";
+import { parseIntentBlocks, stripIntentBlocks } from "../utils.js";
+import { createLogger } from "../../shared/logger.js";
+
+const log = createLogger("claude-log");
 
 // ---------------------------------------------------------------------------
 // Claude Code project discovery
@@ -39,8 +42,84 @@ async function findClaudeProjects(): Promise<ProjectEntry[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Ingest handler — no LLM needed, produces structured intent directly
+// Ingest handler — uses LLM to understand project selection from chat context
 // ---------------------------------------------------------------------------
+
+function formatProjectList(projects: ProjectEntry[]): string {
+  return projects
+    .map((p, i) => `${i + 1}. \`${p.name}\` → \`${p.path}\``)
+    .join("\n");
+}
+
+function buildIngestProposals(selected: ProjectEntry[]): {
+  reply: string;
+  proposals: IntentProposal[];
+} {
+  const names = selected.map((p) => `\`${p.name}\``).join(", ");
+  return {
+    reply: `将接入项目 ${names} 的 Claude Code 日志。`,
+    proposals: selected.map((p) => ({
+      targetDocId: p.name,
+      content: `Ingest Claude Code logs from ${p.path}`,
+      payload: {
+        kind: "ingest",
+        payload: { skill: "claude-code-log", path: p.path },
+      },
+    })),
+  };
+}
+
+const SELECTION_SYSTEM = `You are a project selector. Given a numbered list of Claude Code projects and a user message (possibly with conversation history), determine which projects the user wants to select.
+
+Output a JSON array of 1-based indices, e.g. [1, 2, 3].
+- "第3个" or "3" → [3]
+- "前三个" or "first three" → [1, 2, 3]
+- "最后一个" or "last one" → [N] (where N is the total count)
+- "codoc 相关的" → indices of projects whose names contain "codoc"
+- If the user names a specific project by name, return its index.
+
+IMPORTANT: If the user is making a general request like "接入日志" or "接入项目" WITHOUT specifying which project (no name, no number, no filter), return []. This means the system should show the full list for the user to choose from.
+
+Output ONLY the JSON array, nothing else.`;
+
+async function selectProjectsWithLLM(
+  projects: ProjectEntry[],
+  userMessage: string,
+  chatHistory: string,
+): Promise<ProjectEntry[]> {
+  const list = formatProjectList(projects);
+  const historySection = chatHistory
+    ? `\n\nConversation history:\n${chatHistory}`
+    : "";
+
+  const client = getClient();
+  const response = await client.messages.create({
+    model: getModel(),
+    max_tokens: 100,
+    system: SELECTION_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `Projects (${projects.length} total):\n${list}\n\nUser message: "${userMessage}"${historySection}`,
+      },
+    ],
+  });
+
+  const text = response.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("")
+    .trim();
+
+  try {
+    const indices: number[] = JSON.parse(text);
+    return indices
+      .filter((i) => i >= 1 && i <= projects.length)
+      .map((i) => projects[i - 1]);
+  } catch {
+    log.warn("failed to parse selection LLM response", { text });
+    return [];
+  }
+}
 
 async function handleIngest(
   context: SceneAgentContext,
@@ -50,34 +129,30 @@ async function handleIngest(
     return { reply: "未找到 Claude Code 项目目录。", proposals: [] };
   }
 
-  const lower = context.userMessage.toLowerCase();
-  let matched = projects.find((p) => lower.includes(p.name.toLowerCase()));
-  if (!matched && projects.length === 1) {
-    matched = projects[0];
+  // Single project — skip selection
+  if (projects.length === 1) {
+    return buildIngestProposals(projects);
   }
 
-  if (!matched) {
-    const list = projects
-      .map((p) => `- \`${p.name}\` → \`${p.path}\``)
-      .join("\n");
-    return {
-      reply: `找到 ${projects.length} 个 Claude Code 项目，请指定要接入的项目：\n${list}`,
-      proposals: [],
-    };
+  // Use LLM to understand what the user wants to select
+  const selected = await selectProjectsWithLLM(
+    projects,
+    context.userMessage,
+    context.chatHistory,
+  );
+
+  if (selected.length > 0) {
+    log.info("projects selected", {
+      count: selected.length,
+      names: selected.map((p) => p.name),
+    });
+    return buildIngestProposals(selected);
   }
 
+  // No match — show the list for user to pick from
   return {
-    reply: `将接入项目 \`${matched.name}\` 的 Claude Code 日志。`,
-    proposals: [
-      {
-        targetDocId: matched.name,
-        content: `Ingest Claude Code logs from ${matched.path}`,
-        payload: {
-          kind: "ingest",
-          payload: { skill: "claude-code-log", path: matched.path },
-        },
-      },
-    ],
+    reply: `找到 ${projects.length} 个 Claude Code 项目，请指定要接入的项目：\n${formatProjectList(projects)}`,
+    proposals: [],
   };
 }
 
@@ -121,6 +196,7 @@ async function handleAnalysis(
     .join("\n\n");
 
   const sections = [
+    context.chatHistory ? `## Conversation History\n${context.chatHistory}` : "",
     schemaSection ? `## Schemas\n${schemaSection}` : "",
     dataSection ? `## Data\n${dataSection}` : "",
     `## User Request\n${context.userMessage}`,
@@ -170,8 +246,12 @@ export const claudeLogAgent: SceneAgent = {
   trusted: false,
 
   async handle(context: SceneAgentContext): Promise<SceneAgentResult> {
-    return INGEST_KEYWORDS.test(context.userMessage)
-      ? handleIngest(context)
-      : handleAnalysis(context);
+    // Check both current message AND chat history for ingest context.
+    // A follow-up like "选前三个" doesn't contain ingest keywords,
+    // but the history shows we were in the middle of project selection.
+    const isIngestFlow =
+      INGEST_KEYWORDS.test(context.userMessage) ||
+      INGEST_KEYWORDS.test(context.chatHistory);
+    return isIngestFlow ? handleIngest(context) : handleAnalysis(context);
   },
 };

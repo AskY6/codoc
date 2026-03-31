@@ -1,6 +1,6 @@
 import type { SceneAgent } from "./types.js";
 import type { SceneAgentRegistry } from "./registry.js";
-import { getClient, getModel } from "../shared/ai.js";
+import { getClient, getModel } from "../../shared/ai.js";
 
 export interface ResourceRef {
   kind: string;
@@ -10,6 +10,8 @@ export interface ResourceRef {
 
 export interface RouteOptions {
   resourceRefs?: ResourceRef[];
+  /** Recent chat history for context-aware routing */
+  chatHistory?: string;
 }
 
 export type RouteResult =
@@ -20,9 +22,10 @@ export type RouteResult =
 /**
  * NL Router — routes user messages to the most appropriate scene agent.
  *
- * Uses LLM-based classification with agent descriptions as context.
- * Falls back to keyword matching for low-latency cases.
- * Also considers resourceRefs to bias routing when text alone is ambiguous.
+ * Strategy:
+ *   1. Keyword fast path (no LLM cost)
+ *   2. ResourceRef pattern match
+ *   3. LLM fallback with full chat history context
  */
 export class NLRouter {
   private registry: SceneAgentRegistry;
@@ -40,11 +43,10 @@ export class NLRouter {
     const keywordResult = this.keywordMatch(userMessage, activeAgents);
     if (keywordResult.type === "matched") return keywordResult;
 
-    // Use resourceRefs as a routing hint when keywords are ambiguous/none
     const refResult = this.resourceRefMatch(opts?.resourceRefs, activeAgents);
     if (refResult.type === "matched") return refResult;
 
-    return this.llmRoute(userMessage, activeAgents, opts?.resourceRefs);
+    return this.llmRoute(userMessage, activeAgents, opts);
   }
 
   private keywordMatch(message: string, agents: SceneAgent[]): RouteResult {
@@ -89,10 +91,6 @@ export class NLRouter {
     return { type: "none" };
   }
 
-  /**
-   * Match based on resourceRef patterns. Session docs (id starting with
-   * "session-") route to claude-log; other codoc refs route to codoc-agent.
-   */
   private resourceRefMatch(
     refs: ResourceRef[] | undefined,
     agents: SceneAgent[],
@@ -127,26 +125,31 @@ export class NLRouter {
   private async llmRoute(
     message: string,
     agents: SceneAgent[],
-    refs?: ResourceRef[],
+    opts?: RouteOptions,
   ): Promise<RouteResult> {
     const agentList = agents
       .map((a) => `- ${a.id}: ${a.description}`)
       .join("\n");
 
     const refContext =
-      refs && refs.length > 0
-        ? `\n\nAttached resources: ${refs.map((r) => `${r.kind}:${r.id}`).join(", ")}`
+      opts?.resourceRefs && opts.resourceRefs.length > 0
+        ? `\n\nAttached resources: ${opts.resourceRefs.map((r) => `${r.kind}:${r.id}`).join(", ")}`
+        : "";
+
+    const historyContext =
+      opts?.chatHistory
+        ? `\n\nRecent conversation:\n${opts.chatHistory}`
         : "";
 
     const client = getClient();
     const response = await client.messages.create({
       model: getModel(),
       max_tokens: 100,
-      system: `You are a message router. Given a user message and a list of available agents, determine which agent should handle the request. Respond with ONLY the agent ID, or "NONE" if no agent matches, or "AMBIGUOUS:id1,id2" if multiple agents could handle it.`,
+      system: `You are a message router. Given a user message, conversation history, and a list of available agents, determine which agent should handle the request. Consider the conversation context — a follow-up message belongs to the same agent as the previous turn. Respond with ONLY the agent ID, or "NONE" if no agent matches, or "AMBIGUOUS:id1,id2" if multiple agents could handle it.`,
       messages: [
         {
           role: "user",
-          content: `Available agents:\n${agentList}\n\nUser message: "${message}"${refContext}`,
+          content: `Available agents:\n${agentList}\n\nUser message: "${message}"${refContext}${historyContext}`,
         },
       ],
     });

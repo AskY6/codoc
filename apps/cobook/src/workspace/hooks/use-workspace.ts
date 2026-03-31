@@ -5,7 +5,7 @@ import { WorkspaceStore } from "@/workspace/stores/workspace-store";
 import { fetchWorkspace, fetchChatState, fetchConnectorStatuses } from "@/workspace/stores/api-client";
 import type { ConnectorStatus } from "@/workspace/stores/api-client";
 import { getChatStore } from "./use-session";
-import { getIntentQueueStore } from "./use-intent-queue";
+import { getSceneAgentStore } from "./use-scene-agents";
 import type { FieldEvent } from "@/shared/types";
 import type { ChatMessage } from "@/workspace/stores/api-client";
 
@@ -26,7 +26,7 @@ function startSSE(): void {
 
   const es = new EventSource("/api/events");
   const chatStore = getChatStore();
-  const intentQueueStore = getIntentQueueStore();
+  const sceneAgentStore = getSceneAgentStore();
 
   es.addEventListener("field", (e) => {
     try {
@@ -77,37 +77,11 @@ function startSSE(): void {
     } catch { /* ignore malformed */ }
   });
 
-  // Phase 0: Intent queue SSE events
-  es.addEventListener("intent-enqueued", (e) => {
-    try {
-      const record = JSON.parse(e.data);
-      intentQueueStore.addIntent(record);
-    } catch { /* ignore malformed */ }
-  });
-
-  es.addEventListener("intent-status", (e) => {
-    try {
-      const { id, status } = JSON.parse(e.data);
-      intentQueueStore.updateIntentStatus(id, status);
-      // Refresh workspace on executed doc-mutating intents
-      if (status === "executed" || status === "propagated") {
-        fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
-      }
-    } catch { /* ignore malformed */ }
-  });
-
-  es.addEventListener("intent-flags", (e) => {
-    try {
-      const { id, flags } = JSON.parse(e.data);
-      intentQueueStore.updateIntentFlags(id, flags);
-    } catch { /* ignore malformed */ }
-  });
-
-  // Phase 2–3: Scene agent SSE events
+  // Scene agent SSE events
   es.addEventListener("scene-agents", (e) => {
     try {
       const agents = JSON.parse(e.data);
-      intentQueueStore.hydrateSceneAgents(agents);
+      sceneAgentStore.hydrateSceneAgents(agents);
     } catch { /* ignore malformed */ }
   });
 

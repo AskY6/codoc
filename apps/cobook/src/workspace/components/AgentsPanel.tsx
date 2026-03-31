@@ -6,7 +6,7 @@ import {
   activateSceneAgent,
   deactivateSceneAgent,
   setSceneAgentTrust,
-} from "@/workspace/hooks/use-intent-queue";
+} from "@/workspace/hooks/use-scene-agents";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/utils";

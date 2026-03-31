@@ -41,8 +41,8 @@ export function isFieldStale(
 /**
  * Register context sources and event bridges for the chat layer.
  *
- * This does NOT handle intent execution — that flows through
- * IntentQueue → IntentQueueConsumer → IntentExecutor.
+ * This does NOT handle intent execution — that is handled by
+ * the agent system via chat intent confirmation.
  */
 export function initCodocUse(
   workspace: Workspace,

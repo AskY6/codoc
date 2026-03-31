@@ -3,9 +3,9 @@ import type {
   SceneAgentContext,
   SceneAgentResult,
   IntentProposal,
-} from "../scene-agents/types.js";
-import { getClient, getModel } from "../shared/ai.js";
-import { parseIntentBlocks, stripIntentBlocks } from "./utils.js";
+} from "../framework/types.js";
+import { getClient, getModel } from "../../shared/ai.js";
+import { parseIntentBlocks, stripIntentBlocks } from "../utils.js";
 
 const SYSTEM_PROMPT = `You are Codoc, a structured document management agent.
 
@@ -96,6 +96,7 @@ export const codocStructureAgent: SceneAgent = {
       .join("\n\n");
 
     const sections = [
+      context.chatHistory ? `## Conversation History\n${context.chatHistory}` : "",
       schemaSection ? `## Schemas\n${schemaSection}` : "",
       dataSection ? `## Current Data\n${dataSection}` : "",
       `## User Request\n${context.userMessage}`,

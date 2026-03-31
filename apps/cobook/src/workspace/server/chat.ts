@@ -5,7 +5,6 @@ import {
 } from "@/chat/index";
 import { initCodocUse } from "@/codoc-use/index";
 import { initAgentSystem, type AgentSystem } from "@/agents/register";
-import { IntentQueue } from "@/intent-queue/index";
 import { getWorkspace } from "./workspace";
 
 type ChatListener = (msg: Message) => void;
@@ -19,7 +18,6 @@ type TypingListener = (agentId: string, isTyping: boolean) => void;
 const g = globalThis as typeof globalThis & {
   _chat?: ChatAbility;
   _sessionId?: string;
-  _intentQueue?: IntentQueue;
   _agentSystem?: AgentSystem;
   _chatListeners?: Set<ChatListener>;
   _intentListeners?: Set<IntentListener>;
@@ -41,10 +39,8 @@ async function initChat(): Promise<void> {
   // Context sources and event bridges
   initCodocUse(workspace, chat, sessionId);
 
-  // Agent system (single unified path)
-  const intentQueue = new IntentQueue();
-  const agentSystem = initAgentSystem({ workspace, chat, sessionId, intentQueue });
-  g._intentQueue = intentQueue;
+  // Agent system
+  const agentSystem = initAgentSystem({ workspace, chat, sessionId });
   g._agentSystem = agentSystem;
 
   // Subscribe to events for SSE broadcasting
@@ -66,7 +62,11 @@ async function initChat(): Promise<void> {
 
 export async function getChatAbility(): Promise<ChatAbility> {
   if (!g._chatInitPromise) {
-    g._chatInitPromise = initChat();
+    g._chatInitPromise = initChat().catch((err) => {
+      // Allow retry on next call instead of caching a rejected promise
+      g._chatInitPromise = undefined;
+      throw err;
+    });
   }
   await g._chatInitPromise;
   return g._chat!;
@@ -96,11 +96,6 @@ export function onTypingChange(fn: TypingListener): () => void {
   return () => {
     g._typingListeners!.delete(fn);
   };
-}
-
-export async function getIntentQueue(): Promise<IntentQueue> {
-  await getChatAbility();
-  return g._intentQueue!;
 }
 
 export async function getAgentSystem(): Promise<AgentSystem> {
