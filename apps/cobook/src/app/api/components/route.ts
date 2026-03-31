@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 
 /** List all components in the workspace component library. */
 export async function GET() {
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const library = ws.getComponentLibrary();
   const components = library.list().map((c) => ({
     name: c.name,
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const library = ws.getComponentLibrary();
 
   const { parseComponentRef } = await import("@codoc/core");

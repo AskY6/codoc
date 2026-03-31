@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
-import { rescanWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 
 export async function POST(req: Request) {
   let body: { docId: string; content: string };
@@ -36,7 +36,8 @@ export async function POST(req: Request) {
 
   try {
     await writeFile(filePath, content, "utf-8");
-    const added = await rescanWorkspace();
+    const ws = await getSharedWorkspace();
+    const added = await ws.rescan();
     return NextResponse.json({ ok: true, docId, added });
   } catch (e) {
     return NextResponse.json(

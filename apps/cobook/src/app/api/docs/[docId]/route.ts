@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 import { scheduleForce } from "@cobook/workspace";
 import type { DocSnapshot, FieldSnapshot } from "@/shared/types";
 
@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ docId: string }> },
 ) {
   const { docId } = await params;
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const meta = ws.getDocMeta(docId);
   if (!meta) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
@@ -61,4 +61,31 @@ export async function GET(
   };
 
   return NextResponse.json(snapshot);
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ docId: string }> },
+) {
+  const { docId } = await params;
+  let body: { newId: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!body.newId || typeof body.newId !== "string") {
+    return NextResponse.json({ error: "newId is required" }, { status: 400 });
+  }
+
+  const ws = await getSharedWorkspace();
+  try {
+    const meta = await ws.renameDoc(docId, body.newId);
+    return NextResponse.json(meta);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const status = msg.includes("not found") ? 404 : 400;
+    return NextResponse.json({ error: msg }, { status });
+  }
 }

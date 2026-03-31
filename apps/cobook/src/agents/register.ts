@@ -4,6 +4,7 @@ import { SceneAgentRegistry, NLRouter } from "./framework/index.js";
 import type { Participant, AgentHandler } from "../chat/types.js";
 import { formatContextForPrompt } from "./utils.js";
 import { executeIntent } from "./executor.js";
+import { getClient, getModel } from "../shared/ai.js";
 import { codocStructureAgent } from "./implementations/codoc-structure-agent.js";
 import { claudeLogAgent } from "./implementations/claude-log-agent.js";
 import { createLogger } from "../shared/logger.js";
@@ -65,6 +66,24 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
 
   chat.registerParticipant(sessionId, assistantParticipant);
 
+  // Register chat-history context source so agents get conversation context
+  chat.registerContextSource(sessionId, {
+    kind: "chat-history",
+    async resolve() {
+      const messages = chat.getMessages(sessionId);
+      // Skip the last message (the trigger) — it's passed separately
+      const history = messages.slice(0, -1);
+      if (history.length === 0) {
+        return { kind: "chat-history", content: "" };
+      }
+      const lines = history.map((m) => {
+        const role = m.sender.kind === "human" ? "User" : m.sender.id;
+        return `[${role}]: ${m.content}`;
+      });
+      return { kind: "chat-history", content: lines.join("\n") };
+    },
+  });
+
   const handler: AgentHandler = async (context, triggerMessage) => {
     // Split context: chat-history goes to both router and agent;
     // the rest is domain-specific context only for the agent.
@@ -99,7 +118,46 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
       agentId: routeResult.type === "matched" ? routeResult.agentId : undefined,
       refs: triggerMessage.resourceRefs?.map((r) => r.id),
     });
-    if (routeResult.type === "none") return null;
+    if (routeResult.type === "none") {
+      // No scene agent matched — fall back to general-purpose response
+      try {
+        const client = getClient();
+        const response = await client.messages.create({
+          model: getModel(),
+          max_tokens: 1024,
+          system: `You are Cobook Assistant, a helpful workspace assistant. Answer the user's question concisely. If the user writes in Chinese, respond in Chinese.`,
+          messages: [
+            ...(chatHistory
+              ? [{ role: "user" as const, content: `Previous conversation:\n${chatHistory}` },
+                 { role: "assistant" as const, content: "OK, I have the context." }]
+              : []),
+            { role: "user" as const, content: triggerMessage.content },
+          ],
+        });
+        const text = response.content
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("")
+          .trim();
+        return {
+          type: "reply" as const,
+          message: {
+            sender: { id: "cobook-assistant", kind: "agent" as const },
+            content: text || "你好，有什么可以帮你的？",
+          },
+        };
+      } catch (err) {
+        log.error("general reply failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return {
+          type: "reply" as const,
+          message: {
+            sender: { id: "cobook-assistant", kind: "agent" as const },
+            content: "你好，有什么可以帮你的？",
+          },
+        };
+      }
+    }
 
     const agentId =
       routeResult.type === "matched"
@@ -202,12 +260,21 @@ export function initAgentSystem(config: AgentSystemConfig): AgentSystem {
 
   // Execute intents when user confirms in chat
   chat.on(sessionId, "onIntentStatusChange", async (msgId, intentIdx, status) => {
+    log.info("intent status changed", { msgId, intentIdx, status });
     if (status !== "confirmed") return;
     const intent = chat.getIntent(sessionId, msgId, intentIdx);
-    if (!intent) return;
+    if (!intent) {
+      log.warn("intent not found after status change", { msgId, intentIdx });
+      return;
+    }
 
+    log.info("executing intent", { kind: intent.kind, payload: intent.payload });
     try {
       await executeIntent(workspace, intent.kind, intent.payload);
+      log.info("intent executed successfully", {
+        kind: intent.kind,
+        docsCount: workspace.listDocs().length,
+      });
     } catch (err) {
       log.error("intent execution failed", {
         msgId,

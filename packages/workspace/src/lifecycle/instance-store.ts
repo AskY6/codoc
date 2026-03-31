@@ -44,6 +44,39 @@ export class DocRegistry {
     this.docs.delete(docId);
   }
 
+  rename(oldId: string, newId: string): void {
+    const entry = this.docs.get(oldId);
+    if (entry) {
+      this.docs.delete(oldId);
+      this.docs.set(newId, entry);
+    }
+
+    // Re-key consumers map (both keys and values reference docId:fieldPath)
+    const oldPrefix = `${oldId}:`;
+    const newPrefix = `${newId}:`;
+
+    for (const [key, consumers] of [...this.consumers.entries()]) {
+      const newKey = key.startsWith(oldPrefix) ? newPrefix + key.slice(oldPrefix.length) : key;
+      const newConsumers = new Set<string>();
+      for (const c of consumers) {
+        newConsumers.add(c.startsWith(oldPrefix) ? newPrefix + c.slice(oldPrefix.length) : c);
+      }
+      if (newKey !== key) {
+        this.consumers.delete(key);
+      }
+      this.consumers.set(newKey, newConsumers);
+    }
+
+    // Re-key subscriptions
+    for (const [key, unsub] of [...this.subscriptions.entries()]) {
+      const newKey = key.replaceAll(oldPrefix, newPrefix);
+      if (newKey !== key) {
+        this.subscriptions.delete(key);
+        this.subscriptions.set(newKey, unsub);
+      }
+    }
+  }
+
   getAllDocIds(): string[] {
     return [...this.docs.keys()];
   }

@@ -14,6 +14,24 @@ export async function fetchDoc(docId: string): Promise<DocSnapshot> {
   return res.json();
 }
 
+export async function renameDoc(docId: string, newId: string): Promise<void> {
+  const res = await fetch(`/api/docs/${encodeURIComponent(docId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Failed to rename: ${res.status}`);
+  }
+}
+
+export async function fetchDocSource(docId: string): Promise<string> {
+  const res = await fetch(`/api/docs/${encodeURIComponent(docId)}/source`);
+  if (!res.ok) throw new Error(`Failed to fetch source for ${docId}: ${res.status}`);
+  return res.text();
+}
+
 export async function forceDoc(docId: string): Promise<void> {
   const res = await fetch(`/api/docs/${encodeURIComponent(docId)}/force`, {
     method: "POST",

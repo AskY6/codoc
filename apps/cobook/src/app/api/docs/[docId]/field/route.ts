@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 import { propagateAndInvalidate } from "@cobook/workspace";
 import { evictSourceCache } from "@codoc/source";
 import type { FieldAction } from "@/shared/types";
@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ docId: string }> },
 ) {
   const { docId } = await params;
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
 
   let body: FieldAction;
   try {

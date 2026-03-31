@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 
 /**
  * POST /api/ingest
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const skillName = body.skill ?? "claude-code-log";
 
   try {
-    const ws = await getWorkspace();
+    const ws = await getSharedWorkspace();
     const docIds = await ws.ingestBySkillName(skillName, body.path);
     return NextResponse.json({ docIds });
   } catch (e) {

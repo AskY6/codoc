@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 import { checkCompatibility } from "@cobook/workspace";
 
 /**
@@ -26,7 +26,7 @@ export async function POST(
     );
   }
 
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const library = ws.getComponentLibrary();
   const current = library.get(name);
 

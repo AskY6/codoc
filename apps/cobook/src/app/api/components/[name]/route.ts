@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 
 /** Get a single component from the workspace library by name. */
 export async function GET(
@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params;
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const library = ws.getComponentLibrary();
   const component = library.get(name);
 
@@ -31,7 +31,7 @@ export async function DELETE(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params;
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const library = ws.getComponentLibrary();
 
   if (!library.has(name)) {

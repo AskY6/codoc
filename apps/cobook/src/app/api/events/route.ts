@@ -1,13 +1,10 @@
-import { getWorkspace } from "@/workspace/server/workspace";
-import { onChatMessage, onIntentStatusChange, onTypingChange, getChatAbility, getAgentSystem } from "@/workspace/server/chat";
+import { onChatMessage, onIntentStatusChange, onTypingChange, getChatAbility, getAgentSystem, getSharedWorkspace } from "@/workspace/server/chat";
 import { getConnectorCatalog } from "@/workspace/server/connector-catalog";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const ws = await getWorkspace();
-  // Ensure chat is initialized so we can subscribe to events
-  await getChatAbility();
+  const ws = await getSharedWorkspace();
   const { sceneRegistry } = await getAgentSystem();
 
   let cleanup: (() => void) | undefined;

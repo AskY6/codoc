@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { fetchDoc } from "@/workspace/stores/api-client";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { fetchDoc, fetchDocSource, renameDoc } from "@/workspace/stores/api-client";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Button } from "@/shared/ui/button";
-import { X, Loader2, RefreshCw, User, Bot, Wrench, ChevronDown, ChevronRight } from "lucide-react";
+import { X, Loader2, RefreshCw, User, Bot, Wrench, ChevronDown, ChevronRight, Code } from "lucide-react";
 import type { DocSnapshot } from "@/shared/types";
 import { cn } from "@/shared/utils";
 
 interface Props {
   docId: string;
   onClose: () => void;
+  onRenamed?: (oldId: string, newId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,11 +155,18 @@ function ConversationEntry({ entry, index }: { entry: SessionEntry; index: numbe
 // Main component
 // ---------------------------------------------------------------------------
 
-export function SessionDetail({ docId, onClose }: Props) {
+export function SessionDetail({ docId, onClose, onRenamed }: Props) {
   const [snap, setSnap] = useState<DocSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showOther, setShowOther] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  const [source, setSource] = useState<string | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     setLoading(true);
@@ -169,8 +177,48 @@ export function SessionDetail({ docId, onClose }: Props) {
       .finally(() => setLoading(false));
   };
 
+  const toggleSource = () => {
+    if (!showSource && source === null) {
+      setSourceLoading(true);
+      fetchDocSource(docId)
+        .then((s) => { setSource(s); setShowSource(true); })
+        .catch((e) => setError(e.message))
+        .finally(() => setSourceLoading(false));
+    } else {
+      setShowSource((v) => !v);
+    }
+  };
+
+  const startEditing = () => {
+    setEditValue(docId);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const submitRename = async () => {
+    const newId = editValue.trim();
+    if (!newId || newId === docId) {
+      setEditing(false);
+      return;
+    }
+    const finalId = newId.endsWith(".codoc") ? newId : newId + ".codoc";
+    setRenaming(true);
+    try {
+      await renameDoc(docId, finalId);
+      setEditing(false);
+      onRenamed?.(docId, finalId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   useEffect(() => {
     load();
+    setSource(null);
+    setShowSource(false);
+    setEditing(false);
   }, [docId]);
 
   const messagesField = snap?.fields["/messages"];
@@ -197,7 +245,28 @@ export function SessionDetail({ docId, onClose }: Props) {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b flex-shrink-0">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium truncate">{docId}</h3>
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={submitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitRename();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              disabled={renaming}
+              className="text-sm font-medium w-full bg-transparent border-b border-primary outline-none py-0.5"
+            />
+          ) : (
+            <h3
+              className="text-sm font-medium truncate cursor-pointer hover:text-primary transition-colors"
+              onClick={startEditing}
+              title="Click to rename"
+            >
+              {docId}
+            </h3>
+          )}
           {messagesField && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {messagesField.status === "resolved" && Array.isArray(messagesField.value)
@@ -206,6 +275,16 @@ export function SessionDetail({ docId, onClose }: Props) {
             </p>
           )}
         </div>
+        <Button
+          variant={showSource ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={toggleSource}
+          disabled={sourceLoading}
+          title="View source"
+        >
+          {sourceLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Code className="h-3.5 w-3.5" />}
+        </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={load}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -215,7 +294,13 @@ export function SessionDetail({ docId, onClose }: Props) {
       </div>
 
       {/* Body */}
-      {loading ? (
+      {showSource && source !== null ? (
+        <ScrollArea className="flex-1">
+          <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap break-all">
+            {source}
+          </pre>
+        </ScrollArea>
+      ) : loading ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin mr-2" />
           <span className="text-sm">Loading...</span>

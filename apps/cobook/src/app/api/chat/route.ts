@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { getChatAbility, getSessionId } from "@/workspace/server/chat";
+import { getChatAbility, getSessionId, getSharedWorkspace } from "@/workspace/server/chat";
 import { listCodocResources } from "@/codoc-use/index";
-import { getWorkspace } from "@/workspace/server/workspace";
 
 interface ChatRequest {
   content: string;
@@ -31,7 +30,7 @@ export async function GET() {
   const messages = chat.getMessages(sessionId);
   const participants = chat.getParticipants(sessionId);
 
-  const workspace = await getWorkspace();
+  const workspace = await getSharedWorkspace();
   const resources = listCodocResources(workspace);
 
   return NextResponse.json({ messages, participants, resources });

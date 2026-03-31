@@ -16,6 +16,10 @@ export function getStore(): WorkspaceStore {
   return store;
 }
 
+export function refreshWorkspace(): void {
+  fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
+}
+
 // --- SSE connection ---
 
 let sseStarted = false;
@@ -27,6 +31,11 @@ function startSSE(): void {
   const es = new EventSource("/api/events");
   const chatStore = getChatStore();
   const sceneAgentStore = getSceneAgentStore();
+
+  // Wire up workspace rescan when ingest creates new (unknown) docs
+  store.onUnknownDoc = () => {
+    fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
+  };
 
   es.addEventListener("field", (e) => {
     try {
@@ -72,6 +81,12 @@ function startSSE(): void {
             intent.kind === "ingest")
         ) {
           fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
+          // Ingest executes async on server — refetch after delay to catch completion
+          if (intent.kind === "ingest") {
+            setTimeout(() => {
+              fetchWorkspace().then((ws) => store.hydrateWorkspace(ws));
+            }, 1500);
+          }
         }
       }
     } catch { /* ignore malformed */ }

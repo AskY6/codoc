@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getWorkspace } from "@/workspace/server/workspace";
+import { getSharedWorkspace } from "@/workspace/server/chat";
 import type { WorkspaceSnapshot, DocMeta } from "@/shared/types";
 
 export async function GET() {
-  const ws = await getWorkspace();
+  const ws = await getSharedWorkspace();
   const rawDocs = ws.listDocs();
   const graph = ws.getDependencyGraph();
 

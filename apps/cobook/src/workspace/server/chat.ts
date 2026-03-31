@@ -1,3 +1,4 @@
+import type { Workspace } from "@cobook/workspace";
 import {
   createChatAbility,
   type ChatAbility,
@@ -19,6 +20,7 @@ const g = globalThis as typeof globalThis & {
   _chat?: ChatAbility;
   _sessionId?: string;
   _agentSystem?: AgentSystem;
+  _workspace?: Workspace;
   _chatListeners?: Set<ChatListener>;
   _intentListeners?: Set<IntentListener>;
   _typingListeners?: Set<TypingListener>;
@@ -35,6 +37,7 @@ async function initChat(): Promise<void> {
   const chat = createChatAbility();
   const sessionId = chat.createSession({ id: "main" });
   const workspace = await getWorkspace();
+  g._workspace = workspace;
 
   // Context sources and event bridges
   initCodocUse(workspace, chat, sessionId);
@@ -101,4 +104,15 @@ export function onTypingChange(fn: TypingListener): () => void {
 export async function getAgentSystem(): Promise<AgentSystem> {
   await getChatAbility();
   return g._agentSystem!;
+}
+
+/**
+ * Return the workspace used by the chat/agent system.
+ * This guarantees the same instance that handles intents and ingestion,
+ * avoiding issues where Next.js module isolation causes different route
+ * handlers to get separate globalThis._ws singletons.
+ */
+export async function getSharedWorkspace(): Promise<Workspace> {
+  await getChatAbility();
+  return g._workspace!;
 }

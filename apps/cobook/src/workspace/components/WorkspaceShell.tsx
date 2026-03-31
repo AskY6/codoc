@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useWorkspaceInit } from "@/workspace/hooks/use-workspace";
+import { useWorkspaceInit, refreshWorkspace } from "@/workspace/hooks/use-workspace";
 import { useChatReferences, getChatStore } from "@/workspace/hooks/use-session";
 import { addReference, removeReference } from "@/workspace/stores/api-client";
 import { ResourcesPanel } from "./codoc/CodocList";
@@ -41,6 +41,11 @@ export function WorkspaceShell() {
   const handleSelectDoc = useCallback((docId: string) => {
     setSelectedDocId(docId);
     setCenterView("doc");
+  }, []);
+
+  const handleRenamed = useCallback((_oldId: string, newId: string) => {
+    setSelectedDocId(newId);
+    refreshWorkspace();
   }, []);
 
   // DagGraphView still uses the old callback interface for reference toggling
@@ -210,6 +215,7 @@ export function WorkspaceShell() {
                 setSelectedDocId(null);
                 setCenterView("chat");
               }}
+              onRenamed={handleRenamed}
             />
           ) : centerView === "graph" ? (
             <DagGraphView
