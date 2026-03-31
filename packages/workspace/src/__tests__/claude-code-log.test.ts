@@ -45,8 +45,8 @@ describe("Claude Code Log — full flow", () => {
       "aaa.jsonl",
     );
 
-    expect(codoc.type).toBeDefined();
-    expect(codoc.type.properties).toHaveProperty("messages");
+    expect(codoc.meta.data).toBeDefined();
+    expect(codoc.meta.data.properties).toHaveProperty("messages");
     expect(codoc.data).toHaveProperty("messages");
     expect(codoc.view).toContain("Session");
 

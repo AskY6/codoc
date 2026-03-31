@@ -14,7 +14,7 @@ export function serializeCodocForLLM(
 
   lines.push("Schema:");
   lines.push("```json");
-  lines.push(JSON.stringify(meta.type, null, 2));
+  lines.push(JSON.stringify(meta.schema, null, 2));
   lines.push("```");
 
   lines.push("Current values:");

@@ -5,13 +5,8 @@ import { parseComponentRef } from "@codoc/core";
 /**
  * Parse a .codoc YAML file into a CodocFile.
  *
- * Supports both the legacy format:
- *   { type, data, view }
- *
- * And the new meta format:
- *   { meta: { data, components, view }, data, components, view }
- *
- * In both cases, `type` is always populated for backward compatibility.
+ * Expected format:
+ *   { meta: { data, components?, view? }, data, components?, view }
  */
 export function parseCodoc(source: string): CodocFile {
   const doc = YAML.parse(source);
@@ -21,12 +16,10 @@ export function parseCodoc(source: string): CodocFile {
 
   const raw = doc as Record<string, unknown>;
   const meta = raw["meta"] as Record<string, unknown> | undefined;
-  const legacyType = raw["type"] as Record<string, unknown> | undefined;
 
-  // Resolve the data schema: prefer meta.data, fall back to top-level type
-  const dataSchema = (meta?.["data"] as Record<string, unknown>) ?? legacyType;
+  const dataSchema = meta?.["data"] as Record<string, unknown> | undefined;
   if (!dataSchema || typeof dataSchema !== "object") {
-    throw new Error(".codoc file missing schema: need either 'meta.data' or 'type' section (JSON Schema)");
+    throw new Error(".codoc file missing 'meta.data' section (JSON Schema)");
   }
 
   const data = raw["data"];
@@ -39,18 +32,15 @@ export function parseCodoc(source: string): CodocFile {
     throw new Error(".codoc file missing 'view' section (MDX template)");
   }
 
-  // Build normalized meta
   const codocMeta: CodocMeta = {
     data: dataSchema,
     components: parseComponentsMeta(meta?.["components"]),
     view: meta?.["view"],
   };
 
-  // Parse components body (bundle references)
   const componentsBody = parseComponentsBody(raw["components"]);
 
   return {
-    type: dataSchema,
     meta: codocMeta,
     data: data as Record<string, unknown>,
     components: componentsBody,
@@ -60,7 +50,6 @@ export function parseCodoc(source: string): CodocFile {
 
 function parseComponentsMeta(raw: unknown): CodocMeta["components"] {
   if (!raw || typeof raw !== "object") return undefined;
-  // Already in the right shape: Record<string, { props, description }>
   return raw as CodocMeta["components"];
 }
 
@@ -73,4 +62,17 @@ function parseComponentsBody(raw: unknown): ComponentsBody | undefined {
     }
   }
   return result;
+}
+
+/** Serialize a CodocFile back to YAML source. */
+export function serializeCodoc(codoc: CodocFile): string {
+  const doc: Record<string, unknown> = {
+    meta: codoc.meta,
+    data: codoc.data,
+    view: codoc.view,
+  };
+  if (codoc.components && Object.keys(codoc.components).length > 0) {
+    doc.components = codoc.components;
+  }
+  return YAML.stringify(doc);
 }

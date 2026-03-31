@@ -1,8 +1,8 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, access, rename as fsRename } from "node:fs/promises";
 import { join } from "node:path";
 import { DataTree, getComponentsMeta, getComponentsBody } from "@codoc/core";
 import { DAG } from "@codoc/graph";
-import { parseCodoc } from "../lifecycle/codoc-factory.js";
+import { parseCodoc, serializeCodoc } from "../lifecycle/codoc-factory.js";
 import { DocRegistry, setDocRegistry } from "../lifecycle/instance-store.js";
 import { extractExternalDeps } from "../lifecycle/dep-extractor.js";
 import { wireExternalDeps } from "../lifecycle/manager.js";
@@ -66,7 +66,7 @@ export class Workspace {
   }
 
   private extractMeta(docId: string, codoc: CodocFile): DocMeta {
-    const tree = new DataTree({ type: codoc.type, data: codoc.data });
+    const tree = new DataTree({ schema: codoc.meta.data, data: codoc.data });
     const fields: FieldMeta[] = [];
 
     for (const path of tree.getAllPaths()) {
@@ -89,7 +89,7 @@ export class Workspace {
 
     return {
       docId,
-      type: codoc.type,
+      schema: codoc.meta.data,
       fields,
       externalRefs,
       componentsMeta: Object.keys(componentsMeta).length > 0 ? componentsMeta : undefined,
@@ -109,6 +109,20 @@ export class Workspace {
 
   getRawDoc(docId: string): CodocFile | undefined {
     return this.parsed.get(docId);
+  }
+
+  async getRawSource(docId: string): Promise<string | undefined> {
+    if (!this.parsed.has(docId)) return undefined;
+    const filepath = join(this.dir, docId);
+    try {
+      await access(filepath);
+      return await readFile(filepath, "utf-8");
+    } catch {
+      // Ingested/in-memory doc — serialize from parsed CodocFile
+      const codoc = this.parsed.get(docId);
+      if (!codoc) return undefined;
+      return serializeCodoc(codoc);
+    }
   }
 
   getDependencyGraph(): { nodes: FieldAddress[]; edges: DepEdge[] } {
@@ -141,7 +155,7 @@ export class Workspace {
     }
 
     for (const [docId, codoc] of this.parsed) {
-      const tree = new DataTree({ type: codoc.type, data: codoc.data });
+      const tree = new DataTree({ schema: codoc.meta.data, data: codoc.data });
       const dag = buildDAGFromTree(tree);
       for (const nodePath of dag.getNodes()) {
         for (const depPath of dag.getDirectDeps(nodePath)) {
@@ -165,7 +179,7 @@ export class Workspace {
       throw new Error(`Document not found in workspace: "${docId}"`);
     }
 
-    const tree = new DataTree({ type: codoc.type, data: codoc.data });
+    const tree = new DataTree({ schema: codoc.meta.data, data: codoc.data });
     const dag = buildDAGFromTree(tree);
     this.registry.register(docId, tree, dag);
 
@@ -254,6 +268,50 @@ export class Workspace {
     this.parsed.set(docId, codoc);
     const meta = this.extractMeta(docId, codoc);
     this.index.set(docId, meta);
+    return meta;
+  }
+
+  async renameDoc(oldId: string, newId: string): Promise<DocMeta> {
+    if (!this.index.has(oldId)) {
+      throw new Error(`Document not found: "${oldId}"`);
+    }
+    if (!newId.endsWith(".codoc")) {
+      throw new Error(`Invalid docId: must end with .codoc`);
+    }
+    if (newId.includes("/") || newId.includes("\\") || newId.includes("..")) {
+      throw new Error(`Invalid docId: must not contain path separators`);
+    }
+    if (this.index.has(newId)) {
+      throw new Error(`Document already exists: "${newId}"`);
+    }
+
+    // Re-key in-memory maps
+    const codoc = this.parsed.get(oldId)!;
+    this.parsed.delete(oldId);
+    this.parsed.set(newId, codoc);
+
+    this.index.delete(oldId);
+    const meta = this.extractMeta(newId, codoc);
+    this.index.set(newId, meta);
+
+    // Re-key registry (loaded docs)
+    this.registry.rename(oldId, newId);
+
+    // Re-key unsubs
+    const unsub = this.docUnsubs.get(oldId);
+    if (unsub) {
+      this.docUnsubs.delete(oldId);
+      this.docUnsubs.set(newId, unsub);
+    }
+
+    // Rename on disk if file exists
+    try {
+      await access(join(this.dir, oldId));
+      await fsRename(join(this.dir, oldId), join(this.dir, newId));
+    } catch {
+      // In-memory only doc (ingested), no disk rename needed
+    }
+
     return meta;
   }
 
@@ -373,7 +431,7 @@ export class Workspace {
   /** Return the JSON Schema (type definition) for a codoc */
   getDocSchema(docId: string): Record<string, unknown> | undefined {
     const meta = this.index.get(docId);
-    return meta?.type;
+    return meta?.schema;
   }
 
   /** Return the current data snapshot for a loaded codoc */

@@ -48,7 +48,7 @@ export async function ingestDirectory(
     const docId = toDocId(entry.name);
     const codoc = skill.mapToCodoc(entry.path, entry.name);
 
-    const tree = new DataTree({ type: codoc.type, data: codoc.data });
+    const tree = new DataTree({ schema: codoc.meta.data, data: codoc.data });
     const dag = buildDAGFromTree(tree);
     registry.register(docId, tree, dag);
     docIds.push(docId);
@@ -74,7 +74,7 @@ export async function ingestDirectory(
           if (registry.has(docId)) continue;
 
           const codoc = skill.mapToCodoc(filePath, event.name);
-          const tree = new DataTree({ type: codoc.type, data: codoc.data });
+          const tree = new DataTree({ schema: codoc.meta.data, data: codoc.data });
           const dag = buildDAGFromTree(tree);
           registry.register(docId, tree, dag);
           docIds.push(docId);

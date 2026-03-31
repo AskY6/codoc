@@ -19,10 +19,8 @@ export type {
   LLMClient,
 } from "./model/codoc.js";
 export {
-  getDataSchema,
   getComponentsMeta,
   getComponentsBody,
-  normalizeCodocFile,
 } from "./model/codoc.js";
 
 // Model — component types

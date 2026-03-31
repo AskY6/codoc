@@ -62,7 +62,7 @@ export class DataTree {
 
   constructor(definition: CodataDefinition) {
     this.definition = definition;
-    this.buildFields(definition.data, definition.type, []);
+    this.buildFields(definition.data, definition.schema, []);
   }
 
   /**

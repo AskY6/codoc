@@ -10,7 +10,7 @@ export interface FieldMeta {
 
 export interface DocMeta {
   docId: string;
-  type: Record<string, unknown>;
+  schema: Record<string, unknown>;
   fields: FieldMeta[];
   externalRefs: Array<{ localPath: string; docRef: string; fieldPath: string }>;
   /** Component signatures declared in meta.components */

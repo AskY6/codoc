@@ -29,7 +29,6 @@ export const claudeCodeLogSkill: Skill = {
     const sessionId = fileName.replace(/\.jsonl$/, "");
 
     return {
-      type: sessionLogSchema,
       meta: {
         data: sessionLogSchema,
       },
