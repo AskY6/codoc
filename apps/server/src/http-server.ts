@@ -180,6 +180,7 @@ async function handleApiRequest(
 
 async function buildCodocDocument(service: CobookService, codocId: string) {
   const codoc = await service.readCodoc(codocId);
+  const workspace = await service.getWorkspace();
   const diagnostics = await service.diagnostics();
   const resolvedData = codoc.data ? (await service.resolve(`${codocId}:data`)).value : null;
   const resolvedView = codoc.view ? (await service.resolve(`${codocId}:view`)).value : null;
@@ -191,7 +192,10 @@ async function buildCodocDocument(service: CobookService, codocId: string) {
     renderedView: renderResolvedView({
       view: resolvedView,
       data: resolvedData,
-      ...(codoc.component ? { components: codoc.component } : {})
+      components: {
+        ...workspace.componentRegistry,
+        ...(codoc.component ?? {})
+      }
     }),
     nodeStates: diagnostics.nodes.filter((entry) => entry.node.codocId === codocId)
   };

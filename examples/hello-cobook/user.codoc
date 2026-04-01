@@ -17,11 +17,6 @@ data:
     value: "Ada"
   role: "editor"
 
-component:
-  profileHero:
-    $source: local
-    path: "panels/hero-card"
-
 view:
   type: stack
   children:

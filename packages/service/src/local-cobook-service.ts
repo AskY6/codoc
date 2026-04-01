@@ -61,6 +61,7 @@ export class LocalCobookService implements CobookService {
       root: workspace.root,
       config: workspace.config,
       codocs: workspace.codocs,
+      componentRegistry: workspace.componentRegistry,
       dag,
       runtime: createRuntimeContext(),
       sourceExecutor,

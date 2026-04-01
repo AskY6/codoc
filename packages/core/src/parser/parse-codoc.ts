@@ -38,6 +38,19 @@ export function parseCodocText(filePath: string, text: string): ParsedCodoc {
   };
 }
 
+export function parseComponentRegistryText(
+  filePath: string,
+  text: string
+): Record<string, ComponentSpec> {
+  const parsed = parseYaml(text);
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Component registry at "${filePath}" must parse to an object.`);
+  }
+
+  return parseComponentSection(parsed, filePath) ?? {};
+}
+
 function parseMeta(input: unknown, filePath: string): CodocMeta | undefined {
   if (input === undefined) {
     return undefined;

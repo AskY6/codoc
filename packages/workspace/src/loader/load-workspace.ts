@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { parseCodocText, type ParsedCodoc } from "@cobook/core";
+import {
+  parseCodocText,
+  parseComponentRegistryText,
+  type ComponentSpec,
+  type ParsedCodoc
+} from "@cobook/core";
 
 import { loadCobookConfig } from "../config/load-cobook-config.js";
 import { scanCodocFiles } from "../scanner/scan-codoc-files.js";
@@ -12,6 +17,7 @@ export async function loadWorkspace(root: string): Promise<LoadedWorkspace> {
   const config = await loadCobookConfig(root);
   const codocPaths = await scanCodocFiles(root, config);
   const codocs = new Map<string, ParsedCodoc>();
+  const componentRegistry = await loadComponentRegistry(root, config);
 
   for (const relativePath of codocPaths) {
     const raw = await readFile(join(root, relativePath), "utf8");
@@ -27,7 +33,8 @@ export async function loadWorkspace(root: string): Promise<LoadedWorkspace> {
   return {
     root,
     config,
-    codocs
+    codocs,
+    componentRegistry
   };
 }
 
@@ -45,6 +52,20 @@ export function toWorkspaceSnapshot(workspace: LoadedWorkspace): WorkspaceSnapsh
   return {
     root: workspace.root,
     config: workspace.config,
-    codocs: Array.from(workspace.codocs.values()).map(summarizeCodoc)
+    codocs: Array.from(workspace.codocs.values()).map(summarizeCodoc),
+    componentRegistry: workspace.componentRegistry
   };
+}
+
+async function loadComponentRegistry(
+  root: string,
+  config: LoadedWorkspace["config"]
+): Promise<Record<string, ComponentSpec>> {
+  if (!config.components?.$ref) {
+    return {};
+  }
+
+  const filePath = config.components.$ref.replace(/^\.\//, "");
+  const raw = await readFile(join(root, filePath), "utf8");
+  return parseComponentRegistryText(filePath, raw);
 }

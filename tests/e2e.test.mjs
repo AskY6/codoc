@@ -713,6 +713,16 @@ test("http web experience end-to-end", async (t) => {
     })
   );
   assert.equal(workspaceSnapshot.config.name, "hello-cobook");
+  assert.deepEqual(workspaceSnapshot.componentRegistry, {
+    hero: {
+      kind: "builtin",
+      name: "hero"
+    },
+    profileHero: {
+      kind: "local",
+      path: "panels/hero-card"
+    }
+  });
 
   const codocs = parseJsonBody(
     await http.request({

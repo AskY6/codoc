@@ -1,6 +1,8 @@
 cobook: "0.1"
 name: hello-cobook
 entry: ./dashboard.codoc
+components:
+  $ref: ./components.yaml
 
 include:
   - "**/*.codoc"
