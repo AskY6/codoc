@@ -4,8 +4,9 @@ import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile, cp } from "n
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { PassThrough } from "node:stream";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(__dirname);
@@ -180,6 +181,98 @@ test("stdio transport end-to-end", async (t) => {
   });
 });
 
+test("http web experience end-to-end", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-");
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+    await http.close();
+  });
+
+  const pageResponse = await http.request({
+    method: "GET",
+    url: "/"
+  });
+  assert.equal(pageResponse.statusCode, 200);
+  assert.match(pageResponse.text, /Workspace Console/);
+
+  const workspaceSnapshot = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/workspace"
+    })
+  );
+  assert.equal(workspaceSnapshot.config.name, "hello-cobook");
+
+  const codocs = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs"
+    })
+  );
+  assert.deepEqual(
+    codocs.map((codoc) => codoc.id),
+    ["dashboard", "user"]
+  );
+
+  const dashboardDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/dashboard/document"
+    })
+  );
+  assert.equal(dashboardDocument.codoc.id, "dashboard");
+  assert.deepEqual(dashboardDocument.resolvedData, {
+    currentUser: {
+      name: "Ada",
+      role: "editor"
+    }
+  });
+
+  const chatResult = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message:
+          "create note codoc web-note at notes/web-note.codoc about Validate web experience"
+      })
+    })
+  );
+  assert.ok(chatResult.events.some((event) => event.kind === "artifact"));
+
+  const webNoteDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/web-note/document"
+    })
+  );
+  assert.deepEqual(webNoteDocument.resolvedData, {
+    title: "Web Note",
+    summary: "Validate web experience"
+  });
+
+  const eventStream = await http.openEventStream("/api/events");
+  const eventPromise = eventStream.nextEvent();
+  await sleep(800);
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  await writeFile(userCodocPath, originalUserCodoc.replace("Ada", "Grace"), "utf8");
+
+  const workspaceEvent = await eventPromise;
+  await eventStream.close();
+  assert.deepEqual(workspaceEvent.change, {
+    kind: "updated",
+    path: "user.codoc"
+  });
+  assert.equal(workspaceEvent.build.success, true);
+});
+
 test("watch rebuilds after workspace change", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-watch-");
@@ -250,7 +343,8 @@ async function buildRuntime() {
 
   return {
     dir: runtimeDir,
-    cliPath: join(runtimeDir, "apps", "cli", "src", "main.js")
+    cliPath: join(runtimeDir, "apps", "cli", "src", "main.js"),
+    serverPath: join(runtimeDir, "apps", "server", "src", "main.js")
   };
 }
 
@@ -350,6 +444,15 @@ function parseJsonOutput(output) {
   return JSON.parse(output.trim());
 }
 
+function parseJsonBody(response) {
+  assert.equal(
+    response.statusCode >= 200 && response.statusCode < 300,
+    true,
+    `HTTP handler returned ${response.statusCode}: ${response.text}`
+  );
+  return JSON.parse(response.text);
+}
+
 async function cleanup(runtime, workspace) {
   await Promise.all([
     runtime ? rm(runtime.dir, { recursive: true, force: true }) : Promise.resolve(),
@@ -361,4 +464,174 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function createHttpHarness(runtime, workspace) {
+  const { createAppService } = await import(
+    pathToFileURL(join(runtime.dir, "apps", "server", "src", "create-service.js")).href
+  );
+  const { createHttpRequestHandler } = await import(
+    pathToFileURL(join(runtime.dir, "apps", "server", "src", "http-server.js")).href
+  );
+
+  const service = createAppService();
+  await service.openWorkspace(workspace);
+  const handler = createHttpRequestHandler(service, join(repoRoot, "apps", "web", "public"));
+
+  return {
+    async request({ method, url, headers, body }) {
+      return invokeHttpHandler(handler, {
+        method,
+        url,
+        headers,
+        body
+      });
+    },
+    async openEventStream(url) {
+      return openEventStream(handler, url);
+    },
+    async close() {
+      return Promise.resolve();
+    }
+  };
+}
+
+async function invokeHttpHandler(handler, { method, url, headers, body }) {
+  const request = createMockRequest({
+    method,
+    url,
+    headers,
+    body
+  });
+  const response = createMockResponse();
+  const finished = response.finished();
+
+  handler(request, response);
+  request.end(body ?? "");
+  await finished;
+
+  return {
+    statusCode: response.statusCode,
+    headers: response.headers,
+    text: response.body
+  };
+}
+
+async function openEventStream(handler, url) {
+  const request = createMockRequest({
+    method: "GET",
+    url
+  });
+  const response = createMockResponse({
+    stream: true
+  });
+
+  handler(request, response);
+  request.end();
+
+  return {
+    nextEvent() {
+      return response.waitForEvent();
+    },
+    async close() {
+      request.emit("close");
+      response.end();
+    }
+  };
+}
+
+function createMockRequest({ method, url, headers, body }) {
+  const request = new PassThrough();
+  request.method = method;
+  request.url = url;
+  request.headers = headers ?? {};
+  return request;
+}
+
+function createMockResponse(options = {}) {
+  const stream = new PassThrough();
+  stream.setEncoding("utf8");
+  stream.statusCode = 200;
+  stream.headers = {};
+  stream.body = "";
+  let chunkBuffer = "";
+
+  stream.writeHead = (statusCode, headers = {}) => {
+    stream.statusCode = statusCode;
+    stream.headers = {
+      ...stream.headers,
+      ...headers
+    };
+    return stream;
+  };
+
+  const originalWrite = stream.write.bind(stream);
+  stream.write = (chunk, encoding, callback) => {
+    const text = bufferToString(chunk);
+    stream.body += text;
+    chunkBuffer += text;
+    stream.emit("chunk", text);
+    return originalWrite(chunk, encoding, callback);
+  };
+
+  const originalEnd = stream.end.bind(stream);
+  stream.end = (chunk, encoding, callback) => {
+    let resolvedEncoding = encoding;
+    let resolvedCallback = callback;
+
+    if (typeof resolvedEncoding === "function") {
+      resolvedCallback = resolvedEncoding;
+      resolvedEncoding = undefined;
+    }
+
+    if (chunk !== undefined && chunk !== null) {
+      stream.write(chunk, resolvedEncoding);
+      return originalEnd(undefined, undefined, resolvedCallback);
+    }
+
+    return originalEnd(undefined, undefined, resolvedCallback);
+  };
+
+  stream.finished = () =>
+    new Promise((resolve) => {
+      stream.once("finish", resolve);
+    });
+
+  stream.waitForEvent = () =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timed out waiting for SSE payload.\nBody so far:\n${stream.body}`));
+      }, 8000);
+
+      const onChunk = () => {
+        const match = chunkBuffer.match(/data:\s*(\{.*\})/);
+        if (!match?.[1]) {
+          return;
+        }
+
+        cleanup();
+        resolve(JSON.parse(match[1]));
+      };
+
+      const onFinish = () => {
+        cleanup();
+        reject(new Error(`SSE stream finished before event arrived.\nBody so far:\n${stream.body}`));
+      };
+
+      function cleanup() {
+        clearTimeout(timer);
+        stream.off("chunk", onChunk);
+        stream.off("finish", onFinish);
+      }
+
+      stream.on("chunk", onChunk);
+      stream.on("finish", onFinish);
+    });
+
+  return stream;
+}
+
+function bufferToString(chunk) {
+  return typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
 }

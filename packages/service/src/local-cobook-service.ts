@@ -227,13 +227,26 @@ export class LocalCobookService implements CobookService {
     };
   }
 
-  async *watch(): AsyncIterable<WorkspaceWatchEvent> {
+  async *watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
     const session = requireSession(this.#session);
     const queue: WorkspaceWatchEvent[] = [];
     let wake: (() => void) | null = null;
     let watchError: Error | null = null;
+    let stopped = signal?.aborted ?? false;
+
+    const onAbort = () => {
+      stopped = true;
+      wake?.();
+    };
+    signal?.addEventListener("abort", onAbort, {
+      once: true
+    });
 
     const watcher = await watchWorkspace(session.root, session.config, async (change) => {
+      if (stopped) {
+        return;
+      }
+
       try {
         const build = await this.applyWorkspaceChange(change);
         queue.push({
@@ -248,7 +261,7 @@ export class LocalCobookService implements CobookService {
     });
 
     try {
-      while (true) {
+      while (!stopped) {
         if (queue.length === 0) {
           if (watchError) {
             throw watchError;
@@ -258,6 +271,9 @@ export class LocalCobookService implements CobookService {
             wake = resolve;
           });
           wake = null;
+          if (stopped) {
+            break;
+          }
           if (watchError) {
             throw watchError;
           }
@@ -271,6 +287,7 @@ export class LocalCobookService implements CobookService {
         }
       }
     } finally {
+      signal?.removeEventListener("abort", onAbort);
       watcher.close();
     }
   }

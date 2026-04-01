@@ -82,7 +82,7 @@ export class RpcCobookService implements CobookService {
     return this.send("diagnostics");
   }
 
-  async *watch(): AsyncIterable<WorkspaceWatchEvent> {
+  async *watch(_signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
     throw new Error("RPC watch transport is not implemented yet.");
   }
 

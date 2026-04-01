@@ -59,7 +59,7 @@ export interface CobookService {
   resolve(node: string, opts?: ResolveOptions): Promise<ResolvedValue>;
   graph(): Promise<GraphSnapshot>;
   diagnostics(): Promise<WorkspaceDiagnostics>;
-  watch(): AsyncIterable<WorkspaceWatchEvent>;
+  watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent>;
   chat(input: ChatInput): AsyncIterable<ChatEvent>;
 }
 
