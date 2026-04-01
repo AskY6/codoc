@@ -261,6 +261,148 @@ test("rpc server manages multi-workspace session lifecycles", async (t) => {
   await Promise.all([clientA3.closeWorkspace(), clientB.closeWorkspace()]);
 });
 
+test("rpc server serializes concurrent workspace mutations", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-concurrent-writes-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const serviceModule = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+  const {
+    LocalCobookService,
+    RpcCobookService,
+    createCobookRpcServer,
+    createLoopbackServiceTransport
+  } = serviceModule;
+
+  let activeWrites = 0;
+  let maxActiveWrites = 0;
+
+  class InstrumentedLocalCobookService extends LocalCobookService {
+    async writeCodoc(input) {
+      activeWrites += 1;
+      maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+      await sleep(50);
+
+      try {
+        return await super.writeCodoc(input);
+      } finally {
+        activeWrites -= 1;
+      }
+    }
+  }
+
+  const server = createCobookRpcServer({
+    createService: () => new InstrumentedLocalCobookService()
+  });
+  const clientA = new RpcCobookService(createLoopbackServiceTransport(server));
+  const clientB = new RpcCobookService(createLoopbackServiceTransport(server));
+
+  await clientA.openWorkspace(workspace);
+  await clientB.openWorkspace(workspace);
+
+  await Promise.all([
+    clientA.writeCodoc({
+      codocId: "note-a",
+      filePath: "notes/note-a.codoc",
+      content: createNoteCodoc("note-a", "Note A", "Created by client A")
+    }),
+    clientB.writeCodoc({
+      codocId: "note-b",
+      filePath: "notes/note-b.codoc",
+      content: createNoteCodoc("note-b", "Note B", "Created by client B")
+    })
+  ]);
+
+  assert.equal(maxActiveWrites, 1);
+
+  const codocs = await clientA.listCodocs();
+  assert.ok(codocs.some((codoc) => codoc.id === "note-a"));
+  assert.ok(codocs.some((codoc) => codoc.id === "note-b"));
+
+  await Promise.all([clientA.closeWorkspace(), clientB.closeWorkspace()]);
+});
+
+test("rpc server shares workspace watch streams across clients", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-shared-watch-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const serviceModule = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+  const {
+    LocalCobookService,
+    RpcCobookService,
+    createCobookRpcServer,
+    createLoopbackServiceTransport
+  } = serviceModule;
+
+  let watchStarts = 0;
+
+  class InstrumentedLocalCobookService extends LocalCobookService {
+    async *watch(signal) {
+      watchStarts += 1;
+      yield* super.watch(signal);
+    }
+  }
+
+  const server = createCobookRpcServer({
+    createService: () => new InstrumentedLocalCobookService()
+  });
+  const clientA = new RpcCobookService(createLoopbackServiceTransport(server));
+  const clientB = new RpcCobookService(createLoopbackServiceTransport(server));
+
+  await clientA.openWorkspace(workspace);
+  await clientB.openWorkspace(workspace);
+
+  const watchAController = new AbortController();
+  const watchBController = new AbortController();
+  const watchA = clientA.watch(watchAController.signal)[Symbol.asyncIterator]();
+  const watchB = clientB.watch(watchBController.signal)[Symbol.asyncIterator]();
+  const eventAPromise = withTimeout(
+    watchA.next(),
+    6000,
+    "watch A did not receive a shared workspace event."
+  );
+  const eventBPromise = withTimeout(
+    watchB.next(),
+    6000,
+    "watch B did not receive a shared workspace event."
+  );
+
+  await sleep(800);
+
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  await writeFile(userCodocPath, originalUserCodoc.replace("Ada", "Grace"), "utf8");
+
+  const [eventA, eventB] = await Promise.all([eventAPromise, eventBPromise]);
+
+  assert.equal(watchStarts, 1);
+  assert.equal(eventA.done, false);
+  assert.equal(eventB.done, false);
+  assert.deepEqual(eventA.value, eventB.value);
+  assert.deepEqual(eventA.value.change, {
+    kind: "updated",
+    path: "user.codoc"
+  });
+
+  watchAController.abort();
+  watchBController.abort();
+  await Promise.all([
+    withTimeout(clientA.closeWorkspace(), 6000, "client A failed to close its workspace session."),
+    withTimeout(clientB.closeWorkspace(), 6000, "client B failed to close its workspace session.")
+  ]);
+});
+
 test("http web experience end-to-end", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-http-");
@@ -607,6 +749,23 @@ function parseJsonOutput(output) {
   return JSON.parse(output.trim());
 }
 
+function createNoteCodoc(codocId, title, summary) {
+  return [
+    'codoc: "0.1"',
+    `id: "${codocId}"`,
+    "",
+    "data:",
+    `  title: "${title}"`,
+    `  summary: "${summary}"`,
+    "",
+    "view: |",
+    `  # ${title}`,
+    "",
+    "  {data.summary}",
+    ""
+  ].join("\n");
+}
+
 function parseJsonBody(response) {
   assert.equal(
     response.statusCode >= 200 && response.statusCode < 300,
@@ -627,6 +786,15 @@ function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    sleep(ms).then(() => {
+      throw new Error(message);
+    })
+  ]);
 }
 
 async function createHttpHarness(runtime, workspace) {

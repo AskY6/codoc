@@ -246,23 +246,31 @@ export class LocalCobookService implements CobookService {
       once: true
     });
 
-    const watcher = await watchWorkspace(session.root, session.config, async (change) => {
-      if (stopped) {
-        return;
-      }
+    const watcher = await watchWorkspace(
+      session.root,
+      session.config,
+      async (change) => {
+        if (stopped) {
+          return;
+        }
 
-      try {
-        const build = await this.applyWorkspaceChange(change);
-        queue.push({
-          change,
-          build
-        });
-      } catch (error) {
-        watchError = error instanceof Error ? error : new Error(String(error));
-      } finally {
+        try {
+          const build = await this.applyWorkspaceChange(change);
+          queue.push({
+            change,
+            build
+          });
+        } catch (error) {
+          watchError = error instanceof Error ? error : new Error(String(error));
+        } finally {
+          wake?.();
+        }
+      },
+      async (error) => {
+        watchError = error;
         wake?.();
       }
-    });
+    );
 
     try {
       while (!stopped) {

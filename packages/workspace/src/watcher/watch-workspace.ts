@@ -12,7 +12,8 @@ const IGNORED_DIRS = new Set([".git", "dist", "node_modules"]);
 export async function watchWorkspace(
   root: string,
   _config: CobookConfig,
-  onEvent: (event: WorkspaceChangeEvent) => void | Promise<void>
+  onEvent: (event: WorkspaceChangeEvent) => void | Promise<void>,
+  onError?: (error: Error) => void | Promise<void>
 ): Promise<WorkspaceWatcher> {
   let closed = false;
   let scanning = false;
@@ -24,9 +25,19 @@ export async function watchWorkspace(
     }
 
     scanning = true;
-    void poll().finally(() => {
-      scanning = false;
-    });
+    void poll()
+      .catch(async (error) => {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+        clearInterval(timer);
+        await onError?.(error instanceof Error ? error : new Error(String(error)));
+      })
+      .finally(() => {
+        scanning = false;
+      });
   }, POLL_INTERVAL_MS);
 
   return {

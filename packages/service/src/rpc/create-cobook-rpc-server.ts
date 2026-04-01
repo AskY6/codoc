@@ -21,6 +21,16 @@ interface ManagedWorkspaceSession {
   key: string;
   service: CobookService;
   clientIds: Set<string>;
+  operationTail: Promise<void>;
+  sharedWatch: SharedWorkspaceWatch | null;
+}
+
+interface SharedWorkspaceWatch {
+  managed: ManagedWorkspaceSession;
+  controller: AbortController;
+  iterator: AsyncIterator<WorkspaceWatchEvent>;
+  subscriptions: Map<string, WatchSubscription>;
+  closing: Promise<void> | null;
 }
 
 interface RpcServerState {
@@ -38,10 +48,9 @@ interface OpenWorkspaceRpcResult {
 
 interface WatchSubscription {
   sessionId: string;
+  sharedWatch: SharedWorkspaceWatch;
   queue: WorkspaceWatchEvent[];
   waiting: Array<() => void>;
-  iterator: AsyncIterator<WorkspaceWatchEvent>;
-  controller: AbortController;
   done: boolean;
   error: Error | null;
 }
@@ -84,38 +93,38 @@ async function handleRequest(state: RpcServerState, request: ServiceRpcRequest):
     case "closeWorkspace":
       return closeWorkspaceSession(state, expectObjectWithString(request.params, "sessionId"));
     case "getWorkspace":
-      return withSessionService(state, request.params, (service) => service.getWorkspace());
+      return withManagedSession(state, request.params, (managed) => managed.service.getWorkspace());
     case "build":
-      return withSessionService(state, request.params, (service) => service.build());
+      return withManagedSession(state, request.params, (managed) => managed.service.build());
     case "rebuildCodoc":
-      return withSessionService(state, request.params, (service, params) =>
-        service.rebuildCodoc(expectObjectWithString(params, "codocId"))
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.rebuildCodoc(expectObjectWithString(params, "codocId"))
       );
     case "listCodocs":
-      return withSessionService(state, request.params, (service) => service.listCodocs());
+      return withManagedSession(state, request.params, (managed) => managed.service.listCodocs());
     case "readCodoc":
-      return withSessionService(state, request.params, (service, params) =>
-        service.readCodoc(expectObjectWithString(params, "codocId"))
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.readCodoc(expectObjectWithString(params, "codocId"))
       );
     case "writeCodoc":
-      return withSessionService(state, request.params, (service, params) =>
-        service.writeCodoc(expectWriteInput(params))
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.writeCodoc(expectWriteInput(params))
       );
     case "invalidate":
-      return withSessionService(state, request.params, (service, params) =>
-        service.invalidate(expectObjectWithString(params, "node"))
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.invalidate(expectObjectWithString(params, "node"))
       );
     case "resolve":
-      return withSessionService(state, request.params, (service, params) =>
-        service.resolve(expectObjectWithString(params, "node"))
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.resolve(expectObjectWithString(params, "node"))
       );
     case "graph":
-      return withSessionService(state, request.params, (service) => service.graph());
+      return withManagedSession(state, request.params, (managed) => managed.service.graph());
     case "diagnostics":
-      return withSessionService(state, request.params, (service) => service.diagnostics());
+      return withManagedSession(state, request.params, (managed) => managed.service.diagnostics());
     case "chat":
-      return withSessionService(state, request.params, (service, params) =>
-        collectEvents(service.chat(expectChatInput(params)))
+      return withManagedSession(state, request.params, (managed, params) =>
+        collectEvents(managed.service.chat(expectChatInput(params)))
       );
     case "watchStart": {
       const params = expectSessionParams(request.params);
@@ -158,11 +167,14 @@ async function openWorkspaceSession(
     managed = {
       key: workspaceKey,
       service,
-      clientIds: new Set()
+      clientIds: new Set(),
+      operationTail: Promise.resolve(),
+      sharedWatch: null
     };
     state.workspaces.set(workspaceKey, managed);
   } else {
-    workspace = await managed.service.getWorkspace();
+    const existing = managed;
+    workspace = await runManagedOperation(existing, () => existing.service.getWorkspace());
   }
 
   const sessionId = `session-${state.nextSessionId++}`;
@@ -193,7 +205,12 @@ async function closeWorkspaceSession(
 
   if (managed.clientIds.size === 0) {
     state.workspaces.delete(managed.key);
-    await managed.service.closeWorkspace();
+
+    if (managed.sharedWatch) {
+      await shutdownSharedWatch(managed.sharedWatch);
+    }
+
+    await runManagedOperation(managed, () => managed.service.closeWorkspace());
   }
 
   return {
@@ -272,26 +289,46 @@ function startWatchSubscription(
     throw new Error(`RPC watch "${watchId}" already exists for session "${sessionId}".`);
   }
 
-  const service = requireSessionService(state, sessionId);
-  const controller = new AbortController();
-  const iterator = service.watch(controller.signal)[Symbol.asyncIterator]();
+  const managed = requireManagedSession(state, sessionId);
+  const sharedWatch = ensureSharedWatch(managed, state.watchSubscriptions);
   const subscription: WatchSubscription = {
     sessionId,
+    sharedWatch,
     queue: [],
     waiting: [],
-    iterator,
-    controller,
     done: false,
     error: null
   };
 
+  sharedWatch.subscriptions.set(subscriptionKey, subscription);
   state.watchSubscriptions.set(subscriptionKey, subscription);
-
-  void pumpWatchSubscription(subscriptionKey, subscription, state.watchSubscriptions);
 
   return {
     watchId
   };
+}
+
+function ensureSharedWatch(
+  managed: ManagedWorkspaceSession,
+  watchSubscriptions: Map<string, WatchSubscription>
+): SharedWorkspaceWatch {
+  if (managed.sharedWatch) {
+    return managed.sharedWatch;
+  }
+
+  const controller = new AbortController();
+  const sharedWatch: SharedWorkspaceWatch = {
+    managed,
+    controller,
+    iterator: managed.service.watch(controller.signal)[Symbol.asyncIterator](),
+    subscriptions: new Map(),
+    closing: null
+  };
+  managed.sharedWatch = sharedWatch;
+
+  void pumpSharedWatch(sharedWatch, watchSubscriptions);
+
+  return sharedWatch;
 }
 
 async function nextWatchEvent(
@@ -344,31 +381,52 @@ async function stopWatchSubscription(
   };
 }
 
-async function pumpWatchSubscription(
-  subscriptionKey: string,
-  subscription: WatchSubscription,
+async function pumpSharedWatch(
+  sharedWatch: SharedWorkspaceWatch,
   watchSubscriptions: Map<string, WatchSubscription>
 ): Promise<void> {
   try {
     while (true) {
-      const next = await subscription.iterator.next();
+      const next = await sharedWatch.iterator.next();
       if (next.done) {
-        subscription.done = true;
-        flushWatchWaiters(subscription);
+        markSharedWatchDone(sharedWatch);
         return;
       }
 
-      subscription.queue.push(next.value);
-      flushWatchWaiters(subscription);
+      for (const subscription of sharedWatch.subscriptions.values()) {
+        subscription.queue.push(next.value);
+        flushWatchWaiters(subscription);
+      }
     }
   } catch (error) {
-    subscription.error = error instanceof Error ? error : new Error(String(error));
-    flushWatchWaiters(subscription);
-  } finally {
-    if (watchSubscriptions.get(subscriptionKey) === subscription) {
-      subscription.done = true;
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+
+    if (sharedWatch.subscriptions.size === 0) {
+      return;
+    }
+
+    for (const subscription of sharedWatch.subscriptions.values()) {
+      subscription.error = normalizedError;
       flushWatchWaiters(subscription);
     }
+  } finally {
+    if (sharedWatch.managed.sharedWatch === sharedWatch) {
+      sharedWatch.managed.sharedWatch = null;
+    }
+
+    for (const [subscriptionKey, subscription] of sharedWatch.subscriptions.entries()) {
+      if (watchSubscriptions.get(subscriptionKey) === subscription && !subscription.error) {
+        subscription.done = true;
+        flushWatchWaiters(subscription);
+      }
+    }
+  }
+}
+
+function markSharedWatchDone(sharedWatch: SharedWorkspaceWatch): void {
+  for (const subscription of sharedWatch.subscriptions.values()) {
+    subscription.done = true;
+    flushWatchWaiters(subscription);
   }
 }
 
@@ -382,10 +440,16 @@ async function cleanupWatchSubscription(
   }
 
   watchSubscriptions.delete(subscriptionKey);
+  subscription.sharedWatch.subscriptions.delete(subscriptionKey);
   subscription.done = true;
-  subscription.controller.abort();
   flushWatchWaiters(subscription);
-  await subscription.iterator.return?.();
+
+  if (
+    subscription.sharedWatch.subscriptions.size === 0 &&
+    subscription.sharedWatch.managed.sharedWatch === subscription.sharedWatch
+  ) {
+    await shutdownSharedWatch(subscription.sharedWatch);
+  }
 }
 
 async function cleanupSessionWatchSubscriptions(
@@ -416,25 +480,56 @@ function requireWatchSubscription(
   return subscription;
 }
 
-function withSessionService<TResult>(
+function withManagedSession<TResult>(
   state: RpcServerState,
   params: unknown,
   handler: (
-    service: CobookService,
+    managed: ManagedWorkspaceSession,
     params: Record<string, unknown> & { sessionId: string }
   ) => Promise<TResult> | TResult
-): Promise<TResult> | TResult {
+): Promise<TResult> {
   const sessionParams = expectSessionParams(params);
-  return handler(requireSessionService(state, sessionParams.sessionId), sessionParams);
+  const managed = requireManagedSession(state, sessionParams.sessionId);
+  return runManagedOperation(managed, () => handler(managed, sessionParams));
 }
 
-function requireSessionService(state: RpcServerState, sessionId: string): CobookService {
+function requireManagedSession(state: RpcServerState, sessionId: string): ManagedWorkspaceSession {
   const managed = state.sessions.get(sessionId);
   if (!managed) {
     throw new Error(`RPC session "${sessionId}" was not found.`);
   }
 
-  return managed.service;
+  return managed;
+}
+
+function runManagedOperation<TResult>(
+  managed: ManagedWorkspaceSession,
+  operation: () => Promise<TResult> | TResult
+): Promise<TResult> {
+  const task = managed.operationTail.then(() => operation());
+  managed.operationTail = task.then(
+    () => undefined,
+    () => undefined
+  );
+  return task;
+}
+
+async function shutdownSharedWatch(sharedWatch: SharedWorkspaceWatch): Promise<void> {
+  if (sharedWatch.closing) {
+    await sharedWatch.closing;
+    return;
+  }
+
+  sharedWatch.closing = (async () => {
+    if (sharedWatch.managed.sharedWatch === sharedWatch) {
+      sharedWatch.managed.sharedWatch = null;
+    }
+
+    sharedWatch.controller.abort();
+    await sharedWatch.iterator.return?.();
+  })();
+
+  await sharedWatch.closing;
 }
 
 function getWatchSubscriptionKey(sessionId: string, watchId: string): string {
