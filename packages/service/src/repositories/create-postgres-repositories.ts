@@ -1,4 +1,5 @@
 import { PostgresAgentSessionRepository } from "./postgres-agent-session-repository.js";
+import { PostgresChatRepository } from "./postgres-chat-repository.js";
 import { PostgresDocumentRepository } from "./postgres-document-repository.js";
 import type { ServiceRepositories } from "./types.js";
 
@@ -11,6 +12,7 @@ export function createPostgresRepositories(
 ): ServiceRepositories {
   return {
     documents: new PostgresDocumentRepository(options),
+    chats: new PostgresChatRepository(options),
     agentSessions: new PostgresAgentSessionRepository(options)
   };
 }

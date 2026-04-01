@@ -400,6 +400,52 @@ test("http app service persists generated codocs in postgresql instead of worksp
   });
 });
 
+test("http chat persists thread messages in postgresql by session id", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-chat-thread-store-");
+  const http = await createHttpHarness(runtime, workspace);
+  const threadId = "chat-thread-session";
+
+  t.after(async () => {
+    await Promise.all([cleanup(runtime, workspace), http.close()]);
+  });
+
+  parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: threadId,
+        message: "你能做什么？"
+      })
+    })
+  );
+
+  const { PostgresChatRepository } = await import(
+    pathToFileURL(
+      join(runtime.dir, "packages", "service", "src", "repositories", "postgres-chat-repository.js")
+    ).href
+  );
+  const { closeAllPostgresDatabases } = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+
+  const repository = new PostgresChatRepository({
+    connectionString: process.env.COBOOK_DATABASE_URL
+  });
+  const messages = await repository.listMessages(workspace, threadId);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0]?.role, "user");
+  assert.equal(messages[0]?.content, "你能做什么？");
+  assert.equal(messages[1]?.role, "assistant");
+  assert.match(messages[1]?.content ?? "", /我现在可以帮助你/);
+
+  await closeAllPostgresDatabases();
+});
+
 test("http chat routes base and rss scene interactions through the web-oriented agent stack", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await mkdtemp(join(tmpdir(), "cobook-e2e-http-rss-scene-"));

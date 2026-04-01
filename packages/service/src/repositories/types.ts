@@ -52,7 +52,22 @@ export interface ChatMessageRecord {
 
 export interface ChatRepository {
   getThread(workspaceRoot: string, threadId: string): Promise<ChatThreadRecord | null>;
+  upsertThread(input: {
+    workspaceRoot: string;
+    threadId: string;
+    title?: string | null;
+    metadata?: Record<string, unknown>;
+  }): Promise<ChatThreadRecord>;
   listMessages(workspaceRoot: string, threadId: string): Promise<ChatMessageRecord[]>;
+  appendMessage(input: {
+    workspaceRoot: string;
+    threadId: string;
+    messageId: string;
+    role: string;
+    agentId?: string | null;
+    content: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ChatMessageRecord>;
 }
 
 export interface AgentSessionRecord {

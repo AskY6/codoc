@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -372,8 +373,67 @@ export class LocalCobookService implements CobookService {
   }
 
   async *chat(input: ChatInput): AsyncIterable<ChatEvent> {
+    const session = requireSession(this.#session);
+    const threadId = normalizeSessionId(input.sessionId ?? "__default__");
+    const chats = this.#options.repositories?.chats;
+
+    if (chats) {
+      await chats.upsertThread({
+        workspaceRoot: session.root,
+        threadId,
+        metadata: {
+          ...(input.agentId ? { requestedAgentId: input.agentId } : {}),
+          ...(input.activeCodocId ? { activeCodocId: input.activeCodocId } : {})
+        }
+      });
+      await chats.appendMessage({
+        workspaceRoot: session.root,
+        threadId,
+        messageId: `user-${randomUUID()}`,
+        role: "user",
+        agentId: input.agentId ?? null,
+        content: input.message,
+        metadata: {}
+      });
+    }
+
     if (this.#options.chatHandler) {
-      yield* this.#options.chatHandler(input, this);
+      const contentParts: string[] = [];
+      const artifacts: string[] = [];
+      const statuses: Array<{
+        status: string;
+        message: string | null;
+      }> = [];
+
+      for await (const event of this.#options.chatHandler(input, this)) {
+        if (event.kind === "message") {
+          contentParts.push(event.content);
+        } else if (event.kind === "artifact") {
+          artifacts.push(event.filePath);
+        } else if (event.kind === "status") {
+          statuses.push({
+            status: event.status,
+            message: event.message ?? null
+          });
+        }
+
+        yield event;
+      }
+
+      if (chats) {
+        await chats.appendMessage({
+          workspaceRoot: session.root,
+          threadId,
+          messageId: `assistant-${randomUUID()}`,
+          role: "assistant",
+          agentId: input.agentId ?? null,
+          content: contentParts.join(""),
+          metadata: {
+            artifacts,
+            statuses
+          }
+        });
+      }
       return;
     }
 
