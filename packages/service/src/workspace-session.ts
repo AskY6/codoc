@@ -11,4 +11,5 @@ export interface WorkspaceSession {
   runtime: RuntimeContext;
   sourceExecutor: SourceExecutor;
   lastBuild: BuildResult | null;
+  watchControllers: Set<AbortController>;
 }

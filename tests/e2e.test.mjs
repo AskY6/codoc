@@ -181,6 +181,54 @@ test("stdio transport end-to-end", async (t) => {
   });
 });
 
+test("local service tears down stale watch streams across workspace lifecycle", async (t) => {
+  const runtime = await buildRuntime();
+  const workspaceA = await cloneExampleWorkspace("cobook-e2e-local-watch-a-");
+  const workspaceB = await cloneExampleWorkspace("cobook-e2e-local-watch-b-");
+
+  t.after(async () => {
+    await Promise.all([cleanup(runtime, workspaceA), rm(workspaceB, { recursive: true, force: true })]);
+  });
+
+  const serviceModule = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+  const { LocalCobookService } = serviceModule;
+
+  const service = new LocalCobookService();
+
+  await service.openWorkspace(workspaceA);
+  const firstWatch = service.watch()[Symbol.asyncIterator]();
+  const firstWatchDone = withTimeout(
+    firstWatch.next(),
+    3000,
+    "Old workspace watch did not stop after opening a new workspace."
+  );
+
+  await sleep(250);
+  await service.openWorkspace(workspaceB);
+
+  assert.deepEqual(await firstWatchDone, {
+    done: true,
+    value: undefined
+  });
+
+  const secondWatch = service.watch()[Symbol.asyncIterator]();
+  const secondWatchDone = withTimeout(
+    secondWatch.next(),
+    3000,
+    "Workspace watch did not stop after closeWorkspace()."
+  );
+
+  await sleep(250);
+  await service.closeWorkspace();
+
+  assert.deepEqual(await secondWatchDone, {
+    done: true,
+    value: undefined
+  });
+});
+
 test("rpc server manages multi-workspace session lifecycles", async (t) => {
   const runtime = await buildRuntime();
   const workspaceA = await cloneExampleWorkspace("cobook-e2e-session-a-");
@@ -401,6 +449,48 @@ test("rpc server shares workspace watch streams across clients", async (t) => {
     withTimeout(clientA.closeWorkspace(), 6000, "client A failed to close its workspace session."),
     withTimeout(clientB.closeWorkspace(), 6000, "client B failed to close its workspace session.")
   ]);
+});
+
+test("http event stream closes cleanly after watch failure", async (t) => {
+  const runtime = await buildRuntime();
+
+  t.after(async () => {
+    await cleanup(runtime);
+  });
+
+  const { createHttpRequestHandler } = await import(
+    pathToFileURL(join(runtime.dir, "apps", "server", "src", "http-server.js")).href
+  );
+
+  const handler = createHttpRequestHandler(
+    {
+      async *watch() {
+        throw new Error("Simulated watch failure.");
+      }
+    },
+    join(repoRoot, "apps", "web", "public")
+  );
+
+  const request = createMockRequest({
+    method: "GET",
+    url: "/api/events"
+  });
+  const response = createMockResponse({
+    stream: true
+  });
+  const finished = withTimeout(
+    response.finished(),
+    4000,
+    "HTTP SSE response did not close after the watch failed."
+  );
+
+  handler(request, response);
+  request.end();
+  await finished;
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.writableEnded, true);
+  assert.match(response.body, /: connected/);
 });
 
 test("http web experience end-to-end", async (t) => {
@@ -885,19 +975,41 @@ function createMockResponse(options = {}) {
   stream.statusCode = 200;
   stream.headers = {};
   stream.body = "";
+  let headersSent = false;
+  let writableEnded = false;
   let chunkBuffer = "";
 
+  Object.defineProperty(stream, "headersSent", {
+    configurable: true,
+    get() {
+      return headersSent;
+    }
+  });
+
+  Object.defineProperty(stream, "writableEnded", {
+    configurable: true,
+    get() {
+      return writableEnded;
+    }
+  });
+
   stream.writeHead = (statusCode, headers = {}) => {
+    if (headersSent) {
+      throw new Error("Cannot write headers after they are sent to the client.");
+    }
+
     stream.statusCode = statusCode;
     stream.headers = {
       ...stream.headers,
       ...headers
     };
+    headersSent = true;
     return stream;
   };
 
   const originalWrite = stream.write.bind(stream);
   stream.write = (chunk, encoding, callback) => {
+    headersSent = true;
     const text = bufferToString(chunk);
     stream.body += text;
     chunkBuffer += text;
@@ -917,9 +1029,11 @@ function createMockResponse(options = {}) {
 
     if (chunk !== undefined && chunk !== null) {
       stream.write(chunk, resolvedEncoding);
+      writableEnded = true;
       return originalEnd(undefined, undefined, resolvedCallback);
     }
 
+    writableEnded = true;
     return originalEnd(undefined, undefined, resolvedCallback);
   };
 

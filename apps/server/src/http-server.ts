@@ -93,6 +93,13 @@ async function handleHttpRequest(
 
     await serveStaticFile(response, staticRoot, pathname);
   } catch (error) {
+    if (response.headersSent) {
+      if (!response.writableEnded) {
+        response.end();
+      }
+      return;
+    }
+
     writeJson(response, 500, {
       error: error instanceof Error ? error.message : String(error)
     });
@@ -206,20 +213,36 @@ async function handleEventStream(
   const iterator = service.watch(controller.signal)[Symbol.asyncIterator]();
   let closed = false;
 
-  request.on("close", () => {
+  const onClose = () => {
     closed = true;
     controller.abort();
-    void iterator.return?.();
-  });
+  };
+  request.on("close", onClose);
 
-  while (!closed) {
-    const next = await iterator.next();
-    if (next.done || closed) {
-      break;
+  try {
+    while (!closed) {
+      const next = await iterator.next();
+      if (next.done || closed) {
+        break;
+      }
+
+      response.write(`event: workspace\n`);
+      response.write(`data: ${JSON.stringify(next.value)}\n\n`);
+    }
+  } finally {
+    request.off("close", onClose);
+    closed = true;
+    controller.abort();
+
+    try {
+      await iterator.return?.();
+    } catch {
+      // Ignore iterator teardown failures during response shutdown.
     }
 
-    response.write(`event: workspace\n`);
-    response.write(`data: ${JSON.stringify(next.value)}\n\n`);
+    if (!response.writableEnded) {
+      response.end();
+    }
   }
 }
 

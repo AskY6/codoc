@@ -41,6 +41,11 @@ export class LocalCobookService implements CobookService {
   }
 
   async openWorkspace(root: string): Promise<WorkspaceSnapshot> {
+    const previousSession = this.#session;
+    const previousWatchControllers =
+      previousSession && previousSession.root === root
+        ? previousSession.watchControllers
+        : new Set<AbortController>();
     const workspace = await loadWorkspace(root);
     const sourceExecutor = createLocalSourceExecutor();
     const dag = createDagEngine({
@@ -59,15 +64,20 @@ export class LocalCobookService implements CobookService {
       dag,
       runtime: createRuntimeContext(),
       sourceExecutor,
-      lastBuild: null
+      lastBuild: null,
+      watchControllers: previousWatchControllers
     };
     this.#session.lastBuild = this.#session.dag.build(Array.from(this.#session.codocs.values()));
     syncRuntimeState(this.#session);
+    if (previousSession && previousSession.root !== workspace.root) {
+      disposeSession(previousSession);
+    }
 
     return toWorkspaceSnapshot(this.#session);
   }
 
   async closeWorkspace(): Promise<void> {
+    disposeSession(this.#session);
     this.#session = null;
   }
 
@@ -233,16 +243,32 @@ export class LocalCobookService implements CobookService {
 
   async *watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
     const session = requireSession(this.#session);
+    const lifecycleController = new AbortController();
     const queue: WorkspaceWatchEvent[] = [];
     let wake: (() => void) | null = null;
     let watchError: Error | null = null;
-    let stopped = signal?.aborted ?? false;
+    let stopped = lifecycleController.signal.aborted;
 
     const onAbort = () => {
       stopped = true;
       wake?.();
     };
-    signal?.addEventListener("abort", onAbort, {
+    session.watchControllers.add(lifecycleController);
+
+    const forwardAbort = () => {
+      lifecycleController.abort(
+        signal?.reason instanceof Error ? signal.reason : new Error("The operation was aborted.")
+      );
+    };
+    if (signal?.aborted) {
+      forwardAbort();
+    } else {
+      signal?.addEventListener("abort", forwardAbort, {
+        once: true
+      });
+    }
+
+    lifecycleController.signal.addEventListener("abort", onAbort, {
       once: true
     });
 
@@ -299,7 +325,9 @@ export class LocalCobookService implements CobookService {
         }
       }
     } finally {
-      signal?.removeEventListener("abort", onAbort);
+      session.watchControllers.delete(lifecycleController);
+      signal?.removeEventListener("abort", forwardAbort);
+      lifecycleController.signal.removeEventListener("abort", onAbort);
       watcher.close();
     }
   }
@@ -345,6 +373,18 @@ export class LocalCobookService implements CobookService {
 
 function requireSession(session: WorkspaceSession | null): WorkspaceSession {
   return session ?? workspaceNotOpen();
+}
+
+function disposeSession(session: WorkspaceSession | null): void {
+  if (!session) {
+    return;
+  }
+
+  for (const controller of session.watchControllers) {
+    controller.abort(new Error("Workspace session was closed."));
+  }
+
+  session.watchControllers.clear();
 }
 
 function ensureBuildSucceeded(session: WorkspaceSession): void {
