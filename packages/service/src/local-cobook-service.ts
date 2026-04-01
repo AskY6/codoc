@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { createDagEngine, createRuntimeContext, parseCodocText } from "@cobook/core";
@@ -137,37 +137,58 @@ export class LocalCobookService implements CobookService {
 
     const absolutePath = join(session.root, input.filePath);
     const flag = input.overwrite ? "w" : "wx";
+    const previousFileState = await snapshotFileState(absolutePath);
+    let wroteTargetFile = false;
 
-    await mkdir(dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, input.content, { encoding: "utf8", flag });
+    try {
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, input.content, { encoding: "utf8", flag });
+      wroteTargetFile = true;
 
-    const parsed = parseCodocText(input.filePath, input.content);
-    if (parsed.id !== input.codocId) {
-      throw new Error(
-        `Written codoc id "${parsed.id}" does not match requested id "${input.codocId}".`
-      );
+      const parsed = parseCodocText(input.filePath, input.content);
+      if (parsed.id !== input.codocId) {
+        throw new Error(
+          `Written codoc id "${parsed.id}" does not match requested id "${input.codocId}".`
+        );
+      }
+
+      const existingAtPath = findCodocByFilePath(session.codocs, input.filePath);
+      if (existingAtPath && existingAtPath.id !== parsed.id) {
+        session.codocs.delete(existingAtPath.id);
+      }
+
+      const existingById = session.codocs.get(parsed.id);
+      if (existingById && existingById.filePath !== input.filePath) {
+        throw new Error(`Codoc id "${parsed.id}" already exists at "${existingById.filePath}".`);
+      }
+
+      session.codocs.set(parsed.id, parsed);
+      session.lastBuild = session.dag.rebuildCodoc(parsed);
+      syncRuntimeState(session);
+
+      return {
+        codocId: parsed.id,
+        filePath: input.filePath,
+        changed: true,
+        build: session.lastBuild
+      };
+    } catch (error) {
+      const normalizedError = error instanceof Error ? error : new Error(String(error));
+      if (wroteTargetFile) {
+        try {
+          await restoreFileState(absolutePath, previousFileState);
+          await this.openWorkspace(session.root);
+        } catch (rollbackError) {
+          const normalizedRollbackError =
+            rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError));
+          throw new Error(
+            `${normalizedError.message}\nWrite rollback failed: ${normalizedRollbackError.message}`
+          );
+        }
+      }
+
+      throw normalizedError;
     }
-
-    const existingAtPath = findCodocByFilePath(session.codocs, input.filePath);
-    if (existingAtPath && existingAtPath.id !== parsed.id) {
-      session.codocs.delete(existingAtPath.id);
-    }
-
-    const existingById = session.codocs.get(parsed.id);
-    if (existingById && existingById.filePath !== input.filePath) {
-      throw new Error(`Codoc id "${parsed.id}" already exists at "${existingById.filePath}".`);
-    }
-
-    session.codocs.set(parsed.id, parsed);
-    session.lastBuild = session.dag.rebuildCodoc(parsed);
-    syncRuntimeState(session);
-
-    return {
-      codocId: parsed.id,
-      filePath: input.filePath,
-      changed: true,
-      build: session.lastBuild
-    };
   }
 
   async invalidate(node: string): Promise<InvalidationResult> {
@@ -427,6 +448,60 @@ function emptyBuildResult(): BuildResult {
     errors: [],
     affectedNodes: []
   };
+}
+
+async function snapshotFileState(path: string): Promise<
+  | {
+      exists: true;
+      content: string;
+    }
+  | {
+      exists: false;
+    }
+> {
+  try {
+    return {
+      exists: true,
+      content: await readFile(path, "utf8")
+    };
+  } catch (error) {
+    if (isErrorWithCode(error, "ENOENT")) {
+      return {
+        exists: false
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function restoreFileState(
+  path: string,
+  previousState:
+    | {
+        exists: true;
+        content: string;
+      }
+    | {
+        exists: false;
+      }
+): Promise<void> {
+  if (previousState.exists) {
+    await writeFile(path, previousState.content, "utf8");
+    return;
+  }
+
+  try {
+    await unlink(path);
+  } catch (error) {
+    if (!isErrorWithCode(error, "ENOENT")) {
+      throw error;
+    }
+  }
+}
+
+function isErrorWithCode(error: unknown, code: string): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 function findCodocByFilePath(

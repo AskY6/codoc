@@ -1,3 +1,6 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+
 import type { ChatEvent, ChatInput, CobookService } from "@cobook/service";
 import type { CodocSummary, ParsedCodoc, WorkspaceSnapshot } from "@cobook/service";
 import { stringify as stringifyYaml } from "yaml";
@@ -31,6 +34,30 @@ interface ChatContextPlan {
     codoc: ParsedCodoc;
   }>;
 }
+
+type WriteAttemptResult =
+  | {
+      ok: true;
+      result: {
+        codocId: string;
+        filePath: string;
+        changed: boolean;
+        build: {
+          success: boolean;
+          errors: Array<{
+            code: string;
+            message: string;
+          }>;
+          affectedNodes: string[];
+        };
+      };
+    }
+  | {
+      ok: false;
+      error: Error;
+      recoveryFilePath: string | null;
+      recoveryError: Error | null;
+    };
 
 export class RuleBasedBaseAgent implements BaseAgent {
   async *run(input: ChatInput, service: CobookService): AsyncIterable<ChatEvent> {
@@ -118,12 +145,27 @@ export class RuleBasedBaseAgent implements BaseAgent {
         status: "writing",
         message: `Refactoring "${existingCodoc.filePath}".`
       };
-      const written = await service.writeCodoc({
+      const writeAttempt = await attemptWriteCodoc(service, {
         codocId: existingCodoc.id,
         filePath: existingCodoc.filePath,
         content,
         overwrite: true
       });
+      if (!writeAttempt.ok) {
+        if (writeAttempt.recoveryFilePath) {
+          yield {
+            kind: "artifact",
+            filePath: writeAttempt.recoveryFilePath
+          };
+        }
+        yield {
+          kind: "message",
+          content: formatWriteFailure(existingCodoc.filePath, writeAttempt)
+        };
+        yield doneEvent();
+        return;
+      }
+      const written = writeAttempt.result;
       yield {
         kind: "artifact",
         filePath: written.filePath
@@ -150,12 +192,27 @@ export class RuleBasedBaseAgent implements BaseAgent {
         status: "writing",
         message: `Writing "${filePath}".`
       };
-      const written = await service.writeCodoc({
+      const writeAttempt = await attemptWriteCodoc(service, {
         codocId: codocBlock.codocId,
         filePath,
         content: codocBlock.content,
         overwrite
       });
+      if (!writeAttempt.ok) {
+        if (writeAttempt.recoveryFilePath) {
+          yield {
+            kind: "artifact",
+            filePath: writeAttempt.recoveryFilePath
+          };
+        }
+        yield {
+          kind: "message",
+          content: formatWriteFailure(filePath, writeAttempt)
+        };
+        yield doneEvent();
+        return;
+      }
+      const written = writeAttempt.result;
       yield {
         kind: "artifact",
         filePath: written.filePath
@@ -182,12 +239,27 @@ export class RuleBasedBaseAgent implements BaseAgent {
         status: "writing",
         message: `Generating "${generated.filePath}".`
       };
-      const written = await service.writeCodoc({
+      const writeAttempt = await attemptWriteCodoc(service, {
         codocId: generated.codocId,
         filePath: generated.filePath,
         content: generated.content,
         overwrite: generated.overwrite
       });
+      if (!writeAttempt.ok) {
+        if (writeAttempt.recoveryFilePath) {
+          yield {
+            kind: "artifact",
+            filePath: writeAttempt.recoveryFilePath
+          };
+        }
+        yield {
+          kind: "message",
+          content: formatWriteFailure(generated.filePath, writeAttempt)
+        };
+        yield doneEvent();
+        return;
+      }
+      const written = writeAttempt.result;
       yield {
         kind: "artifact",
         filePath: written.filePath
@@ -437,6 +509,88 @@ function sortCodocIdsByProjectOrder(
     return (codocOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
       (codocOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
   });
+}
+
+async function attemptWriteCodoc(
+  service: CobookService,
+  input: {
+    codocId: string;
+    filePath: string;
+    content: string;
+    overwrite?: boolean;
+  }
+): Promise<WriteAttemptResult> {
+  try {
+    return {
+      ok: true,
+      result: await service.writeCodoc(input)
+    };
+  } catch (error) {
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+
+    try {
+      return {
+        ok: false,
+        error: normalizedError,
+        recoveryFilePath: await persistRecoveryDraft(service, input.filePath, input.content),
+        recoveryError: null
+      };
+    } catch (recoveryError) {
+      return {
+        ok: false,
+        error: normalizedError,
+        recoveryFilePath: null,
+        recoveryError:
+          recoveryError instanceof Error ? recoveryError : new Error(String(recoveryError))
+      };
+    }
+  }
+}
+
+async function persistRecoveryDraft(
+  service: CobookService,
+  filePath: string,
+  content: string
+): Promise<string> {
+  const workspace = await service.getWorkspace();
+  const recoveryFilePath = join(
+    ".cobook",
+    "recovery",
+    `${createRecoveryTimestamp()}-${sanitizeRecoveryName(filePath)}.txt`
+  );
+  const absolutePath = join(workspace.root, recoveryFilePath);
+
+  await mkdir(dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, content, "utf8");
+
+  return recoveryFilePath;
+}
+
+function createRecoveryTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function sanitizeRecoveryName(value: string): string {
+  const sanitized = value.replace(/[^a-z0-9._-]+/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return sanitized.length > 0 ? sanitized : "codoc";
+}
+
+function formatWriteFailure(
+  filePath: string,
+  result: Extract<WriteAttemptResult, { ok: false }>
+): string {
+  const lines = [
+    `Failed to write "${filePath}". Workspace changes were rolled back.`,
+    result.error.message
+  ];
+
+  if (result.recoveryFilePath) {
+    lines.push(`Recovery draft saved to "${result.recoveryFilePath}".`);
+  } else if (result.recoveryError) {
+    lines.push(`Failed to save a recovery draft: ${result.recoveryError.message}`);
+  }
+
+  return lines.join("\n");
 }
 
 function serializeParsedCodoc(codoc: ParsedCodoc): string {

@@ -406,6 +406,105 @@ test("rpc server serializes concurrent workspace mutations", async (t) => {
   await Promise.all([clientA.closeWorkspace(), clientB.closeWorkspace()]);
 });
 
+test("local service rolls back failed writes", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-write-rollback-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const serviceModule = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+  const { LocalCobookService } = serviceModule;
+
+  const service = new LocalCobookService();
+  await service.openWorkspace(workspace);
+
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+
+  await assert.rejects(
+    service.writeCodoc({
+      codocId: "dashboard",
+      filePath: "user.codoc",
+      content: [
+        'codoc: "0.1"',
+        'id: "dashboard"',
+        "",
+        "data:",
+        "  currentUser:",
+        '    $source: codoc',
+        '    $ref: "./user.codoc#/data"'
+      ].join("\n"),
+      overwrite: true
+    }),
+    /Codoc id "dashboard" already exists at "dashboard\.codoc"\./
+  );
+
+  assert.equal(await readFile(userCodocPath, "utf8"), originalUserCodoc);
+
+  const resolvedCurrentUser = await service.resolve("dashboard:data/currentUser");
+  assert.deepEqual(resolvedCurrentUser.value, {
+    name: "Ada",
+    role: "editor"
+  });
+
+  await service.closeWorkspace();
+});
+
+test("chat write failures save a recovery draft and keep the workspace healthy", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-chat-recovery-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  const failingUpdate = [
+    "update codoc dashboard at user.codoc",
+    "```yaml",
+    'codoc: "0.1"',
+    'id: "dashboard"',
+    "",
+    "data:",
+    "  currentUser:",
+    '    $source: codoc',
+    '    $ref: "./user.codoc#/data"',
+    "```"
+  ].join("\n");
+
+  const failedChat = runCli(runtime, workspace, ["chat", failingUpdate]);
+  assert.match(
+    failedChat.stdout,
+    /Failed to write "user\.codoc"\. Workspace changes were rolled back\./
+  );
+  assert.match(
+    failedChat.stdout,
+    /Codoc id "dashboard" already exists at "dashboard\.codoc"\./
+  );
+
+  const recoveryMatch = failedChat.stdout.match(/\[artifact\] (\.cobook\/recovery\/[^\n]+\.txt)/);
+  assert.ok(recoveryMatch, `Expected recovery artifact in chat output.\n${failedChat.stdout}`);
+
+  const recoveryFilePath = recoveryMatch[1];
+  const recoveryDraft = await readFile(join(workspace, recoveryFilePath), "utf8");
+  assert.match(recoveryDraft, /id: "dashboard"/);
+
+  assert.equal(await readFile(userCodocPath, "utf8"), originalUserCodoc);
+
+  const resolvedCurrentUser = parseJsonOutput(
+    runCli(runtime, workspace, ["resolve", "dashboard:data/currentUser"]).stdout
+  );
+  assert.deepEqual(resolvedCurrentUser.value, {
+    name: "Ada",
+    role: "editor"
+  });
+});
+
 test("rpc server shares workspace watch streams across clients", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-shared-watch-");
