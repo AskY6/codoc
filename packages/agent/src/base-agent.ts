@@ -1,5 +1,5 @@
 import type { ChatEvent, ChatInput, CobookService } from "@cobook/service";
-import type { CodocSummary, WorkspaceSnapshot } from "@cobook/service";
+import type { CodocSummary, ParsedCodoc, WorkspaceSnapshot } from "@cobook/service";
 
 export interface BaseAgent {
   run(input: ChatInput, service: CobookService): AsyncIterable<ChatEvent>;
@@ -17,6 +17,18 @@ interface ProjectSummary {
     }
   >;
   defaultContextCodocIds: string[];
+}
+
+interface ChatContextPlan {
+  projectSummary: ProjectSummary;
+  requestedPinnedCodocIds: string[];
+  pinnedCodocIds: string[];
+  ignoredPinnedCodocIds: string[];
+  contextCodocIds: string[];
+  pinnedCodocs: Array<{
+    codocId: string;
+    codoc: ParsedCodoc;
+  }>;
 }
 
 export class RuleBasedBaseAgent implements BaseAgent {
@@ -125,12 +137,11 @@ export class RuleBasedBaseAgent implements BaseAgent {
 
     const generatedRequest = extractGeneratedCodocRequest(message);
     if (generatedRequest) {
-      const projectSummary = await buildProjectSummary(service);
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds);
       const generated = await generateTemplateCodoc(
         service,
         generatedRequest,
-        input.pinnedCodocIds,
-        projectSummary
+        contextPlan
       );
 
       yield {
@@ -162,16 +173,7 @@ export class RuleBasedBaseAgent implements BaseAgent {
       message: "Reading project summary and pinned codocs."
     };
 
-    const projectSummary = await buildProjectSummary(service);
-    const pinned =
-      input.pinnedCodocIds && input.pinnedCodocIds.length > 0
-        ? await Promise.all(
-            input.pinnedCodocIds.map(async (codocId) => ({
-              codocId,
-              codoc: await service.readCodoc(codocId)
-            }))
-          )
-        : [];
+    const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds);
 
     yield {
       kind: "message",
@@ -179,8 +181,14 @@ export class RuleBasedBaseAgent implements BaseAgent {
         {
           message:
             "The base agent currently supports: project summary, list codocs, read codoc <id>, resolve <node>, or write/update a codoc via a fenced code block.",
-          projectSummary,
-          ...(pinned.length > 0 ? { pinned } : {})
+          projectSummary: contextPlan.projectSummary,
+          context: {
+            requestedPinnedCodocIds: contextPlan.requestedPinnedCodocIds,
+            pinnedCodocIds: contextPlan.pinnedCodocIds,
+            ignoredPinnedCodocIds: contextPlan.ignoredPinnedCodocIds,
+            contextCodocIds: contextPlan.contextCodocIds
+          },
+          ...(contextPlan.pinnedCodocs.length > 0 ? { pinned: contextPlan.pinnedCodocs } : {})
         },
         null,
         2
@@ -274,8 +282,7 @@ async function generateTemplateCodoc(
     topic?: string;
     overwrite: boolean;
   },
-  pinnedCodocIds: string[] | undefined,
-  projectSummary: ProjectSummary
+  contextPlan: ChatContextPlan
 ): Promise<{
   codocId: string;
   filePath: string;
@@ -283,10 +290,7 @@ async function generateTemplateCodoc(
   overwrite: boolean;
 }> {
   const existingCodoc = await tryReadCodoc(service, request.codocId);
-  const relatedCodocs = (pinnedCodocIds?.length
-    ? pinnedCodocIds
-    : projectSummary.defaultContextCodocIds
-  ).filter((codocId) => codocId !== request.codocId);
+  const relatedCodocs = contextPlan.contextCodocIds.filter((codocId) => codocId !== request.codocId);
   const title = toTitleCase(request.codocId.replace(/[._/-]+/g, " "));
   const summary = request.topic ?? "Fill in the key point you want this codoc to capture.";
   const contentLines = [
@@ -345,12 +349,61 @@ async function buildProjectSummary(service: CobookService): Promise<ProjectSumma
   };
 }
 
+async function buildChatContextPlan(
+  service: CobookService,
+  rawPinnedCodocIds: string[] | undefined
+): Promise<ChatContextPlan> {
+  const projectSummary = await buildProjectSummary(service);
+  const codocOrder = new Map(projectSummary.codocs.map((codoc, index) => [codoc.id, index]));
+  const requestedPinnedCodocIds = rawPinnedCodocIds ?? [];
+  const uniqueRequestedPinnedCodocIds = uniqueStrings(requestedPinnedCodocIds);
+  const pinnedIds = uniqueRequestedPinnedCodocIds.filter((codocId) => codocOrder.has(codocId));
+  const pinnedCodocIds = sortCodocIdsByProjectOrder(pinnedIds, codocOrder);
+  const ignoredPinnedCodocIds = uniqueRequestedPinnedCodocIds.filter(
+    (codocId) => !codocOrder.has(codocId)
+  );
+  const contextLimit = Math.max(pinnedCodocIds.length, projectSummary.defaultContextCodocIds.length);
+  const contextCodocIds = [
+    ...pinnedCodocIds,
+    ...projectSummary.defaultContextCodocIds.filter((codocId) => !pinnedCodocIds.includes(codocId))
+  ].slice(0, contextLimit);
+  const pinnedCodocs = await Promise.all(
+    pinnedCodocIds.map(async (codocId) => ({
+      codocId,
+      codoc: await service.readCodoc(codocId)
+    }))
+  );
+
+  return {
+    projectSummary,
+    requestedPinnedCodocIds,
+    pinnedCodocIds,
+    ignoredPinnedCodocIds,
+    contextCodocIds,
+    pinnedCodocs
+  };
+}
+
 function normalizeEntryPath(workspace: WorkspaceSnapshot): string | null {
   if (!workspace.config.entry) {
     return null;
   }
 
   return workspace.config.entry.replace(/^\.\//, "");
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function sortCodocIdsByProjectOrder(
+  codocIds: string[],
+  codocOrder: Map<string, number>
+): string[] {
+  return [...codocIds].sort((left, right) => {
+    return (codocOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
+      (codocOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
+  });
 }
 
 function formatWriteResult(result: {

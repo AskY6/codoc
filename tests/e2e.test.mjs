@@ -501,6 +501,72 @@ test("http event stream closes cleanly after watch failure", async (t) => {
   assert.match(response.body, /: connected/);
 });
 
+test("http chat normalizes pinned codoc context", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-pinned-context-");
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+    await http.close();
+  });
+
+  const contextPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "show me the current context",
+        pinnedCodocIds: ["user", "missing", "dashboard", "user"]
+      })
+    })
+  );
+  const contextMessage = contextPayload.events.find((event) => event.kind === "message");
+  assert.ok(contextMessage, "Expected a message event from the chat response.");
+
+  const contextBody = JSON.parse(contextMessage.content);
+  assert.deepEqual(contextBody.context, {
+    requestedPinnedCodocIds: ["user", "missing", "dashboard", "user"],
+    pinnedCodocIds: ["dashboard", "user"],
+    ignoredPinnedCodocIds: ["missing"],
+    contextCodocIds: ["dashboard", "user"]
+  });
+  assert.deepEqual(
+    contextBody.pinned.map((entry) => entry.codocId),
+    ["dashboard", "user"]
+  );
+
+  parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message:
+          "create note codoc pinned-context-note at notes/pinned-context-note.codoc about Normalize pinned context",
+        pinnedCodocIds: ["user", "missing", "dashboard", "user"]
+      })
+    })
+  );
+
+  const contextNoteDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/pinned-context-note/document"
+    })
+  );
+  assert.deepEqual(contextNoteDocument.resolvedData, {
+    title: "Pinned Context Note",
+    summary: "Normalize pinned context",
+    relatedCodocs: ["dashboard", "user"]
+  });
+});
+
 test("http web experience end-to-end", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-http-");
