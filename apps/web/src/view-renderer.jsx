@@ -120,8 +120,26 @@ function RenderedNode({ node, codocs, currentCodoc, visitedCodocIds }) {
           ))}
         </div>
       );
+    case "section":
+      return (
+        <SectionNode
+          node={node}
+          codocs={codocs}
+          currentCodoc={currentCodoc}
+          visitedCodocIds={visitedCodocIds}
+        />
+      );
     case "markdown":
       return <MarkdownBlock content={node.content} />;
+    case "tabs":
+      return (
+        <TabsNode
+          node={node}
+          codocs={codocs}
+          currentCodoc={currentCodoc}
+          visitedCodocIds={visitedCodocIds}
+        />
+      );
     case "text":
       return <p className={`view-text tone-${node.tone ?? "default"}`}>{node.content}</p>;
     case "json":
@@ -130,6 +148,15 @@ function RenderedNode({ node, codocs, currentCodoc, visitedCodocIds }) {
           {node.title ? <h3>{node.title}</h3> : null}
           <pre className="viewer">{JSON.stringify(node.value, null, 2)}</pre>
         </section>
+      );
+    case "timeline":
+      return (
+        <TimelineNode
+          node={node}
+          codocs={codocs}
+          currentCodoc={currentCodoc}
+          visitedCodocIds={visitedCodocIds}
+        />
       );
     case "table":
       return (
@@ -170,6 +197,103 @@ function RenderedNode({ node, codocs, currentCodoc, visitedCodocIds }) {
     default:
       return null;
   }
+}
+
+function SectionNode({ node, codocs, currentCodoc, visitedCodocIds }) {
+  return (
+    <section className="view-section">
+      {node.eyebrow ? <p className="eyebrow">{node.eyebrow}</p> : null}
+      {node.title ? <h3>{node.title}</h3> : null}
+      <div className={`view-stack gap-${node.gap ?? "md"}`}>
+        {node.children.map((child, index) => (
+          <RenderedNode
+            key={`${child.type}-${index}`}
+            node={child}
+            codocs={codocs}
+            currentCodoc={currentCodoc}
+            visitedCodocIds={visitedCodocIds}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TabsNode({ node, codocs, currentCodoc, visitedCodocIds }) {
+  const [activeTabId, setActiveTabId] = useState(node.tabs[0]?.id ?? null);
+  const activeTab = node.tabs.find((tab) => tab.id === activeTabId) ?? node.tabs[0] ?? null;
+
+  useEffect(() => {
+    setActiveTabId(node.tabs[0]?.id ?? null);
+  }, [node]);
+
+  if (!activeTab) {
+    return null;
+  }
+
+  return (
+    <section className="view-tabs">
+      <div className="view-tabs-header">
+        {node.tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={tab.id === activeTab.id ? "active" : ""}
+            onClick={() => {
+              setActiveTabId(tab.id);
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="view-tabs-panel">
+        <div className="view-stack gap-md">
+          {activeTab.children.map((child, index) => (
+            <RenderedNode
+              key={`${activeTab.id}-${child.type}-${index}`}
+              node={child}
+              codocs={codocs}
+              currentCodoc={currentCodoc}
+              visitedCodocIds={visitedCodocIds}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TimelineNode({ node, codocs, currentCodoc, visitedCodocIds }) {
+  return (
+    <section className="view-timeline">
+      {node.items.map((item) => (
+        <article key={item.id} className="view-timeline-item">
+          <div className="view-timeline-rail" />
+          <div className="view-timeline-card">
+            <div className="view-timeline-head">
+              <h3>{item.title}</h3>
+              {item.meta ? <p className="muted">{item.meta}</p> : null}
+            </div>
+            {item.body ? <MarkdownBlock content={item.body} /> : null}
+            {item.children.length > 0 ? (
+              <div className="view-stack gap-md">
+                {item.children.map((child, index) => (
+                  <RenderedNode
+                    key={`${item.id}-${child.type}-${index}`}
+                    node={child}
+                    codocs={codocs}
+                    currentCodoc={currentCodoc}
+                    visitedCodocIds={visitedCodocIds}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
 }
 
 function formatCellValue(value) {

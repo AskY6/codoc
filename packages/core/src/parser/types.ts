@@ -9,10 +9,13 @@ export type ViewGridColumns = 1 | 2 | 3;
 
 export type ViewNodeSpec =
   | ViewStackSpec
+  | ViewSectionSpec
   | ViewGridSpec
+  | ViewTabsSpec
   | ViewMarkdownSpec
   | ViewTextSpec
   | ViewJsonSpec
+  | ViewTimelineSpec
   | ViewTableSpec
   | ViewComponentNodeSpec;
 
@@ -34,6 +37,25 @@ export interface ViewGridSpec {
   gap?: ViewSpacing;
 }
 
+export interface ViewSectionSpec {
+  type: "section";
+  title?: string;
+  eyebrow?: string;
+  children: ViewNodeSpec[];
+  gap?: ViewSpacing;
+}
+
+export interface ViewTabSpec {
+  id?: string;
+  label: string;
+  children: ViewNodeSpec[];
+}
+
+export interface ViewTabsSpec {
+  type: "tabs";
+  tabs: ViewTabSpec[];
+}
+
 export interface ViewMarkdownSpec {
   type: "markdown";
   content: string;
@@ -49,6 +71,19 @@ export interface ViewJsonSpec {
   type: "json";
   title?: string;
   value?: unknown;
+}
+
+export interface ViewTimelineItemSpec {
+  id?: string;
+  title: string;
+  meta?: string;
+  body?: string;
+  children?: ViewNodeSpec[];
+}
+
+export interface ViewTimelineSpec {
+  type: "timeline";
+  items: ViewTimelineItemSpec[];
 }
 
 export interface ViewTableColumnSpec {

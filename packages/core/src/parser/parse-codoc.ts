@@ -256,6 +256,45 @@ function parseViewNode(input: unknown, location: string): ViewNodeSpec {
         ...(input.gap === "sm" || input.gap === "md" || input.gap === "lg" ? { gap: input.gap } : {}),
         ...(columns ? { columns } : {})
       };
+    case "section":
+      if (!Array.isArray(input.children)) {
+        throw new Error(`${location}: section view requires an array "children".`);
+      }
+
+      return {
+        type: "section",
+        ...(typeof input.title === "string" ? { title: input.title } : {}),
+        ...(typeof input.eyebrow === "string" ? { eyebrow: input.eyebrow } : {}),
+        children: input.children.map((child, index) =>
+          parseViewNode(child, `${location}/children/${index}`)
+        ),
+        ...(input.gap === "sm" || input.gap === "md" || input.gap === "lg" ? { gap: input.gap } : {})
+      };
+    case "tabs":
+      if (!Array.isArray(input.tabs)) {
+        throw new Error(`${location}: tabs view requires an array "tabs".`);
+      }
+
+      return {
+        type: "tabs",
+        tabs: input.tabs.map((tab, index) => {
+          if (!isRecord(tab)) {
+            throw new Error(`${location}/tabs/${index}: tab must be an object.`);
+          }
+
+          if (!Array.isArray(tab.children)) {
+            throw new Error(`${location}/tabs/${index}: tab requires an array "children".`);
+          }
+
+          return {
+            ...(typeof tab.id === "string" ? { id: tab.id } : {}),
+            label: expectString(tab.label, `${location}/tabs/${index}: tab requires "label".`),
+            children: tab.children.map((child, childIndex) =>
+              parseViewNode(child, `${location}/tabs/${index}/children/${childIndex}`)
+            )
+          };
+        })
+      };
     case "markdown":
       return {
         type: "markdown",
@@ -277,6 +316,33 @@ function parseViewNode(input: unknown, location: string): ViewNodeSpec {
         type: "json",
         ...(typeof input.title === "string" ? { title: input.title } : {}),
         ...(input.value !== undefined ? { value: input.value } : {})
+      };
+    case "timeline":
+      if (!Array.isArray(input.items)) {
+        throw new Error(`${location}: timeline view requires an array "items".`);
+      }
+
+      return {
+        type: "timeline",
+        items: input.items.map((item, index) => {
+          if (!isRecord(item)) {
+            throw new Error(`${location}/items/${index}: timeline item must be an object.`);
+          }
+
+          return {
+            ...(typeof item.id === "string" ? { id: item.id } : {}),
+            title: expectString(item.title, `${location}/items/${index}: item requires "title".`),
+            ...(typeof item.meta === "string" ? { meta: item.meta } : {}),
+            ...(typeof item.body === "string" ? { body: item.body } : {}),
+            ...(Array.isArray(item.children)
+              ? {
+                  children: item.children.map((child, childIndex) =>
+                    parseViewNode(child, `${location}/items/${index}/children/${childIndex}`)
+                  )
+                }
+              : {})
+          };
+        })
       };
     case "table":
       if (!Array.isArray(input.columns)) {

@@ -65,46 +65,68 @@ component:
 view:
   type: stack
   children:
-    - type: grid
-      columns: 2
-      children:
-        - type: component
-          component: profileHero
-          props:
-            eyebrow: User
-            title: "{data.name}"
-            subtitle: "{data.role}"
-        - type: markdown
-          content: |
-            # User
-
-            This profile is resolved from codoc data.
-    - type: grid
-      columns: 2
-      children:
-        - type: component
-          component: inlineGreeting
-          props:
-            eyebrow: Inline
-            title: "Client runtime"
-            subtitle: "{data.name} can render custom JS."
-        - type: component
-          component: remoteGreeting
-          props:
-            eyebrow: Remote
-            title: "Remote module"
-            subtitle: "{data.role} sourced from a static ESM file."
-    - type: component
-      component: dashboardEmbed
-    - type: table
+    - type: section
+      eyebrow: User
       title: Profile snapshot
-      columns:
-        - key: label
-          label: Field
-        - key: value
-          label: Value
-      rows:
-        - label: Name
-          value: "{data.name}"
-        - label: Role
-          value: "{data.role}"
+      children:
+        - type: grid
+          columns: 2
+          children:
+            - type: component
+              component: profileHero
+              props:
+                eyebrow: User
+                title: "{data.name}"
+                subtitle: "{data.role}"
+            - type: markdown
+              content: |
+                # User
+
+                This profile is resolved from codoc data.
+        - type: table
+          title: Field values
+          columns:
+            - key: label
+              label: Field
+            - key: value
+              label: Value
+          rows:
+            - label: Name
+              value: "{data.name}"
+            - label: Role
+              value: "{data.role}"
+    - type: tabs
+      tabs:
+        - id: runtimes
+          label: Runtime components
+          children:
+            - type: grid
+              columns: 2
+              children:
+                - type: component
+                  component: inlineGreeting
+                  props:
+                    eyebrow: Inline
+                    title: "Client runtime"
+                    subtitle: "{data.name} can render custom JS."
+                - type: component
+                  component: remoteGreeting
+                  props:
+                    eyebrow: Remote
+                    title: "Remote module"
+                    subtitle: "{data.role} sourced from a static ESM file."
+        - id: embeds
+          label: Embedded codoc
+          children:
+            - type: component
+              component: dashboardEmbed
+    - type: timeline
+      items:
+        - id: joined
+          title: Joined workspace
+          meta: Identity
+          body: "{data.name} is active as {data.role}."
+        - id: coverage
+          title: Runtime coverage
+          meta: Components
+          body: "The view now exercises inline, remote, and codoc component runtimes."

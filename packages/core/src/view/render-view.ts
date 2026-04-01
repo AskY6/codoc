@@ -25,6 +25,25 @@ export interface RenderGridNode {
   children: RenderViewNode[];
 }
 
+export interface RenderSectionNode {
+  type: "section";
+  title?: string;
+  eyebrow?: string;
+  gap: ViewSpacing;
+  children: RenderViewNode[];
+}
+
+export interface RenderTabNode {
+  id: string;
+  label: string;
+  children: RenderViewNode[];
+}
+
+export interface RenderTabsNode {
+  type: "tabs";
+  tabs: RenderTabNode[];
+}
+
 export interface RenderTextNode {
   type: "text";
   content: string;
@@ -35,6 +54,19 @@ export interface RenderJsonNode {
   type: "json";
   title?: string;
   value: unknown;
+}
+
+export interface RenderTimelineItem {
+  id: string;
+  title: string;
+  meta?: string;
+  body?: string;
+  children: RenderViewNode[];
+}
+
+export interface RenderTimelineNode {
+  type: "timeline";
+  items: RenderTimelineItem[];
 }
 
 export interface RenderComponentNode {
@@ -99,10 +131,13 @@ export interface RenderTableNode {
 
 export type RenderViewNode =
   | RenderStackNode
+  | RenderSectionNode
   | RenderMarkdownNode
   | RenderGridNode
+  | RenderTabsNode
   | RenderTextNode
   | RenderJsonNode
+  | RenderTimelineNode
   | RenderTableNode
   | RenderComponentNode;
 
@@ -187,6 +222,16 @@ function renderViewNode(
         type: "markdown",
         content: interpolateTemplate(spec.content, context)
       };
+    case "section":
+      return {
+        type: "section",
+        ...(spec.title ? { title: interpolateTemplate(spec.title, context) } : {}),
+        ...(spec.eyebrow ? { eyebrow: interpolateTemplate(spec.eyebrow, context) } : {}),
+        gap: spec.gap ?? "md",
+        children: spec.children.map((child) =>
+          renderViewNode(child, context, components, componentMeta)
+        )
+      };
     case "grid":
       return {
         type: "grid",
@@ -195,6 +240,17 @@ function renderViewNode(
         children: spec.children.map((child) =>
           renderViewNode(child, context, components, componentMeta)
         )
+      };
+    case "tabs":
+      return {
+        type: "tabs",
+        tabs: spec.tabs.map((tab, index) => ({
+          id: tab.id ?? createRenderNodeId(tab.label, index),
+          label: interpolateTemplate(tab.label, context),
+          children: tab.children.map((child) =>
+            renderViewNode(child, context, components, componentMeta)
+          )
+        }))
       };
     case "text":
       return {
@@ -207,6 +263,21 @@ function renderViewNode(
         type: "json",
         ...(spec.title ? { title: interpolateTemplate(spec.title, context) } : {}),
         value: resolveTemplateValue(spec.value ?? "{data}", context)
+      };
+    case "timeline":
+      return {
+        type: "timeline",
+        items: spec.items.map((item, index) => ({
+          id: item.id ?? createRenderNodeId(item.title, index),
+          title: interpolateTemplate(item.title, context),
+          ...(item.meta ? { meta: interpolateTemplate(item.meta, context) } : {}),
+          ...(item.body ? { body: interpolateTemplate(item.body, context) } : {}),
+          children: item.children
+            ? item.children.map((child) =>
+                renderViewNode(child, context, components, componentMeta)
+              )
+            : []
+        }))
       };
     case "table": {
       const resolvedRows = resolveTemplateValue(spec.rows, context);
@@ -341,6 +412,14 @@ function resolveTemplateValue(value: unknown, context: Record<string, unknown>):
   }
 
   return value;
+}
+
+function createRenderNodeId(value: string, index: number): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug.length > 0 ? slug : `item-${index}`;
 }
 
 function resolveTableCell(row: unknown, key: string): unknown {

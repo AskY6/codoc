@@ -768,19 +768,30 @@ test("http web experience end-to-end", async (t) => {
       url: "/api/codocs/user/document"
     })
   );
-  assert.equal(userDocument.renderedView.children[0].type, "grid");
-  assert.equal(userDocument.renderedView.children[0].children[0].type, "component");
-  assert.equal(userDocument.renderedView.children[0].children[0].source, "local");
-  assert.equal(userDocument.renderedView.children[0].children[0].component, "panels/hero-card");
-  assert.deepEqual(userDocument.renderedView.children[0].children[0].runtime, {
+  assert.equal(userDocument.renderedView.children[0].type, "section");
+  assert.equal(userDocument.renderedView.children[0].eyebrow, "User");
+  assert.equal(userDocument.renderedView.children[0].title, "Profile snapshot");
+  assert.equal(userDocument.renderedView.children[0].children[0].type, "grid");
+  assert.equal(userDocument.renderedView.children[0].children[0].children[0].type, "component");
+  assert.equal(userDocument.renderedView.children[0].children[0].children[0].source, "local");
+  assert.equal(
+    userDocument.renderedView.children[0].children[0].children[0].component,
+    "panels/hero-card"
+  );
+  assert.deepEqual(userDocument.renderedView.children[0].children[0].children[0].runtime, {
     kind: "local",
     path: "panels/hero-card"
   });
-  assert.equal(userDocument.renderedView.children[0].children[0].props.title, "Ada");
-  assert.equal(userDocument.renderedView.children[1].type, "grid");
-  assert.equal(userDocument.renderedView.children[1].children[0].source, "inline");
-  assert.equal(userDocument.renderedView.children[1].children[0].runtime.kind, "inline");
-  assert.deepEqual(userDocument.renderedView.children[1].children[0].propsSchema, {
+  assert.equal(userDocument.renderedView.children[0].children[0].children[0].props.title, "Ada");
+  assert.equal(userDocument.renderedView.children[0].children[1].type, "table");
+  assert.deepEqual(userDocument.renderedView.children[0].children[1].rows[1].cells, ["Role", "editor"]);
+  assert.equal(userDocument.renderedView.children[1].type, "tabs");
+  assert.equal(userDocument.renderedView.children[1].tabs[0].id, "runtimes");
+  assert.equal(userDocument.renderedView.children[1].tabs[0].label, "Runtime components");
+  assert.equal(userDocument.renderedView.children[1].tabs[0].children[0].type, "grid");
+  assert.equal(userDocument.renderedView.children[1].tabs[0].children[0].children[0].source, "inline");
+  assert.equal(userDocument.renderedView.children[1].tabs[0].children[0].children[0].runtime.kind, "inline");
+  assert.deepEqual(userDocument.renderedView.children[1].tabs[0].children[0].children[0].propsSchema, {
     type: "object",
     properties: {
       eyebrow: {
@@ -795,14 +806,17 @@ test("http web experience end-to-end", async (t) => {
     },
     required: ["title"]
   });
-  assert.match(userDocument.renderedView.children[1].children[0].runtime.code, /React\.createElement/);
-  assert.equal(userDocument.renderedView.children[1].children[1].source, "remote");
-  assert.deepEqual(userDocument.renderedView.children[1].children[1].runtime, {
+  assert.match(
+    userDocument.renderedView.children[1].tabs[0].children[0].children[0].runtime.code,
+    /React\.createElement/
+  );
+  assert.equal(userDocument.renderedView.children[1].tabs[0].children[0].children[1].source, "remote");
+  assert.deepEqual(userDocument.renderedView.children[1].tabs[0].children[0].children[1].runtime, {
     kind: "remote",
     url: "/components/remote-greeting.mjs",
     export: "RemoteGreeting"
   });
-  assert.deepEqual(userDocument.renderedView.children[1].children[1].propsSchema, {
+  assert.deepEqual(userDocument.renderedView.children[1].tabs[0].children[0].children[1].propsSchema, {
     type: "object",
     properties: {
       eyebrow: {
@@ -817,18 +831,22 @@ test("http web experience end-to-end", async (t) => {
     },
     required: ["title"]
   });
-  assert.equal(userDocument.renderedView.children[2].type, "component");
-  assert.equal(userDocument.renderedView.children[2].source, "codoc");
-  assert.deepEqual(userDocument.renderedView.children[2].runtime, {
+  assert.equal(userDocument.renderedView.children[1].tabs[1].id, "embeds");
+  assert.equal(userDocument.renderedView.children[1].tabs[1].children[0].type, "component");
+  assert.equal(userDocument.renderedView.children[1].tabs[1].children[0].source, "codoc");
+  assert.deepEqual(userDocument.renderedView.children[1].tabs[1].children[0].runtime, {
     kind: "codoc",
     ref: "dashboard"
   });
-  assert.deepEqual(userDocument.renderedView.children[2].propsSchema, {
+  assert.deepEqual(userDocument.renderedView.children[1].tabs[1].children[0].propsSchema, {
     type: "object",
     properties: {}
   });
-  assert.equal(userDocument.renderedView.children[3].type, "table");
-  assert.deepEqual(userDocument.renderedView.children[3].rows[1].cells, ["Role", "editor"]);
+  assert.equal(userDocument.renderedView.children[2].type, "timeline");
+  assert.equal(userDocument.renderedView.children[2].items[0].id, "joined");
+  assert.equal(userDocument.renderedView.children[2].items[0].title, "Joined workspace");
+  assert.equal(userDocument.renderedView.children[2].items[0].body, "Ada is active as editor.");
+  assert.equal(userDocument.renderedView.children[2].items[1].title, "Runtime coverage");
 
   const chatResult = parseJsonBody(
     await http.request({
