@@ -38,9 +38,7 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
   }
 
   const agent = new RuleBasedBaseAgent();
-  const localService = new LocalCobookService({
-    chatHandler: (input, boundService) => agent.run(input, boundService)
-  });
+  const localService = createCliService(agent);
   const stdioTransport =
     parsed.transport === "stdio"
       ? createStdioServiceTransport({
@@ -53,7 +51,11 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
       ? localService
       : parsed.transport === "rpc"
         ? new RpcCobookService(
-            createLoopbackServiceTransport(createCobookRpcServer(localService))
+            createLoopbackServiceTransport(
+              createCobookRpcServer({
+                createService: () => createCliService(agent)
+              })
+            )
           )
         : new RpcCobookService(requireStdioTransport(stdioTransport));
 
@@ -77,6 +79,7 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
     stdout.write(`${formatResult(result)}\n`);
     return 0;
   } finally {
+    await service.closeWorkspace();
     await stdioTransport?.close();
   }
 }
@@ -166,6 +169,12 @@ function isMainModule(): boolean {
 
 function resolveServerEntryPath(): string {
   return resolvePath(dirname(fileURLToPath(import.meta.url)), "../../server/src/main.js");
+}
+
+function createCliService(agent: RuleBasedBaseAgent): LocalCobookService {
+  return new LocalCobookService({
+    chatHandler: (input, boundService) => agent.run(input, boundService)
+  });
 }
 
 function requireStdioTransport(transport: typeof createStdioServiceTransport extends (

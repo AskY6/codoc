@@ -181,6 +181,86 @@ test("stdio transport end-to-end", async (t) => {
   });
 });
 
+test("rpc server manages multi-workspace session lifecycles", async (t) => {
+  const runtime = await buildRuntime();
+  const workspaceA = await cloneExampleWorkspace("cobook-e2e-session-a-");
+  const workspaceB = await cloneExampleWorkspace("cobook-e2e-session-b-");
+
+  t.after(async () => {
+    await Promise.all([
+      cleanup(runtime, workspaceA),
+      rm(workspaceB, { recursive: true, force: true })
+    ]);
+  });
+
+  const workspaceBUserPath = join(workspaceB, "user.codoc");
+  const originalWorkspaceBUser = await readFile(workspaceBUserPath, "utf8");
+  await writeFile(workspaceBUserPath, originalWorkspaceBUser.replace("Ada", "Lin"), "utf8");
+
+  const serviceModule = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+  const {
+    LocalCobookService,
+    RpcCobookService,
+    createCobookRpcServer,
+    createLoopbackServiceTransport
+  } = serviceModule;
+
+  const server = createCobookRpcServer({
+    createService: () => new LocalCobookService()
+  });
+  const clientA1 = new RpcCobookService(createLoopbackServiceTransport(server));
+  const clientA2 = new RpcCobookService(createLoopbackServiceTransport(server));
+  const clientB = new RpcCobookService(createLoopbackServiceTransport(server));
+
+  await clientA1.openWorkspace(workspaceA);
+  await clientA2.openWorkspace(workspaceA);
+  await clientB.openWorkspace(workspaceB);
+
+  const workspaceAUserPath = join(workspaceA, "user.codoc");
+  const originalWorkspaceAUser = await readFile(workspaceAUserPath, "utf8");
+  await clientA1.writeCodoc({
+    codocId: "user",
+    filePath: "user.codoc",
+    content: originalWorkspaceAUser.replace("Ada", "Grace"),
+    overwrite: true
+  });
+
+  const resolvedSharedWorkspace = await clientA2.resolve("dashboard:data/currentUser");
+  assert.deepEqual(resolvedSharedWorkspace.value, {
+    name: "Grace",
+    role: "editor"
+  });
+
+  const resolvedOtherWorkspace = await clientB.resolve("dashboard:data/currentUser");
+  assert.deepEqual(resolvedOtherWorkspace.value, {
+    name: "Lin",
+    role: "editor"
+  });
+
+  await clientA1.closeWorkspace();
+  await assert.rejects(clientA1.getWorkspace(), /Workspace is not open\./);
+
+  const remainingLeaseStillWorks = await clientA2.resolve("dashboard:data/currentUser");
+  assert.deepEqual(remainingLeaseStillWorks.value, {
+    name: "Grace",
+    role: "editor"
+  });
+
+  await clientA2.closeWorkspace();
+
+  const clientA3 = new RpcCobookService(createLoopbackServiceTransport(server));
+  await clientA3.openWorkspace(workspaceA);
+  const reopenedWorkspace = await clientA3.resolve("dashboard:data/currentUser");
+  assert.deepEqual(reopenedWorkspace.value, {
+    name: "Grace",
+    role: "editor"
+  });
+
+  await Promise.all([clientA3.closeWorkspace(), clientB.closeWorkspace()]);
+});
+
 test("http web experience end-to-end", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-http-");

@@ -28,8 +28,9 @@ if (parsed.mode === "http") {
 }
 
 function runStdioServer(): void {
-  const service = createAppService();
-  const server = createCobookRpcServer(service);
+  const server = createCobookRpcServer({
+    createService: createAppService
+  });
   const input = createInterface({
     input: stdin,
     crlfDelay: Infinity

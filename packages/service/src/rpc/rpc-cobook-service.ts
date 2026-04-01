@@ -21,76 +21,92 @@ import type {
 import type { ServiceTransport } from "./types.js";
 import type { WatchRpcNextResult } from "./types.js";
 
+interface OpenWorkspaceRpcResult {
+  sessionId: string;
+  workspace: WorkspaceSnapshot;
+}
+
 export class RpcCobookService implements CobookService {
   readonly #transport: ServiceTransport;
   #requestId = 0;
   #watchId = 0;
+  #sessionId: string | null = null;
 
   constructor(transport: ServiceTransport) {
     this.#transport = transport;
   }
 
   async openWorkspace(root: string): Promise<WorkspaceSnapshot> {
-    return this.send("openWorkspace", {
+    await this.closeWorkspace();
+
+    const opened = await this.send<OpenWorkspaceRpcResult>("openWorkspace", {
       root
+    });
+    this.#sessionId = opened.sessionId;
+    return opened.workspace;
+  }
+
+  async closeWorkspace(): Promise<void> {
+    const sessionId = this.#sessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    this.#sessionId = null;
+    await this.send("closeWorkspace", {
+      sessionId
     });
   }
 
   async getWorkspace(): Promise<WorkspaceSnapshot> {
-    return this.send("getWorkspace");
+    return this.send("getWorkspace", this.sessionParams());
   }
 
   async build(): Promise<BuildResult> {
-    return this.send("build");
+    return this.send("build", this.sessionParams());
   }
 
   async rebuildCodoc(codocId: string): Promise<BuildResult> {
-    return this.send("rebuildCodoc", {
-      codocId
-    });
+    return this.send("rebuildCodoc", this.sessionParams({ codocId }));
   }
 
   async listCodocs(): Promise<CodocSummary[]> {
-    return this.send("listCodocs");
+    return this.send("listCodocs", this.sessionParams());
   }
 
   async readCodoc(codocId: string): Promise<ParsedCodoc> {
-    return this.send("readCodoc", {
-      codocId
-    });
+    return this.send("readCodoc", this.sessionParams({ codocId }));
   }
 
   async writeCodoc(input: WriteCodocInput): Promise<WriteCodocResult> {
-    return this.send("writeCodoc", input);
+    return this.send("writeCodoc", this.sessionParams(input));
   }
 
   async invalidate(node: string): Promise<InvalidationResult> {
-    return this.send("invalidate", {
-      node
-    });
+    return this.send("invalidate", this.sessionParams({ node }));
   }
 
   async resolve(node: string, _opts?: ResolveOptions): Promise<ResolvedValue> {
-    return this.send("resolve", {
-      node
-    });
+    return this.send("resolve", this.sessionParams({ node }));
   }
 
   async graph(): Promise<GraphSnapshot> {
-    return this.send("graph");
+    return this.send("graph", this.sessionParams());
   }
 
   async diagnostics(): Promise<WorkspaceDiagnostics> {
-    return this.send("diagnostics");
+    return this.send("diagnostics", this.sessionParams());
   }
 
   async *watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
+    const sessionId = this.requireSessionId();
     const watchId = `watch-${this.#watchId++}`;
     let started = false;
     const abortPromise = createAbortPromise(signal);
 
     try {
       await this.send("watchStart", {
+        sessionId,
         watchId
       });
       started = true;
@@ -98,6 +114,7 @@ export class RpcCobookService implements CobookService {
       while (true) {
         const next = (await Promise.race([
           this.send<WatchRpcNextResult>("watchNext", {
+            sessionId,
             watchId
           }),
           abortPromise
@@ -113,6 +130,7 @@ export class RpcCobookService implements CobookService {
       if (started) {
         try {
           await this.send("watchStop", {
+            sessionId,
             watchId
           });
         } catch {
@@ -123,11 +141,26 @@ export class RpcCobookService implements CobookService {
   }
 
   async *chat(input: ChatInput): AsyncIterable<ChatEvent> {
-    const events = await this.send<ChatEvent[]>("chat", input);
+    const events = await this.send<ChatEvent[]>("chat", this.sessionParams(input));
 
     for (const event of events) {
       yield event;
     }
+  }
+
+  private sessionParams<T extends object>(params?: T): { sessionId: string } & T {
+    return {
+      sessionId: this.requireSessionId(),
+      ...(params ?? ({} as T))
+    };
+  }
+
+  private requireSessionId(): string {
+    if (!this.#sessionId) {
+      throw new Error("Workspace is not open.");
+    }
+
+    return this.#sessionId;
   }
 
   private async send<TResult>(method: string, params?: unknown): Promise<TResult> {

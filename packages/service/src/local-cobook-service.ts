@@ -67,6 +67,10 @@ export class LocalCobookService implements CobookService {
     return toWorkspaceSnapshot(this.#session);
   }
 
+  async closeWorkspace(): Promise<void> {
+    this.#session = null;
+  }
+
   async getWorkspace(): Promise<WorkspaceSnapshot> {
     return toWorkspaceSnapshot(requireSession(this.#session));
   }

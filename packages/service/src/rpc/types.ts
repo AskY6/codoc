@@ -1,5 +1,6 @@
 export type ServiceRpcMethod =
   | "openWorkspace"
+  | "closeWorkspace"
   | "getWorkspace"
   | "build"
   | "rebuildCodoc"

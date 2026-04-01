@@ -49,6 +49,7 @@ export interface WorkspaceWatchEvent {
 
 export interface CobookService {
   openWorkspace(root: string): Promise<WorkspaceSnapshot>;
+  closeWorkspace(): Promise<void>;
   getWorkspace(): Promise<WorkspaceSnapshot>;
   build(): Promise<BuildResult>;
   rebuildCodoc(codocId: string): Promise<BuildResult>;
