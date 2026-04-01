@@ -1,3 +1,4 @@
+export * from "./dag/create-dag-engine.js";
 export * from "./dag/create-unimplemented-dag-engine.js";
 export * from "./dag/types.js";
 export * from "./ids/node-id.js";
@@ -7,4 +8,5 @@ export * from "./ref/parse-codoc-ref.js";
 export * from "./ref/types.js";
 export * from "./runtime/types.js";
 export * from "./schema/types.js";
+export * from "./source-spec/parse-file-source.js";
 export * from "./source-spec/types.js";

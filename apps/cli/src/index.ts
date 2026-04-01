@@ -1,5 +1,12 @@
-import type { BuildResult, GraphSnapshot, ResolvedValue } from "@cobook/core";
-import type { CodocSummary, CobookService } from "@cobook/service";
+import type {
+  BuildResult,
+  CodocSummary,
+  CobookService,
+  GraphSnapshot,
+  InvalidationResult,
+  ResolvedValue
+} from "@cobook/service";
+import type { WorkspaceDiagnostics } from "@cobook/service";
 
 import { CLI_COMMANDS, type CliCommand, type CliCommandName } from "./commands/index.js";
 import { collectChatTranscript } from "./tui/index.js";
@@ -12,7 +19,9 @@ export interface CliRunInput {
 export type CliRunResult =
   | BuildResult
   | GraphSnapshot
+  | InvalidationResult
   | ResolvedValue
+  | WorkspaceDiagnostics
   | CodocSummary[]
   | string[];
 
@@ -30,6 +39,14 @@ export function createCliApp(service: CobookService): CliApp {
           return service.listCodocs();
         case "validate":
           return service.build();
+        case "invalidate": {
+          const nodeKey = input.args[0];
+          if (!nodeKey) {
+            throw new Error("Missing required node key.");
+          }
+
+          return service.invalidate(nodeKey);
+        }
         case "resolve": {
           const nodeKey = input.args[0];
           if (!nodeKey) {
@@ -40,6 +57,10 @@ export function createCliApp(service: CobookService): CliApp {
         }
         case "graph":
           return service.graph();
+        case "diagnose":
+          return service.diagnostics();
+        case "watch":
+          throw new Error("The watch command is handled by the CLI runtime.");
         case "chat":
           return collectChatTranscript(
             service.chat({

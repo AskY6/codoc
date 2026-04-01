@@ -1,74 +1,105 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { createRuntimeContext, createUnimplementedDagEngine, parseCodocText } from "@cobook/core";
-import { loadWorkspace, toWorkspaceSnapshot } from "@cobook/workspace";
+import { createDagEngine, createRuntimeContext, parseCodocText } from "@cobook/core";
+import { loadWorkspace, toWorkspaceSnapshot, watchWorkspace } from "@cobook/workspace";
 
-import type { BuildResult, ParsedCodoc, ResolveOptions, ResolvedValue } from "@cobook/core";
+import type {
+  BuildResult,
+  InvalidationResult,
+  ParsedCodoc,
+  ResolveOptions,
+  ResolvedValue
+} from "@cobook/core";
 import type { WorkspaceSnapshot } from "@cobook/workspace";
 
 import type { ChatEvent, ChatInput } from "./ai/index.js";
-import type { CobookService, WriteCodocInput, WriteCodocResult } from "./cobook-service.js";
+import type {
+  CobookService,
+  WorkspaceDiagnostics,
+  WorkspaceWatchEvent,
+  WriteCodocInput,
+  WriteCodocResult
+} from "./cobook-service.js";
+import { createLocalSourceExecutor } from "./source-executor/index.js";
 import type { WorkspaceSession } from "./workspace-session.js";
+
+export interface LocalCobookServiceOptions {
+  chatHandler?: (input: ChatInput, service: CobookService) => AsyncIterable<ChatEvent>;
+}
 
 function workspaceNotOpen(): never {
   throw new Error("Workspace is not open.");
 }
 
-function unimplemented(method: string): never {
-  throw new Error(`LocalCobookService.${method} is not implemented yet.`);
-}
-
 export class LocalCobookService implements CobookService {
   #session: WorkspaceSession | null = null;
+  readonly #options: LocalCobookServiceOptions;
+
+  constructor(options: LocalCobookServiceOptions = {}) {
+    this.#options = options;
+  }
 
   async openWorkspace(root: string): Promise<WorkspaceSnapshot> {
     const workspace = await loadWorkspace(root);
+    const sourceExecutor = createLocalSourceExecutor();
+    const dag = createDagEngine({
+      loadFileSource: (spec, context) =>
+        sourceExecutor.resolve(spec, {
+          workspaceRoot: workspace.root,
+          node: context.node,
+          codocFilePath: context.codocFilePath
+        })
+    });
 
     this.#session = {
       root: workspace.root,
       config: workspace.config,
       codocs: workspace.codocs,
-      dag: createUnimplementedDagEngine(),
-      runtime: createRuntimeContext()
+      dag,
+      runtime: createRuntimeContext(),
+      sourceExecutor,
+      lastBuild: null
     };
+    this.#session.lastBuild = this.#session.dag.build(Array.from(this.#session.codocs.values()));
+    syncRuntimeState(this.#session);
 
     return toWorkspaceSnapshot(this.#session);
   }
 
   async getWorkspace(): Promise<WorkspaceSnapshot> {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
-
-    return toWorkspaceSnapshot(this.#session);
+    return toWorkspaceSnapshot(requireSession(this.#session));
   }
 
   async build() {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
+    const session = requireSession(this.#session);
 
-    return this.#session.dag.build(Array.from(this.#session.codocs.values()));
+    session.lastBuild = session.dag.build(Array.from(session.codocs.values()));
+    syncRuntimeState(session);
+    return session.lastBuild;
   }
 
-  async rebuildCodoc(_codocId: string): Promise<BuildResult> {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
+  async rebuildCodoc(codocId: string): Promise<BuildResult> {
+    const session = requireSession(this.#session);
 
-    const existing = this.#session.codocs.get(_codocId);
+    const existing = session.codocs.get(codocId);
     if (!existing) {
-      throw new Error(`Codoc "${_codocId}" was not found.`);
+      throw new Error(`Codoc "${codocId}" was not found.`);
     }
 
-    const raw = await readFile(join(this.#session.root, existing.filePath), "utf8");
+    const raw = await readFile(join(session.root, existing.filePath), "utf8");
     const parsed = parseCodocText(existing.filePath, raw);
+    const conflict = session.codocs.get(parsed.id);
+    if (parsed.id !== codocId && conflict && conflict.filePath !== existing.filePath) {
+      throw new Error(`Codoc id "${parsed.id}" already exists in the workspace.`);
+    }
 
-    this.#session.codocs.delete(_codocId);
-    this.#session.codocs.set(parsed.id, parsed);
+    session.codocs.delete(codocId);
+    session.codocs.set(parsed.id, parsed);
+    session.lastBuild = session.dag.rebuildCodoc(parsed);
+    syncRuntimeState(session);
 
-    return this.#session.dag.rebuildCodoc(parsed);
+    return session.lastBuild;
   }
 
   async listCodocs() {
@@ -76,25 +107,21 @@ export class LocalCobookService implements CobookService {
     return snapshot.codocs;
   }
 
-  async readCodoc(_codocId: string): Promise<ParsedCodoc> {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
+  async readCodoc(codocId: string): Promise<ParsedCodoc> {
+    const session = requireSession(this.#session);
 
-    const codoc = this.#session.codocs.get(_codocId);
+    const codoc = session.codocs.get(codocId);
     if (!codoc) {
-      throw new Error(`Codoc "${_codocId}" was not found.`);
+      throw new Error(`Codoc "${codocId}" was not found.`);
     }
 
     return codoc;
   }
 
   async writeCodoc(input: WriteCodocInput): Promise<WriteCodocResult> {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
+    const session = requireSession(this.#session);
 
-    const absolutePath = join(this.#session.root, input.filePath);
+    const absolutePath = join(session.root, input.filePath);
     const flag = input.overwrite ? "w" : "wx";
 
     await mkdir(dirname(absolutePath), { recursive: true });
@@ -107,40 +134,241 @@ export class LocalCobookService implements CobookService {
       );
     }
 
-    this.#session.codocs.set(parsed.id, parsed);
+    const existingAtPath = findCodocByFilePath(session.codocs, input.filePath);
+    if (existingAtPath && existingAtPath.id !== parsed.id) {
+      session.codocs.delete(existingAtPath.id);
+    }
+
+    const existingById = session.codocs.get(parsed.id);
+    if (existingById && existingById.filePath !== input.filePath) {
+      throw new Error(`Codoc id "${parsed.id}" already exists at "${existingById.filePath}".`);
+    }
+
+    session.codocs.set(parsed.id, parsed);
+    session.lastBuild = session.dag.rebuildCodoc(parsed);
+    syncRuntimeState(session);
 
     return {
       codocId: parsed.id,
       filePath: input.filePath,
-      changed: true
+      changed: true,
+      build: session.lastBuild
     };
   }
 
-  async resolve(_node: string, _opts?: ResolveOptions): Promise<ResolvedValue> {
-    return unimplemented("resolve");
+  async invalidate(node: string): Promise<InvalidationResult> {
+    const session = requireSession(this.#session);
+    const result = session.dag.invalidate(node);
+
+    for (const dirtiedNode of result.dirtiedNodes) {
+      const previous = session.runtime.states.get(dirtiedNode);
+      session.runtime.states.set(dirtiedNode, {
+        status: "dirty",
+        version: previous?.version ?? 0,
+        value: previous?.value,
+        error: previous?.error ?? null
+      });
+    }
+
+    return result;
+  }
+
+  async resolve(node: string, opts?: ResolveOptions): Promise<ResolvedValue> {
+    const session = requireSession(this.#session);
+    ensureBuildSucceeded(session);
+
+    const previous = session.runtime.states.get(node);
+    session.runtime.states.set(node, {
+      status: "computing",
+      version: previous?.version ?? 0,
+      value: previous?.value,
+      error: null
+    });
+
+    try {
+      const resolved = await session.dag.resolve(node, opts);
+      session.runtime.states.set(node, {
+        status: "ready",
+        version: resolved.version,
+        value: resolved.value,
+        error: null
+      });
+      return resolved;
+    } catch (error) {
+      const normalizedError = error instanceof Error ? error : new Error(String(error));
+      session.runtime.states.set(node, {
+        status: "error",
+        version: (previous?.version ?? 0) + 1,
+        value: previous?.value,
+        error: normalizedError
+      });
+      throw normalizedError;
+    }
   }
 
   async graph() {
-    if (!this.#session) {
-      workspaceNotOpen();
-    }
+    const session = requireSession(this.#session);
 
-    return this.#session.dag.snapshot();
+    return session.dag.snapshot();
   }
 
-  async *chat(_input: ChatInput): AsyncIterable<ChatEvent> {
+  async diagnostics(): Promise<WorkspaceDiagnostics> {
+    const session = requireSession(this.#session);
+    const graph = session.dag.snapshot();
+
+    return {
+      build: session.lastBuild,
+      graph,
+      nodes: graph.nodes.map((node) => ({
+        node,
+        state: session.runtime.states.get(node.id) ?? createIdleNodeState(),
+        dependents: session.dag.getDependents(node.id)
+      }))
+    };
+  }
+
+  async *watch(): AsyncIterable<WorkspaceWatchEvent> {
+    const session = requireSession(this.#session);
+    const queue: WorkspaceWatchEvent[] = [];
+    let wake: (() => void) | null = null;
+    let watchError: Error | null = null;
+
+    const watcher = await watchWorkspace(session.root, session.config, async (change) => {
+      try {
+        const build = await this.applyWorkspaceChange(change);
+        queue.push({
+          change,
+          build
+        });
+      } catch (error) {
+        watchError = error instanceof Error ? error : new Error(String(error));
+      } finally {
+        wake?.();
+      }
+    });
+
+    try {
+      while (true) {
+        if (queue.length === 0) {
+          if (watchError) {
+            throw watchError;
+          }
+
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+          wake = null;
+          if (watchError) {
+            throw watchError;
+          }
+        }
+
+        while (queue.length > 0) {
+          const event = queue.shift();
+          if (event) {
+            yield event;
+          }
+        }
+      }
+    } finally {
+      watcher.close();
+    }
+  }
+
+  async *chat(input: ChatInput): AsyncIterable<ChatEvent> {
+    if (this.#options.chatHandler) {
+      yield* this.#options.chatHandler(input, this);
+      return;
+    }
+
     yield {
       kind: "status",
       status: "thinking",
-      message: "Chat flow is not implemented yet."
+      message: "No chat handler was configured for this service."
     };
     yield {
       kind: "message",
-      content: "Base agent and chat orchestration are not implemented yet."
+      content: "Configure LocalCobookService with a base-agent chat handler to enable chat."
     };
     yield {
       kind: "status",
       status: "done"
     };
   }
+
+  private async applyWorkspaceChange(change: { kind: string; path: string }): Promise<BuildResult> {
+    const session = requireSession(this.#session);
+
+    if (change.path === "cobook.yaml" || change.kind !== "updated") {
+      await this.openWorkspace(session.root);
+      return requireSession(this.#session).lastBuild ?? emptyBuildResult();
+    }
+
+    const changedCodoc = findCodocByFilePath(session.codocs, change.path);
+    if (!changedCodoc) {
+      await this.openWorkspace(session.root);
+      return requireSession(this.#session).lastBuild ?? emptyBuildResult();
+    }
+
+    return this.rebuildCodoc(changedCodoc.id);
+  }
+}
+
+function requireSession(session: WorkspaceSession | null): WorkspaceSession {
+  return session ?? workspaceNotOpen();
+}
+
+function ensureBuildSucceeded(session: WorkspaceSession): void {
+  const buildResult =
+    session.lastBuild ?? session.dag.build(Array.from(session.codocs.values()));
+
+  session.lastBuild = buildResult;
+  if (buildResult.success) {
+    return;
+  }
+
+  const details = buildResult.errors
+    .map((error) => `- [${error.code}] ${error.message}`)
+    .join("\n");
+  throw new Error(`Workspace build failed:\n${details}`);
+}
+
+function syncRuntimeState(session: WorkspaceSession): void {
+  const liveNodes = new Set(session.dag.snapshot().nodes.map((node) => node.id));
+
+  for (const nodeKey of Array.from(session.runtime.states.keys())) {
+    if (!liveNodes.has(nodeKey)) {
+      session.runtime.states.delete(nodeKey);
+    }
+  }
+}
+
+function createIdleNodeState() {
+  return {
+    status: "idle" as const,
+    version: 0,
+    value: undefined,
+    error: null
+  };
+}
+
+function emptyBuildResult(): BuildResult {
+  return {
+    success: true,
+    errors: [],
+    affectedNodes: []
+  };
+}
+
+function findCodocByFilePath(
+  codocs: Map<string, ParsedCodoc>,
+  filePath: string
+): ParsedCodoc | null {
+  for (const codoc of codocs.values()) {
+    if (codoc.filePath === filePath) {
+      return codoc;
+    }
+  }
+
+  return null;
 }
