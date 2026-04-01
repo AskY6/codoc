@@ -125,6 +125,13 @@ function parseDataSpec(value: unknown, location: string): DataSpec {
       };
     }
 
+    if (source === "preset") {
+      return {
+        kind: "preset",
+        name: expectString(value.name, `${location}: preset source requires "name".`)
+      };
+    }
+
     if (source === "codoc" || (source === undefined && typeof value.$ref === "string")) {
       return {
         kind: "codoc",

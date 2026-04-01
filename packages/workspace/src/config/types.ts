@@ -1,3 +1,5 @@
+import type { DataSpec } from "@cobook/core";
+
 export interface RefDirectory {
   $ref: string;
 }
@@ -19,16 +21,19 @@ export interface CobookWorkflowConfig {
   outputDir?: string;
 }
 
+export type CobookSourceConfig = Extract<DataSpec, { kind: "static" | "file" | "http" | "rss" | "preset" }>;
+
 export interface CobookConfig {
   cobook: string;
   name: string;
   entry?: string;
   include?: string[];
   exclude?: string[];
+  plugins?: string[];
   schemas?: RefDirectory;
   components?: RefDirectory;
   agents?: Record<string, CobookAgentConfig>;
   workflows?: Record<string, CobookWorkflowConfig>;
-  sources?: unknown[];
+  sources?: Record<string, CobookSourceConfig>;
   build?: Record<string, unknown>;
 }

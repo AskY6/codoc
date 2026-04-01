@@ -1,9 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import type { CobookAgentConfig, CobookConfig, CobookWorkflowConfig } from "./types.js";
+import { parseCodocText } from "@cobook/core";
+
+import type {
+  CobookAgentConfig,
+  CobookConfig,
+  CobookSourceConfig,
+  CobookWorkflowConfig
+} from "./types.js";
 
 export async function loadCobookConfig(root: string): Promise<CobookConfig> {
   const configPath = join(root, "cobook.yaml");
@@ -20,6 +27,7 @@ export async function loadCobookConfig(root: string): Promise<CobookConfig> {
     ...(typeof parsed.entry === "string" ? { entry: parsed.entry } : {}),
     ...(isStringArray(parsed.include) ? { include: parsed.include } : {}),
     ...(isStringArray(parsed.exclude) ? { exclude: parsed.exclude } : {}),
+    ...(isStringArray(parsed.plugins) ? { plugins: parsed.plugins } : {}),
     ...(isRecord(parsed.schemas) && typeof parsed.schemas.$ref === "string"
       ? { schemas: { $ref: parsed.schemas.$ref } }
       : {}),
@@ -30,12 +38,12 @@ export async function loadCobookConfig(root: string): Promise<CobookConfig> {
     ...(parsed.workflows !== undefined
       ? { workflows: parseWorkflows(parsed.workflows, configPath) }
       : {}),
-    ...(Array.isArray(parsed.sources) ? { sources: parsed.sources } : {}),
+    ...(parsed.sources !== undefined ? { sources: parseSources(parsed.sources, configPath) } : {}),
     ...(isRecord(parsed.build) ? { build: parsed.build } : {})
   };
 }
 
-function parseAgents(value: unknown, configPath: string): Record<string, CobookAgentConfig> {
+export function parseAgents(value: unknown, configPath: string): Record<string, CobookAgentConfig> {
   if (!isRecord(value)) {
     throw new Error(`${configPath}: "agents" must be an object if provided.`);
   }
@@ -83,7 +91,10 @@ function parseAgents(value: unknown, configPath: string): Record<string, CobookA
   return agents;
 }
 
-function parseWorkflows(value: unknown, configPath: string): Record<string, CobookWorkflowConfig> {
+export function parseWorkflows(
+  value: unknown,
+  configPath: string
+): Record<string, CobookWorkflowConfig> {
   if (!isRecord(value)) {
     throw new Error(`${configPath}: "workflows" must be an object if provided.`);
   }
@@ -138,6 +149,44 @@ function parseWorkflows(value: unknown, configPath: string): Record<string, Cobo
   return workflows;
 }
 
+export function parseSources(
+  value: unknown,
+  configPath: string
+): Record<string, CobookSourceConfig> {
+  if (!isRecord(value)) {
+    throw new Error(`${configPath}: "sources" must be an object if provided.`);
+  }
+
+  const parsed = parseCodocText(
+    `${configPath}#/sources`,
+    stringifyYaml(
+      {
+        codoc: "0.1",
+        id: "__sources__",
+        data: value
+      },
+      {
+        lineWidth: 0
+      }
+    )
+  ).data;
+
+  const sources = parsed ?? {};
+  const namedSources: Record<string, CobookSourceConfig> = {};
+
+  for (const [id, spec] of Object.entries(sources)) {
+    if (!isNamedSourceConfig(spec)) {
+      throw new Error(
+        `${configPath}: source "${id}" must resolve to a static, file, http, rss, or preset spec.`
+      );
+    }
+
+    namedSources[id] = spec;
+  }
+
+  return namedSources;
+}
+
 function expectString(value: unknown, message: string): string {
   if (typeof value !== "string") {
     throw new Error(message);
@@ -156,6 +205,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
+}
+
+function isNamedSourceConfig(value: unknown): value is CobookSourceConfig {
+  return (
+    isRecord(value) &&
+    typeof value.kind === "string" &&
+    ["static", "file", "http", "rss", "preset"].includes(value.kind)
+  );
 }
 
 function toTitleCase(value: string): string {

@@ -5,6 +5,7 @@ export type DataSpec =
   | FileSourceSpec
   | HttpSourceSpec
   | RssSourceSpec
+  | PresetSourceSpec
   | CodocSourceSpec
   | ObjectShapeSpec;
 
@@ -35,6 +36,11 @@ export interface RssSourceSpec {
   url: string;
   headers?: Record<string, string>;
   limit?: number;
+}
+
+export interface PresetSourceSpec {
+  kind: "preset";
+  name: string;
 }
 
 export interface CodocSourceSpec {

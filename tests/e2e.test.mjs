@@ -1152,6 +1152,193 @@ test("http chat executes configured workflows", async (t) => {
   });
 });
 
+test("workspace plugins contribute sources components and agents", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-plugin-");
+  const configPath = join(workspace, "cobook.yaml");
+  const pluginPath = join(workspace, "plugins", "research-plugin.yaml");
+  const sourceServer = await createRssSourceServer();
+
+  t.after(async () => {
+    await Promise.all([cleanup(runtime, workspace), sourceServer.close()]);
+  });
+
+  await mkdir(join(workspace, "plugins"), { recursive: true });
+  await writeFile(
+    join(workspace, "sources.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "sources"',
+      "",
+      "data:",
+      "  status:",
+      "    $source: static",
+      '    value: "active"',
+      "",
+      "view: |",
+      "  # Sources",
+      "",
+      "  {data.status}",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  await writeFile(
+    pluginPath,
+    [
+      'cobookPlugin: "0.1"',
+      'name: "research-plugin"',
+      "",
+      "components:",
+      "  researchHero:",
+      '    $source: builtin',
+      '    name: "hero"',
+      "",
+      "agents:",
+      "  research:",
+      '    name: "Plugin Research"',
+      "    pinnedCodocIds:",
+      '      - "sources"',
+      "",
+      "sources:",
+      "  marketFeed:",
+      '    $source: rss',
+      `    url: "http://127.0.0.1:${sourceServer.port}/feed.xml"`,
+      "    limit: 2",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  await writeFile(
+    configPath,
+    [
+      (await readFile(configPath, "utf8")).trimEnd(),
+      "",
+      "plugins:",
+      '  - "./plugins/research-plugin.yaml"'
+    ].join("\n") + "\n",
+    "utf8"
+  );
+
+  await writeFile(
+    join(workspace, "plugin-preset.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "plugin-preset"',
+      "",
+      "data:",
+      "  feed:",
+      '    $source: preset',
+      '    name: "marketFeed"',
+      "",
+      "view:",
+      '  type: "stack"',
+      "  children:",
+      '    - type: "component"',
+      '      component: "researchHero"',
+      "      props:",
+      '        title: "Plugin feed"',
+      '        subtitle: "{data.feed.0.title}"',
+      '    - type: "table"',
+      "      columns:",
+      '        - key: "title"',
+      '        - key: "publishedAt"',
+      '      rows: "{data.feed}"',
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await http.close();
+  });
+
+  const workspaceSnapshot = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/workspace"
+    })
+  );
+  assert.deepEqual(workspaceSnapshot.componentRegistry.researchHero, {
+    kind: "builtin",
+    name: "hero"
+  });
+  assert.equal(workspaceSnapshot.config.agents.research.name, "Plugin Research");
+  assert.equal(workspaceSnapshot.config.sources.marketFeed.kind, "rss");
+
+  const agentPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "list agents"
+      })
+    })
+  );
+  const agentMessage = agentPayload.events.find((event) => event.kind === "message");
+  assert.ok(agentMessage, "Expected a message event from plugin agent listing.");
+  assert.deepEqual(JSON.parse(agentMessage.content).agents, [
+    {
+      id: "research",
+      name: "Plugin Research",
+      pinnedCodocIds: ["sources"]
+    }
+  ]);
+
+  const pluginDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/plugin-preset/document"
+    })
+  );
+  assert.deepEqual(pluginDocument.resolvedData.feed, [
+    {
+      title: "First item",
+      link: "https://example.com/first",
+      description: "First summary",
+      publishedAt: "Mon, 01 Apr 2024 10:00:00 GMT",
+      id: "first-item"
+    },
+    {
+      title: "Second item",
+      link: "https://example.com/second",
+      description: "Second summary",
+      publishedAt: "Tue, 02 Apr 2024 11:30:00 GMT",
+      id: "second-item"
+    }
+  ]);
+  assert.equal(pluginDocument.renderedView.children[0].type, "component");
+  assert.equal(pluginDocument.renderedView.children[0].source, "builtin");
+  assert.equal(pluginDocument.renderedView.children[0].alias, "researchHero");
+  assert.equal(pluginDocument.renderedView.children[0].component, "hero");
+
+  const pluginChat = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "create note codoc plugin-note about Validate plugin agent context",
+        agentId: "research"
+      })
+    })
+  );
+  assert.ok(
+    pluginChat.events.some(
+      (event) => event.kind === "artifact" && event.filePath === "plugin-note.codoc"
+    )
+  );
+});
+
 test("http web experience end-to-end", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-http-");

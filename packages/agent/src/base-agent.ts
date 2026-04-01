@@ -983,6 +983,11 @@ function serializeDataSpec(spec: unknown): unknown {
         ...(spec.headers !== undefined ? { headers: spec.headers } : {}),
         ...(spec.limit !== undefined ? { limit: spec.limit } : {})
       };
+    case "preset":
+      return {
+        $source: "preset",
+        name: spec.name
+      };
     case "codoc":
       return {
         $source: "codoc",

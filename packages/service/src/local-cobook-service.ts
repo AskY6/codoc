@@ -47,7 +47,7 @@ export class LocalCobookService implements CobookService {
         ? previousSession.watchControllers
         : new Set<AbortController>();
     const workspace = await loadWorkspace(root);
-    const sourceExecutor = createLocalSourceExecutor();
+    const sourceExecutor = createLocalSourceExecutor(workspace.config.sources ?? {});
     const dag = createDagEngine({
       loadSource: (spec, context) =>
         sourceExecutor.resolve(spec, {
