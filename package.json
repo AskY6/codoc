@@ -4,7 +4,9 @@
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "scripts": {
-
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
