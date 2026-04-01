@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { parse as parseYaml } from "yaml";
 
-import type { CobookAgentConfig, CobookConfig } from "./types.js";
+import type { CobookAgentConfig, CobookConfig, CobookWorkflowConfig } from "./types.js";
 
 export async function loadCobookConfig(root: string): Promise<CobookConfig> {
   const configPath = join(root, "cobook.yaml");
@@ -27,6 +27,9 @@ export async function loadCobookConfig(root: string): Promise<CobookConfig> {
       ? { components: { $ref: parsed.components.$ref } }
       : {}),
     ...(parsed.agents !== undefined ? { agents: parseAgents(parsed.agents, configPath) } : {}),
+    ...(parsed.workflows !== undefined
+      ? { workflows: parseWorkflows(parsed.workflows, configPath) }
+      : {}),
     ...(Array.isArray(parsed.sources) ? { sources: parsed.sources } : {}),
     ...(isRecord(parsed.build) ? { build: parsed.build } : {})
   };
@@ -80,6 +83,61 @@ function parseAgents(value: unknown, configPath: string): Record<string, CobookA
   return agents;
 }
 
+function parseWorkflows(value: unknown, configPath: string): Record<string, CobookWorkflowConfig> {
+  if (!isRecord(value)) {
+    throw new Error(`${configPath}: "workflows" must be an object if provided.`);
+  }
+
+  const workflows: Record<string, CobookWorkflowConfig> = {};
+
+  for (const [id, rawSpec] of Object.entries(value)) {
+    if (!isRecord(rawSpec)) {
+      throw new Error(`${configPath}: workflow "${id}" must be an object.`);
+    }
+
+    if ("name" in rawSpec && typeof rawSpec.name !== "string") {
+      throw new Error(`${configPath}: workflow "${id}" field "name" must be a string.`);
+    }
+
+    if ("description" in rawSpec && typeof rawSpec.description !== "string") {
+      throw new Error(`${configPath}: workflow "${id}" field "description" must be a string.`);
+    }
+
+    if ("agent" in rawSpec && typeof rawSpec.agent !== "string") {
+      throw new Error(`${configPath}: workflow "${id}" field "agent" must be a string.`);
+    }
+
+    if ("outputDir" in rawSpec && typeof rawSpec.outputDir !== "string") {
+      throw new Error(`${configPath}: workflow "${id}" field "outputDir" must be a string.`);
+    }
+
+    if ("pinnedCodocIds" in rawSpec && !isStringArray(rawSpec.pinnedCodocIds)) {
+      throw new Error(
+        `${configPath}: workflow "${id}" field "pinnedCodocIds" must be an array of strings.`
+      );
+    }
+
+    if ("dataRefs" in rawSpec && !isStringRecord(rawSpec.dataRefs)) {
+      throw new Error(
+        `${configPath}: workflow "${id}" field "dataRefs" must be an object of string refs.`
+      );
+    }
+
+    workflows[id] = {
+      name: typeof rawSpec.name === "string" ? rawSpec.name : toTitleCase(id),
+      ...(typeof rawSpec.description === "string" ? { description: rawSpec.description } : {}),
+      ...(typeof rawSpec.agent === "string" ? { agent: rawSpec.agent } : {}),
+      ...(isStringArray(rawSpec.pinnedCodocIds)
+        ? { pinnedCodocIds: rawSpec.pinnedCodocIds }
+        : {}),
+      ...(isStringRecord(rawSpec.dataRefs) ? { dataRefs: rawSpec.dataRefs } : {}),
+      ...(typeof rawSpec.outputDir === "string" ? { outputDir: rawSpec.outputDir } : {})
+    };
+  }
+
+  return workflows;
+}
+
 function expectString(value: unknown, message: string): string {
   if (typeof value !== "string") {
     throw new Error(message);
@@ -94,6 +152,10 @@ function isStringArray(value: unknown): value is string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
 
 function toTitleCase(value: string): string {

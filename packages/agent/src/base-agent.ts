@@ -26,6 +26,7 @@ interface ProjectSummary {
 interface ChatContextPlan {
   projectSummary: ProjectSummary;
   availableAgents: WorkspaceAgent[];
+  availableWorkflows: WorkspaceWorkflow[];
   requestedAgentId: string | null;
   activeAgent: WorkspaceAgent | null;
   agentPinnedCodocIds: string[];
@@ -45,6 +46,16 @@ interface WorkspaceAgent {
   description?: string;
   prompt?: string;
   pinnedCodocIds: string[];
+  outputDir?: string;
+}
+
+interface WorkspaceWorkflow {
+  id: string;
+  name: string;
+  description?: string;
+  agentId?: string;
+  pinnedCodocIds: string[];
+  dataRefs: Record<string, string>;
   outputDir?: string;
 }
 
@@ -136,6 +147,29 @@ export class RuleBasedBaseAgent implements BaseAgent {
       return;
     }
 
+    if (isListWorkflowsRequest(lower)) {
+      yield {
+        kind: "status",
+        status: "reading",
+        message: "Listing configured workflows."
+      };
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
+      yield {
+        kind: "message",
+        content: JSON.stringify(
+          {
+            requestedAgentId: contextPlan.requestedAgentId,
+            activeAgent: contextPlan.activeAgent,
+            workflows: contextPlan.availableWorkflows
+          },
+          null,
+          2
+        )
+      };
+      yield doneEvent();
+      return;
+    }
+
     const readMatch = message.match(/\bread\s+codoc\s+([a-z0-9._/-]+)\b/i);
     if (readMatch?.[1]) {
       const codocId = readMatch[1];
@@ -212,6 +246,80 @@ export class RuleBasedBaseAgent implements BaseAgent {
           `Refactored codoc "${existingCodoc.id}" to the canonical workspace format.`,
           formatWriteResult(written)
         ].join("\n")
+      };
+      yield doneEvent();
+      return;
+    }
+
+    const workflowRequest = extractWorkflowRequest(message);
+    if (workflowRequest) {
+      const workflow = await resolveConfiguredWorkflow(service, workflowRequest.workflowId);
+      const contextPlan = await buildChatContextPlan(
+        service,
+        input.pinnedCodocIds,
+        input.agentId ?? workflow.agentId,
+        workflow.pinnedCodocIds
+      );
+      const workflowInputs = await resolveWorkflowInputs(service, workflow);
+      const generated = await generateTemplateCodoc(
+        service,
+        {
+          codocId: workflowRequest.codocId,
+          ...(workflowRequest.filePath ? { filePath: workflowRequest.filePath } : {}),
+          ...(workflowRequest.topic ?? workflow.description
+            ? { topic: workflowRequest.topic ?? workflow.description }
+            : {}),
+          overwrite: workflowRequest.overwrite
+        },
+        contextPlan,
+        {
+          workflow,
+          workflowInputs,
+          ...(workflow.outputDir ? { outputDir: workflow.outputDir } : {})
+        }
+      );
+
+      yield {
+        kind: "status",
+        status: "writing",
+        message: `Running workflow "${workflow.id}" into "${generated.filePath}".`
+      };
+      const writeAttempt = await attemptWriteCodoc(service, {
+        codocId: generated.codocId,
+        filePath: generated.filePath,
+        content: generated.content,
+        overwrite: generated.overwrite
+      });
+      if (!writeAttempt.ok) {
+        if (writeAttempt.recoveryFilePath) {
+          yield {
+            kind: "artifact",
+            filePath: writeAttempt.recoveryFilePath
+          };
+        }
+        yield {
+          kind: "message",
+          content: formatWriteFailure(generated.filePath, writeAttempt)
+        };
+        yield doneEvent();
+        return;
+      }
+      const written = writeAttempt.result;
+      yield {
+        kind: "artifact",
+        filePath: written.filePath
+      };
+      yield {
+        kind: "message",
+        content: [
+          `Executed workflow "${workflow.id}" (${workflow.name}).`,
+          contextPlan.activeAgent
+            ? `Used configured agent "${contextPlan.activeAgent.id}" (${contextPlan.activeAgent.name}).`
+            : null,
+          formatWriteResult(written)
+        ]
+          .filter((line): line is string => Boolean(line))
+          .join("\n")
       };
       yield doneEvent();
       return;
@@ -330,11 +438,14 @@ export class RuleBasedBaseAgent implements BaseAgent {
       content: JSON.stringify(
         {
           message:
-            "The base agent currently supports: project summary, list codocs, list agents, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
+            "The base agent currently supports: project summary, list codocs, list agents, list workflows, run workflow <id>, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
           requestedAgentId: contextPlan.requestedAgentId,
           activeAgent: contextPlan.activeAgent,
           ...(contextPlan.availableAgents.length > 0
             ? { availableAgents: contextPlan.availableAgents }
+            : {}),
+          ...(contextPlan.availableWorkflows.length > 0
+            ? { availableWorkflows: contextPlan.availableWorkflows }
             : {}),
           projectSummary: contextPlan.projectSummary,
           context: {
@@ -366,6 +477,10 @@ function isListRequest(message: string): boolean {
 
 function isListAgentsRequest(message: string): boolean {
   return /\b(list|show)\s+agents\b/.test(message);
+}
+
+function isListWorkflowsRequest(message: string): boolean {
+  return /\b(list|show)\s+workflows\b/.test(message);
 }
 
 function extractCodocBlock(
@@ -434,6 +549,29 @@ function extractGeneratedCodocRequest(message: string): {
   };
 }
 
+function extractWorkflowRequest(message: string): {
+  workflowId: string;
+  codocId: string;
+  filePath?: string;
+  topic?: string;
+  overwrite: boolean;
+} | null {
+  const workflowMatch = message.match(
+    /\b(run|execute|update)\s+workflow\s+([a-z0-9._/-]+)(?:\s+as\s+([a-z0-9._/-]+))?(?:\s+(?:at|to|into)\s+([^\s]+\.codoc))?(?:\s+about\s+([\s\S]+))?/i
+  );
+  if (!workflowMatch?.[2]) {
+    return null;
+  }
+
+  return {
+    workflowId: workflowMatch[2],
+    codocId: workflowMatch[3] ?? workflowMatch[2],
+    ...(workflowMatch[4] ? { filePath: workflowMatch[4] } : {}),
+    ...(workflowMatch[5]?.trim() ? { topic: workflowMatch[5].trim() } : {}),
+    overwrite: workflowMatch[1]?.toLowerCase() === "update"
+  };
+}
+
 async function generateTemplateCodoc(
   service: CobookService,
   request: {
@@ -442,7 +580,12 @@ async function generateTemplateCodoc(
     topic?: string;
     overwrite: boolean;
   },
-  contextPlan: ChatContextPlan
+  contextPlan: ChatContextPlan,
+  options: {
+    workflow?: WorkspaceWorkflow | null;
+    workflowInputs?: Record<string, unknown>;
+    outputDir?: string;
+  } = {}
 ): Promise<{
   codocId: string;
   filePath: string;
@@ -453,33 +596,27 @@ async function generateTemplateCodoc(
   const relatedCodocs = contextPlan.contextCodocIds.filter((codocId) => codocId !== request.codocId);
   const title = toTitleCase(request.codocId.replace(/[._/-]+/g, " "));
   const summary = request.topic ?? "Fill in the key point you want this codoc to capture.";
-  const contentLines = ['codoc: "0.1"', `id: ${JSON.stringify(request.codocId)}`];
-
-  if (contextPlan.activeAgent) {
-    contentLines.push(
-      "",
-      "meta:",
-      "  agent:",
-      `    id: ${JSON.stringify(contextPlan.activeAgent.id)}`,
-      `    name: ${JSON.stringify(contextPlan.activeAgent.name)}`
-    );
-  }
-
-  contentLines.push("", "data:", `  title: ${JSON.stringify(title)}`, `  summary: ${JSON.stringify(summary)}`);
-
-  if (relatedCodocs && relatedCodocs.length > 0) {
-    contentLines.push("  relatedCodocs:");
-    for (const codocId of relatedCodocs) {
-      contentLines.push(`    - ${JSON.stringify(codocId)}`);
+  const workflowInputs =
+    options.workflowInputs && Object.keys(options.workflowInputs).length > 0
+      ? options.workflowInputs
+      : null;
+  const meta = buildGeneratedMeta(contextPlan.activeAgent, options.workflow ?? null);
+  const content = stringifyYaml(
+    {
+      codoc: "0.1",
+      id: request.codocId,
+      ...(meta ? { meta } : {}),
+      data: {
+        title,
+        summary,
+        ...(relatedCodocs.length > 0 ? { relatedCodocs } : {}),
+        ...(workflowInputs ? { workflowInputs } : {})
+      },
+      view: "# {data.title}\n\n{data.summary}"
+    },
+    {
+      lineWidth: 0
     }
-  }
-
-  contentLines.push(
-    "",
-    "view: |",
-    "  # {data.title}",
-    "",
-    "  {data.summary}"
   );
 
   return {
@@ -487,8 +624,12 @@ async function generateTemplateCodoc(
     filePath:
       request.filePath ??
       existingCodoc?.filePath ??
-      buildGeneratedCodocFilePath(request.codocId, contextPlan.activeAgent),
-    content: `${contentLines.join("\n")}\n`,
+      buildGeneratedCodocFilePath(
+        request.codocId,
+        options.outputDir ?? options.workflow?.outputDir,
+        contextPlan.activeAgent
+      ),
+    content,
     overwrite: request.overwrite || existingCodoc !== null
   };
 }
@@ -524,16 +665,19 @@ function buildProjectSummaryFromWorkspace(workspace: WorkspaceSnapshot): Project
 async function buildChatContextPlan(
   service: CobookService,
   rawPinnedCodocIds: string[] | undefined,
-  requestedAgentId: string | undefined
+  requestedAgentId: string | undefined,
+  extraPinnedCodocIds: string[] = []
 ): Promise<ChatContextPlan> {
   const workspace = await service.getWorkspace();
   const projectSummary = buildProjectSummaryFromWorkspace(workspace);
   const codocOrder = new Map(projectSummary.codocs.map((codoc, index) => [codoc.id, index]));
   const availableAgents = listWorkspaceAgents(workspace);
+  const availableWorkflows = listWorkspaceWorkflows(workspace);
   const activeAgent = resolveWorkspaceAgent(availableAgents, requestedAgentId);
   const agentPinnedCodocIds = uniqueStrings(activeAgent?.pinnedCodocIds ?? []);
   const requestedPinnedCodocIds = rawPinnedCodocIds ?? [];
   const uniqueRequestedPinnedCodocIds = uniqueStrings([
+    ...extraPinnedCodocIds,
     ...agentPinnedCodocIds,
     ...requestedPinnedCodocIds
   ]);
@@ -557,6 +701,7 @@ async function buildChatContextPlan(
   return {
     projectSummary,
     availableAgents,
+    availableWorkflows,
     requestedAgentId: requestedAgentId ?? null,
     activeAgent,
     agentPinnedCodocIds,
@@ -579,6 +724,18 @@ function listWorkspaceAgents(workspace: WorkspaceSnapshot): WorkspaceAgent[] {
   }));
 }
 
+function listWorkspaceWorkflows(workspace: WorkspaceSnapshot): WorkspaceWorkflow[] {
+  return Object.entries(workspace.config.workflows ?? {}).map(([id, spec]) => ({
+    id,
+    name: spec.name,
+    ...(spec.description ? { description: spec.description } : {}),
+    ...(spec.agent ? { agentId: spec.agent } : {}),
+    pinnedCodocIds: spec.pinnedCodocIds ?? [],
+    dataRefs: spec.dataRefs ?? {},
+    ...(spec.outputDir ? { outputDir: spec.outputDir } : {})
+  }));
+}
+
 function resolveWorkspaceAgent(
   availableAgents: WorkspaceAgent[],
   requestedAgentId: string | undefined
@@ -593,6 +750,31 @@ function resolveWorkspaceAgent(
   }
 
   return activeAgent;
+}
+
+async function resolveConfiguredWorkflow(
+  service: CobookService,
+  workflowId: string
+): Promise<WorkspaceWorkflow> {
+  const workspace = await service.getWorkspace();
+  const workflow = listWorkspaceWorkflows(workspace).find((entry) => entry.id === workflowId);
+
+  if (!workflow) {
+    throw new Error(`Configured workflow "${workflowId}" was not found in this workspace.`);
+  }
+
+  return workflow;
+}
+
+async function resolveWorkflowInputs(
+  service: CobookService,
+  workflow: WorkspaceWorkflow
+): Promise<Record<string, unknown>> {
+  const entries = await Promise.all(
+    Object.entries(workflow.dataRefs).map(async ([key, node]) => [key, (await service.resolve(node)).value])
+  );
+
+  return Object.fromEntries(entries);
 }
 
 function normalizeEntryPath(workspace: WorkspaceSnapshot): string | null {
@@ -617,9 +799,39 @@ function sortCodocIdsByProjectOrder(
   });
 }
 
-function buildGeneratedCodocFilePath(codocId: string, activeAgent: WorkspaceAgent | null): string {
-  const outputDir = normalizeOutputDir(activeAgent?.outputDir);
+function buildGeneratedCodocFilePath(
+  codocId: string,
+  outputDirOverride: string | undefined,
+  activeAgent: WorkspaceAgent | null
+): string {
+  const outputDir = normalizeOutputDir(outputDirOverride ?? activeAgent?.outputDir);
   return outputDir ? `${outputDir}/${codocId}.codoc` : `${codocId}.codoc`;
+}
+
+function buildGeneratedMeta(
+  activeAgent: WorkspaceAgent | null,
+  workflow: WorkspaceWorkflow | null
+): Record<string, unknown> | null {
+  const meta = {
+    ...(activeAgent
+      ? {
+          agent: {
+            id: activeAgent.id,
+            name: activeAgent.name
+          }
+        }
+      : {}),
+    ...(workflow
+      ? {
+          workflow: {
+            id: workflow.id,
+            name: workflow.name
+          }
+        }
+      : {})
+  };
+
+  return Object.keys(meta).length > 0 ? meta : null;
 }
 
 function normalizeOutputDir(outputDir: string | undefined): string | null {

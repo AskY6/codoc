@@ -10,6 +10,15 @@ export interface CobookAgentConfig {
   outputDir?: string;
 }
 
+export interface CobookWorkflowConfig {
+  name: string;
+  description?: string;
+  agent?: string;
+  pinnedCodocIds?: string[];
+  dataRefs?: Record<string, string>;
+  outputDir?: string;
+}
+
 export interface CobookConfig {
   cobook: string;
   name: string;
@@ -19,6 +28,7 @@ export interface CobookConfig {
   schemas?: RefDirectory;
   components?: RefDirectory;
   agents?: Record<string, CobookAgentConfig>;
+  workflows?: Record<string, CobookWorkflowConfig>;
   sources?: unknown[];
   build?: Record<string, unknown>;
 }

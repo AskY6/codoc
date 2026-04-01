@@ -1012,6 +1012,146 @@ test("http chat applies configured scene agents", async (t) => {
   });
 });
 
+test("http chat executes configured workflows", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-workflow-");
+  const configPath = join(workspace, "cobook.yaml");
+
+  await writeFile(
+    join(workspace, "sources.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "sources"',
+      "",
+      "data:",
+      "  topics:",
+      "    $source: static",
+      "    value:",
+      '      - "Ship notes"',
+      '      - "Open questions"',
+      "",
+      "view: |",
+      "  # Sources",
+      "",
+      "  {data.topics.0}",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  await writeFile(
+    configPath,
+    [
+      (await readFile(configPath, "utf8")).trimEnd(),
+      "",
+      "agents:",
+      "  research:",
+      '    name: "Research Scout"',
+      "    pinnedCodocIds:",
+      '      - "sources"',
+      '    outputDir: "research"',
+      "",
+      "workflows:",
+      "  market-digest:",
+      '    name: "Market Digest"',
+      '    description: "Review the latest market signals."',
+      '    agent: "research"',
+      "    pinnedCodocIds:",
+      '      - "sources"',
+      "    dataRefs:",
+      '      sourceTopics: "sources:data/topics"',
+      '      currentUser: "dashboard:data/currentUser"',
+      '    outputDir: "digests"'
+    ].join("\n") + "\n",
+    "utf8"
+  );
+
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+    await http.close();
+  });
+
+  const listPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "list workflows"
+      })
+    })
+  );
+  const listMessage = listPayload.events.find((event) => event.kind === "message");
+  assert.ok(listMessage, "Expected a message event from the workflow list response.");
+
+  const workflowList = JSON.parse(listMessage.content);
+  assert.deepEqual(workflowList.workflows, [
+    {
+      id: "market-digest",
+      name: "Market Digest",
+      description: "Review the latest market signals.",
+      agentId: "research",
+      pinnedCodocIds: ["sources"],
+      dataRefs: {
+        sourceTopics: "sources:data/topics",
+        currentUser: "dashboard:data/currentUser"
+      },
+      outputDir: "digests"
+    }
+  ]);
+
+  const writePayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "run workflow market-digest as april-digest"
+      })
+    })
+  );
+  assert.ok(
+    writePayload.events.some(
+      (event) => event.kind === "artifact" && event.filePath === "digests/april-digest.codoc"
+    )
+  );
+
+  const digestDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/april-digest/document"
+    })
+  );
+  assert.deepEqual(digestDocument.codoc.meta, {
+    agent: {
+      id: "research",
+      name: "Research Scout"
+    },
+    workflow: {
+      id: "market-digest",
+      name: "Market Digest"
+    }
+  });
+  assert.deepEqual(digestDocument.resolvedData, {
+    title: "April Digest",
+    summary: "Review the latest market signals.",
+    relatedCodocs: ["sources", "dashboard", "user"],
+    workflowInputs: {
+      sourceTopics: ["Ship notes", "Open questions"],
+      currentUser: {
+        name: "Ada",
+        role: "editor"
+      }
+    }
+  });
+});
+
 test("http web experience end-to-end", async (t) => {
   const runtime = await buildRuntime();
   const workspace = await cloneExampleWorkspace("cobook-e2e-http-");
