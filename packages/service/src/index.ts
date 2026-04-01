@@ -1,3 +1,4 @@
+// DB
 export {
   createDb,
   createWorkspaceRepository,
@@ -21,3 +22,20 @@ export type {
   ChatRepository,
   AgentSessionRepository,
 } from "./db/index.js";
+
+// Service
+export { createWorkspaceService } from "./workspace-service.js";
+export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service.js";
+
+// Source executor
+export { executeSource } from "./source-executor.js";
+export type { Source, StaticSource, FileSource } from "./source-executor.js";
+
+// Types
+export { SourceError } from "./types.js";
+export type {
+  BuildDiagnostics,
+  DiagnosticError,
+  WorkspaceStatus,
+  CodocInfo,
+} from "./types.js";

@@ -139,13 +139,6 @@
 | 调用 `service.deleteCodoc(workspaceId, path)` | 文件删除，图中节点移除，下游报断引用 error |
 | 调用 `service.getCodoc(workspaceId, path)` | 返回完整 codoc 信息：AST + resolved data + node state |
 
-### 3-6 文件监听
-
-| 验收操作 | 预期结果 |
-|---------|---------|
-| 启动 watcher，在 workspace 目录手动编辑一个 `.codoc` 文件 | service 检测到变更，自动触发增量 rebuild |
-| 手动删除一个 `.codoc` 文件 | service 检测到删除，图中该节点移除，下游状态更新 |
-
 ---
 
 ## Phase 4: Server + CLI — 最小可用交互
@@ -303,7 +296,7 @@
 
 | 验收操作 | 预期结果 |
 |---------|---------|
-| 在终端手动编辑一个 `.codoc` 文件 | Web 页面自动刷新对应 codoc 的状态和数据（无需手动刷新） |
+| 通过 CLI/Agent 创建或更新 codoc | Web 页面通过 SSE 自动刷新对应 codoc 的状态和数据（无需手动刷新） |
 | agent 创建了新 codoc | Sidebar 立即出现新条目 |
 
 ### 6-7 响应式
@@ -352,32 +345,24 @@
 
 ---
 
-## Phase 8: 文件监听与增量运行时
+## Phase 8: Service 事件与实时推送
 
-**目标**: workspace 文件变更自动触发增量 rebuild + resolve，CLI watch 模式和 Web SSE 推送。
+**目标**: service 层 CRUD 操作后主动广播事件，Web 通过 SSE 接收实时更新。所有变更必须经过 service API，不支持直接编辑文件。
 
-### 8-1 CLI — watch
+### 8-1 Service 事件总线
 
 | 验收操作 | 预期结果 |
 |---------|---------|
-| 运行 `cobook watch` | 终端进入 watch 模式，显示 "Watching for changes..." |
-| 在另一个终端编辑 `.codoc` 文件 | watch 终端流式输出：检测到变更 → rebuild → 受影响节点列表 → 新状态 |
-| 删除一个被引用的 `.codoc` | watch 输出断引用错误 + 受影响的下游节点 |
+| 调用 `service.createCodoc(...)` | service 完成操作后，事件总线广播 `{ kind: "codoc:created", path, affectedNodes }` |
+| 调用 `service.updateCodoc(...)` | 广播 `{ kind: "codoc:updated", path, affectedNodes }` |
+| 调用 `service.deleteCodoc(...)` | 广播 `{ kind: "codoc:deleted", path, affectedNodes }` |
 
 ### 8-2 SSE 事件推送
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | `curl -N localhost:3100/api/events?workspaceId=xxx` | 建立 SSE 连接，终端等待 |
-| 编辑 `.codoc` 文件 | SSE 推送事件：`{ kind: "change", path: "...", affectedNodes: [...] }` |
-| Web 连接 SSE | 页面自动响应，无需手动刷新 |
-
-### 8-3 值变化 vs 结构变化
-
-| 验收操作 | 预期结果 |
-|---------|---------|
-| 修改 codoc 的 data 值（不改引用结构） | watch 输出 "value change"，仅触发 re-resolve，不重建 DAG |
-| 给 codoc 新增一个 `$ref` 字段 | watch 输出 "structural change"，触发 DAG rebuild |
+| 通过 CLI/Agent/Web 触发 codoc 变更 | SSE 推送对应事件，Web 页面自动响应 |
 
 ---
 
@@ -393,4 +378,4 @@
 | **M5: 能对话** | Phase 0-5 | CLI chat 与 base-agent 对话，agent 能读写 codoc |
 | **M6: 能看页面** | Phase 0-6 | 浏览器三栏 UI，codoc 浏览 + view 渲染 + 在线 chat |
 | **M7: 能扩展** | Phase 0-7 | 场景 agent 路由 + RSS 端到端 |
-| **M8: 能实时** | Phase 0-8 | 文件变更自动触发增量更新，CLI watch + Web SSE |
+| **M8: 能实时** | Phase 0-8 | service 事件驱动实时更新，Web SSE 推送 |
