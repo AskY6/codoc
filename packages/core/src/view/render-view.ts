@@ -42,6 +42,41 @@ export interface RenderComponentNode {
   alias?: string;
   component: string;
   props: Record<string, unknown>;
+  runtime: RenderComponentRuntime;
+}
+
+export type RenderComponentRuntime =
+  | RenderBuiltinComponentRuntime
+  | RenderLocalComponentRuntime
+  | RenderInlineComponentRuntime
+  | RenderCodocComponentRuntime
+  | RenderRemoteComponentRuntime;
+
+export interface RenderBuiltinComponentRuntime {
+  kind: "builtin";
+  name: string;
+}
+
+export interface RenderLocalComponentRuntime {
+  kind: "local";
+  path: string;
+}
+
+export interface RenderInlineComponentRuntime {
+  kind: "inline";
+  code: string;
+}
+
+export interface RenderCodocComponentRuntime {
+  kind: "codoc";
+  ref: string;
+}
+
+export interface RenderRemoteComponentRuntime {
+  kind: "remote";
+  package?: string;
+  url?: string;
+  export?: string;
 }
 
 export interface RenderTableColumn {
@@ -188,6 +223,7 @@ function renderViewNode(
         source: resolvedComponent.source,
         ...(resolvedComponent.alias ? { alias: resolvedComponent.alias } : {}),
         component: resolvedComponent.component,
+        runtime: resolvedComponent.runtime,
         props: isRecord(spec.props)
           ? (resolveTemplateValue(spec.props, context) as Record<string, unknown>)
           : {}
@@ -199,12 +235,16 @@ function renderViewNode(
 function resolveComponentReference(
   name: string,
   components: Record<string, ComponentSpec> | undefined
-): Pick<RenderComponentNode, "source" | "alias" | "component"> {
+): Pick<RenderComponentNode, "source" | "alias" | "component" | "runtime"> {
   const spec = components?.[name];
   if (!spec) {
     return {
       source: "builtin",
-      component: name
+      component: name,
+      runtime: {
+        kind: "builtin",
+        name
+      }
     };
   }
 
@@ -213,31 +253,53 @@ function resolveComponentReference(
       return {
         source: "builtin",
         alias: name,
-        component: spec.name ?? name
+        component: spec.name ?? name,
+        runtime: {
+          kind: "builtin",
+          name: spec.name ?? name
+        }
       };
     case "local":
       return {
         source: "local",
         alias: name,
-        component: spec.path ?? name
+        component: spec.path ?? name,
+        runtime: {
+          kind: "local",
+          path: spec.path ?? name
+        }
       };
     case "inline":
       return {
         source: "inline",
         alias: name,
-        component: name
+        component: name,
+        runtime: {
+          kind: "inline",
+          code: spec.code ?? ""
+        }
       };
     case "codoc":
       return {
         source: "codoc",
         alias: name,
-        component: spec.ref ?? name
+        component: spec.ref ?? name,
+        runtime: {
+          kind: "codoc",
+          ref: spec.ref ?? name
+        }
       };
     case "remote":
       return {
         source: "remote",
         alias: name,
-        component: spec.export ?? spec.package ?? spec.url ?? name
+        component: spec.export ?? spec.package ?? spec.url ?? name,
+        runtime: {
+          kind: "remote",
+          ...(spec.package !== undefined ? { package: spec.package } : {}),
+          ...(spec.url !== undefined ? { url: spec.url } : {}),
+          ...(spec.export !== undefined ? { export: spec.export } : {})
+        }
       };
   }
 }

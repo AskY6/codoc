@@ -772,9 +772,29 @@ test("http web experience end-to-end", async (t) => {
   assert.equal(userDocument.renderedView.children[0].children[0].type, "component");
   assert.equal(userDocument.renderedView.children[0].children[0].source, "local");
   assert.equal(userDocument.renderedView.children[0].children[0].component, "panels/hero-card");
+  assert.deepEqual(userDocument.renderedView.children[0].children[0].runtime, {
+    kind: "local",
+    path: "panels/hero-card"
+  });
   assert.equal(userDocument.renderedView.children[0].children[0].props.title, "Ada");
-  assert.equal(userDocument.renderedView.children[1].type, "table");
-  assert.deepEqual(userDocument.renderedView.children[1].rows[1].cells, ["Role", "editor"]);
+  assert.equal(userDocument.renderedView.children[1].type, "grid");
+  assert.equal(userDocument.renderedView.children[1].children[0].source, "inline");
+  assert.equal(userDocument.renderedView.children[1].children[0].runtime.kind, "inline");
+  assert.match(userDocument.renderedView.children[1].children[0].runtime.code, /React\.createElement/);
+  assert.equal(userDocument.renderedView.children[1].children[1].source, "remote");
+  assert.deepEqual(userDocument.renderedView.children[1].children[1].runtime, {
+    kind: "remote",
+    url: "/components/remote-greeting.mjs",
+    export: "RemoteGreeting"
+  });
+  assert.equal(userDocument.renderedView.children[2].type, "component");
+  assert.equal(userDocument.renderedView.children[2].source, "codoc");
+  assert.deepEqual(userDocument.renderedView.children[2].runtime, {
+    kind: "codoc",
+    ref: "dashboard"
+  });
+  assert.equal(userDocument.renderedView.children[3].type, "table");
+  assert.deepEqual(userDocument.renderedView.children[3].rows[1].cells, ["Role", "editor"]);
 
   const chatResult = parseJsonBody(
     await http.request({

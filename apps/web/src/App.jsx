@@ -233,7 +233,11 @@ export default function App() {
             <section className="subpanel">
               <h3>View</h3>
               <div className="render-surface">
-                <ViewRenderer document={renderedView} />
+                <ViewRenderer
+                  document={renderedView}
+                  codocs={snapshot.codocs}
+                  currentCodoc={selectedDocument?.codoc ?? null}
+                />
               </div>
             </section>
 

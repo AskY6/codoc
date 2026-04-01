@@ -17,6 +17,24 @@ data:
     value: "Ada"
   role: "editor"
 
+component:
+  inlineGreeting:
+    $source: inline
+    code: |
+      (props) =>
+        React.createElement("section", { className: "component-card hero-card" }, [
+          React.createElement("p", { className: "eyebrow", key: "eyebrow" }, props.eyebrow ?? "Inline"),
+          React.createElement("h3", { key: "title" }, props.title ?? "Untitled"),
+          React.createElement("p", { className: "muted", key: "subtitle" }, props.subtitle ?? "")
+        ])
+  dashboardEmbed:
+    $source: codoc
+    $ref: dashboard
+  remoteGreeting:
+    $source: remote
+    url: "/components/remote-greeting.mjs"
+    export: "RemoteGreeting"
+
 view:
   type: stack
   children:
@@ -34,6 +52,23 @@ view:
             # User
 
             This profile is resolved from codoc data.
+    - type: grid
+      columns: 2
+      children:
+        - type: component
+          component: inlineGreeting
+          props:
+            eyebrow: Inline
+            title: "Client runtime"
+            subtitle: "{data.name} can render custom JS."
+        - type: component
+          component: remoteGreeting
+          props:
+            eyebrow: Remote
+            title: "Remote module"
+            subtitle: "{data.role} sourced from a static ESM file."
+    - type: component
+      component: dashboardEmbed
     - type: table
       title: Profile snapshot
       columns:
