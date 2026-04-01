@@ -1,6 +1,6 @@
+import { dirname, resolve as resolvePath } from "node:path";
 import { realpathSync } from "node:fs";
 import { argv, cwd, exit, stderr, stdout } from "node:process";
-import { resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { RuleBasedBaseAgent } from "@cobook/agent";
@@ -8,7 +8,8 @@ import {
   LocalCobookService,
   RpcCobookService,
   createCobookRpcServer,
-  createLoopbackServiceTransport
+  createLoopbackServiceTransport,
+  createStdioServiceTransport
 } from "@cobook/service";
 
 import { CLI_COMMANDS, type CliCommandName } from "./commands/index.js";
@@ -18,7 +19,7 @@ import { createCliApp, type CliRunResult } from "./index.js";
 interface ParsedCliArgs {
   help: boolean;
   root: string;
-  transport: "local" | "rpc";
+  transport: "local" | "rpc" | "stdio";
   command?: CliCommandName;
   args: string[];
 }
@@ -40,34 +41,48 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
   const localService = new LocalCobookService({
     chatHandler: (input, boundService) => agent.run(input, boundService)
   });
+  const stdioTransport =
+    parsed.transport === "stdio"
+      ? createStdioServiceTransport({
+          command: process.execPath,
+          args: [resolveServerEntryPath()]
+        })
+      : null;
   const service =
-    parsed.transport === "rpc"
-      ? new RpcCobookService(
-          createLoopbackServiceTransport(createCobookRpcServer(localService))
-        )
-      : localService;
-  await service.openWorkspace(parsed.root);
+    parsed.transport === "local"
+      ? localService
+      : parsed.transport === "rpc"
+        ? new RpcCobookService(
+            createLoopbackServiceTransport(createCobookRpcServer(localService))
+          )
+        : new RpcCobookService(requireStdioTransport(stdioTransport));
 
-  if (parsed.command === "watch") {
-    if (parsed.transport === "rpc") {
-      throw new Error("The watch command currently requires the local service transport.");
+  try {
+    await service.openWorkspace(parsed.root);
+
+    if (parsed.command === "watch") {
+      if (parsed.transport !== "local") {
+        throw new Error("The watch command currently requires the local service transport.");
+      }
+
+      for await (const event of service.watch()) {
+        stdout.write(`${formatJson(event)}\n`);
+      }
+
+      return 0;
     }
 
-    for await (const event of service.watch()) {
-      stdout.write(`${formatJson(event)}\n`);
-    }
+    const app = createCliApp(service);
+    const result = await app.run({
+      command: parsed.command,
+      args: parsed.args
+    });
 
+    stdout.write(`${formatResult(result)}\n`);
     return 0;
+  } finally {
+    await stdioTransport?.close();
   }
-
-  const app = createCliApp(service);
-  const result = await app.run({
-    command: parsed.command,
-    args: parsed.args
-  });
-
-  stdout.write(`${formatResult(result)}\n`);
-  return 0;
 }
 
 function parseCliArgs(rawArgv: string[]): ParsedCliArgs {
@@ -100,8 +115,10 @@ function parseCliArgs(rawArgv: string[]): ParsedCliArgs {
 
     if (entry === "--transport") {
       const next = rawArgv[index + 1];
-      if (next !== "local" && next !== "rpc") {
-        throw new Error('Missing or invalid value for --transport. Use "local" or "rpc".');
+      if (next !== "local" && next !== "rpc" && next !== "stdio") {
+        throw new Error(
+          'Missing or invalid value for --transport. Use "local", "rpc", or "stdio".'
+        );
       }
 
       transport = next;
@@ -127,7 +144,7 @@ function renderHelp(): string {
   ).join("\n");
 
   return [
-    "Usage: cobook [--root <path>] [--transport local|rpc] <command> [args...]",
+    "Usage: cobook [--root <path>] [--transport local|rpc|stdio] <command> [args...]",
     "",
     "Commands:",
     commands
@@ -149,6 +166,22 @@ function isMainModule(): boolean {
   }
 
   return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+}
+
+function resolveServerEntryPath(): string {
+  return resolvePath(dirname(fileURLToPath(import.meta.url)), "../../server/src/main.js");
+}
+
+function requireStdioTransport(transport: typeof createStdioServiceTransport extends (
+  ...args: never[]
+) => infer TResult
+  ? TResult | null
+  : never) {
+  if (!transport) {
+    throw new Error("Missing stdio transport.");
+  }
+
+  return transport;
 }
 
 if (isMainModule()) {

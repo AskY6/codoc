@@ -39,3 +39,7 @@ export type ServiceRpcResponse<TResult = unknown> =
 export interface ServiceTransport {
   send<TResult = unknown>(request: ServiceRpcRequest): Promise<ServiceRpcResponse<TResult>>;
 }
+
+export interface ClosableServiceTransport extends ServiceTransport {
+  close(): Promise<void>;
+}
