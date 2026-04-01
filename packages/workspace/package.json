@@ -1,0 +1,10 @@
+{
+  "name": "@cobook/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cobook/core": "workspace:*",
+    "yaml": "^2.6.0"
+  }
+}

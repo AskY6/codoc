@@ -1,0 +1,12 @@
+codoc: "0.1"
+id: dashboard
+
+data:
+  currentUser:
+    $source: codoc
+    $ref: "./user.codoc#/data"
+
+view: |
+  # Dashboard
+
+  Current user: {data.currentUser.name}

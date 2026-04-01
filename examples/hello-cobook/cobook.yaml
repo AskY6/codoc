@@ -1,0 +1,9 @@
+cobook: "0.1"
+name: hello-cobook
+entry: ./dashboard.codoc
+
+include:
+  - "**/*.codoc"
+
+exclude:
+  - "dist/**"

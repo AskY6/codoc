@@ -1,0 +1,23 @@
+codoc: "0.1"
+id: user
+
+meta:
+  data:
+    type: object
+    properties:
+      name:
+        type: string
+      role:
+        type: string
+    required: [name, role]
+
+data:
+  name:
+    $source: static
+    value: "Ada"
+  role: "editor"
+
+view: |
+  # User
+
+  {data.name} ({data.role})
