@@ -5,6 +5,9 @@
   "type": "module",
   "dependencies": {
     "@cobook/core": "workspace:*",
-    "@cobook/workspace": "workspace:*"
+    "@cobook/workspace": "workspace:*",
+    "@types/pg": "^8.15.4",
+    "pg": "^8.16.3",
+    "yaml": "^2.6.0"
   }
 }

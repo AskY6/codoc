@@ -3,6 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -12,6 +13,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(__dirname);
 const exampleWorkspace = join(repoRoot, "examples", "hello-cobook");
+let postgresHarnessPromise = null;
+const postgresHarness = await getPostgresHarness();
+process.env.COBOOK_DATABASE_URL = postgresHarness.connectionString;
+
+test.after(async () => {
+  await postgresHarness.close();
+});
 
 test("local transport end-to-end", async (t) => {
   const runtime = await buildRuntime();
@@ -343,6 +351,196 @@ test("rss data sources resolve feed items", async (t) => {
     "Second item",
     "Tue, 02 Apr 2024 11:30:00 GMT"
   ]);
+});
+
+test("http app service persists generated codocs in postgresql instead of workspace files", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-postgres-store-");
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await Promise.all([cleanup(runtime, workspace), http.close()]);
+  });
+
+  const chatResult = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: "postgres-store-session",
+        message:
+          "create note codoc postgres-note at notes/postgres-note.codoc about Persist in postgres"
+      })
+    })
+  );
+  assert.ok(chatResult.events.some((event) => event.kind === "artifact"));
+  assert.equal(existsSync(join(workspace, "notes", "postgres-note.codoc")), false);
+  assert.equal(existsSync(join(workspace, ".cobook", "workspace.sqlite")), false);
+
+  await http.close();
+
+  const reloaded = await createHttpHarness(runtime, workspace);
+  t.after(async () => {
+    await reloaded.close();
+  });
+
+  const document = parseJsonBody(
+    await reloaded.request({
+      method: "GET",
+      url: "/api/codocs/postgres-note/document"
+    })
+  );
+  assert.deepEqual(document.resolvedData, {
+    title: "Postgres Note",
+    summary: "Persist in postgres",
+    relatedCodocs: ["dashboard", "user"]
+  });
+});
+
+test("http chat routes base and rss scene interactions through the web-oriented agent stack", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await mkdtemp(join(tmpdir(), "cobook-e2e-http-rss-scene-"));
+  const rssServer = await createRssSourceServer();
+
+  await writeFile(
+    join(workspace, "cobook.yaml"),
+    [
+      'cobook: "0.1"',
+      'name: "rss-scene-web"',
+      "",
+      "include:",
+      '  - "**/*.codoc"',
+      "",
+      "exclude:",
+      '  - "dist/**"',
+      "",
+      "agents:",
+      "  rss:",
+      '    name: "RSS Agent"',
+      '    description: "Subscribe to feeds and discuss articles."',
+      '    outputDir: "rss"',
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await Promise.all([cleanup(runtime, workspace), rssServer.close(), http.close()]);
+  });
+
+  const workspaceSnapshot = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/workspace"
+    })
+  );
+  assert.deepEqual(workspaceSnapshot.codocs, []);
+
+  const abilityPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: "rss-web-session",
+        message: "你能做什么？"
+      })
+    })
+  );
+  const abilityMessage = abilityPayload.events.find((event) => event.kind === "message");
+  assert.ok(abilityMessage, "Expected a message event from the base agent.");
+  assert.match(abilityMessage.content, /我现在可以帮助你/);
+  assert.match(abilityMessage.content, /RSS Agent/);
+
+  const subscribePromptPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: "rss-web-session",
+        message: "帮我订阅某个 rss 源"
+      })
+    })
+  );
+  const subscribePrompt = subscribePromptPayload.events.find((event) => event.kind === "message");
+  assert.ok(subscribePrompt, "Expected a message event asking for the feed URL.");
+  assert.match(subscribePrompt.content, /RSS\/Atom 源链接/);
+
+  const subscribePayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: "rss-web-session",
+        message: `请订阅这个源：http://127.0.0.1:${rssServer.port}/feed.xml`
+      })
+    })
+  );
+  const artifactEvent = subscribePayload.events.find((event) => event.kind === "artifact");
+  assert.ok(artifactEvent, "Expected an artifact event from the RSS scene agent.");
+  assert.equal(existsSync(join(workspace, artifactEvent.filePath)), false);
+
+  const updatedWorkspace = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/workspace"
+    })
+  );
+  assert.equal(updatedWorkspace.codocs.length, 1);
+  const createdCodocId = updatedWorkspace.codocs[0].id;
+
+  const rssDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: `/api/codocs/${encodeURIComponent(createdCodocId)}/document`
+    })
+  );
+  assert.deepEqual(rssDocument.codoc.meta.scene, {
+    kind: "rss-source",
+    sourceUrl: `http://127.0.0.1:${rssServer.port}/feed.xml`
+  });
+  assert.equal(rssDocument.resolvedData.items.length, 3);
+  assert.equal(rssDocument.renderedView.children[1].type, "table");
+  assert.deepEqual(rssDocument.renderedView.children[1].rows[0].record, {
+    title: "First item",
+    link: "https://example.com/first",
+    description: "First summary",
+    publishedAt: "Mon, 01 Apr 2024 10:00:00 GMT",
+    id: "first-item"
+  });
+
+  const discussPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sessionId: "rss-web-session",
+        activeCodocId: createdCodocId,
+        selectedArticleId: "first-item",
+        message: "这篇文章讲了什么？"
+      })
+    })
+  );
+  const discussMessage = discussPayload.events.find((event) => event.kind === "message");
+  assert.ok(discussMessage, "Expected a message event from article discussion.");
+  assert.match(discussMessage.content, /First item/);
+  assert.match(discussMessage.content, /First summary/);
 });
 
 test("local service tears down stale watch streams across workspace lifecycle", async (t) => {
@@ -1662,8 +1860,10 @@ async function buildRuntime() {
     );
   }
 
-  const yamlDir = await findYamlPackageDir();
-  await symlink(yamlDir, join(runtimeDir, "node_modules", "yaml"), "dir");
+  for (const pkg of ["yaml", "pg"]) {
+    const packageDir = await findPackageDir(pkg);
+    await symlink(packageDir, join(runtimeDir, "node_modules", pkg), "dir");
+  }
 
   return {
     dir: runtimeDir,
@@ -1672,15 +1872,15 @@ async function buildRuntime() {
   };
 }
 
-async function findYamlPackageDir() {
+async function findPackageDir(packageName) {
   const pnpmDir = join(repoRoot, "node_modules", ".pnpm");
   const entries = await readdir(pnpmDir);
-  const yamlEntry = entries.find((entry) => entry.startsWith("yaml@"));
-  assert.ok(yamlEntry, "Could not locate yaml package under node_modules/.pnpm.");
+  const packageEntry = entries.find((entry) => entry.startsWith(`${packageName}@`));
+  assert.ok(packageEntry, `Could not locate ${packageName} package under node_modules/.pnpm.`);
 
-  const yamlDir = join(pnpmDir, yamlEntry, "node_modules", "yaml");
-  assert.ok(existsSync(yamlDir), `Resolved yaml package path does not exist: ${yamlDir}`);
-  return yamlDir;
+  const packageDir = join(pnpmDir, packageEntry, "node_modules", packageName);
+  assert.ok(existsSync(packageDir), `Resolved package path does not exist: ${packageDir}`);
+  return packageDir;
 }
 
 async function cloneExampleWorkspace(prefix) {
@@ -1817,6 +2017,12 @@ async function withTimeout(promise, ms, message) {
 }
 
 async function createHttpHarness(runtime, workspace) {
+  const postgres = await getPostgresHarness();
+  process.env.COBOOK_DATABASE_URL = postgres.connectionString;
+  const { closeAllPostgresDatabases } = await import(
+    pathToFileURL(join(runtime.dir, "packages", "service", "src", "index.js")).href
+  );
+
   const { createAppService } = await import(
     pathToFileURL(join(runtime.dir, "apps", "server", "src", "create-service.js")).href
   );
@@ -1841,9 +2047,121 @@ async function createHttpHarness(runtime, workspace) {
       return openEventStream(handler, url);
     },
     async close() {
-      return Promise.resolve();
+      await service.closeWorkspace();
+      await closeAllPostgresDatabases();
     }
   };
+}
+
+async function getPostgresHarness() {
+  if (!postgresHarnessPromise) {
+    postgresHarnessPromise = startPostgresHarness();
+  }
+
+  return postgresHarnessPromise;
+}
+
+async function startPostgresHarness() {
+  const containerName = `cobook-test-postgres-${Date.now().toString(36)}`;
+  const run = spawnSync(
+    "docker",
+    [
+      "run",
+      "--detach",
+      "--rm",
+      "--name",
+      containerName,
+      "--publish-all",
+      "--env",
+      "POSTGRES_DB=cobook_test",
+      "--env",
+      "POSTGRES_USER=postgres",
+      "--env",
+      "POSTGRES_PASSWORD=postgres",
+      "postgres:15"
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8"
+    }
+  );
+  assert.equal(run.status, 0, `Failed to start PostgreSQL test container.\n${run.stderr}`);
+
+  const portResult = spawnSync("docker", ["port", containerName, "5432/tcp"], {
+    cwd: repoRoot,
+    encoding: "utf8"
+  });
+  assert.equal(
+    portResult.status,
+    0,
+    `Failed to discover PostgreSQL test port.\n${portResult.stderr}`
+  );
+
+  const published = portResult.stdout.trim();
+  const hostPort = published.slice(published.lastIndexOf(":") + 1);
+  assert.ok(hostPort.length > 0, `Unexpected docker port output: ${published}`);
+
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const ready = spawnSync(
+      "docker",
+      ["exec", containerName, "pg_isready", "-U", "postgres", "-d", "cobook_test"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+    if (ready.status === 0) {
+      await waitForTcpPort(hostPort);
+      return {
+        connectionString: `postgresql://postgres:postgres@127.0.0.1:${hostPort}/cobook_test`,
+        async close() {
+          spawnSync("docker", ["rm", "--force", containerName], {
+            cwd: repoRoot,
+            encoding: "utf8"
+          });
+        }
+      };
+    }
+  }
+
+  spawnSync("docker", ["rm", "--force", containerName], {
+    cwd: repoRoot,
+    encoding: "utf8"
+  });
+  throw new Error("Timed out waiting for the PostgreSQL test container to become ready.");
+}
+
+async function waitForTcpPort(port) {
+  const deadline = Date.now() + 30_000;
+
+  while (Date.now() < deadline) {
+    const connected = await new Promise((resolve) => {
+      const socket = createConnection({
+        host: "127.0.0.1",
+        port: Number.parseInt(port, 10)
+      });
+
+      socket.once("connect", () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.once("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+
+    if (connected) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+  }
+
+  throw new Error(`Timed out waiting for PostgreSQL to accept host connections on port ${port}.`);
 }
 
 async function createSourceServer() {

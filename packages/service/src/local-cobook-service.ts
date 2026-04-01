@@ -22,10 +22,12 @@ import type {
   WriteCodocResult
 } from "./cobook-service.js";
 import { createLocalSourceExecutor } from "./source-executor/index.js";
+import type { CodocStore } from "./persistence/types.js";
 import type { WorkspaceSession } from "./workspace-session.js";
 
 export interface LocalCobookServiceOptions {
   chatHandler?: (input: ChatInput, service: CobookService) => AsyncIterable<ChatEvent>;
+  codocStore?: CodocStore;
 }
 
 function workspaceNotOpen(): never {
@@ -47,6 +49,9 @@ export class LocalCobookService implements CobookService {
         ? previousSession.watchControllers
         : new Set<AbortController>();
     const workspace = await loadWorkspace(root);
+    if (this.#options.codocStore) {
+      workspace.codocs = await this.#options.codocStore.load(root, workspace.codocs);
+    }
     const sourceExecutor = createLocalSourceExecutor(workspace.config.sources ?? {});
     const dag = createDagEngine({
       loadSource: (spec, context) =>
@@ -102,7 +107,10 @@ export class LocalCobookService implements CobookService {
       throw new Error(`Codoc "${codocId}" was not found.`);
     }
 
-    const raw = await readFile(join(session.root, existing.filePath), "utf8");
+    const raw =
+      (this.#options.codocStore
+        ? await this.#options.codocStore.readContent(session.root, existing.id, existing.filePath)
+        : null) ?? await readFile(join(session.root, existing.filePath), "utf8");
     const parsed = parseCodocText(existing.filePath, raw);
     const conflict = session.codocs.get(parsed.id);
     if (parsed.id !== codocId && conflict && conflict.filePath !== existing.filePath) {
@@ -135,6 +143,9 @@ export class LocalCobookService implements CobookService {
 
   async writeCodoc(input: WriteCodocInput): Promise<WriteCodocResult> {
     const session = requireSession(this.#session);
+    if (this.#options.codocStore) {
+      return this.writeCodocToStore(session, input);
+    }
 
     const absolutePath = join(session.root, input.filePath);
     const flag = input.overwrite ? "w" : "wx";
@@ -378,6 +389,12 @@ export class LocalCobookService implements CobookService {
   private async applyWorkspaceChange(change: { kind: string; path: string }): Promise<BuildResult> {
     const session = requireSession(this.#session);
 
+    if (this.#options.codocStore && change.kind === "updated" && change.path.endsWith(".codoc")) {
+      await this.#options.codocStore.importFile(session.root, change.path);
+      await this.openWorkspace(session.root);
+      return requireSession(this.#session).lastBuild ?? emptyBuildResult();
+    }
+
     if (change.path === "cobook.yaml" || change.kind !== "updated") {
       await this.openWorkspace(session.root);
       return requireSession(this.#session).lastBuild ?? emptyBuildResult();
@@ -390,6 +407,57 @@ export class LocalCobookService implements CobookService {
     }
 
     return this.rebuildCodoc(changedCodoc.id);
+  }
+
+  private async writeCodocToStore(
+    session: WorkspaceSession,
+    input: WriteCodocInput
+  ): Promise<WriteCodocResult> {
+    const parsed = parseCodocText(input.filePath, input.content);
+    if (parsed.id !== input.codocId) {
+      throw new Error(
+        `Written codoc id "${parsed.id}" does not match requested id "${input.codocId}".`
+      );
+    }
+
+    const previousCodocs = new Map(session.codocs);
+    const existingAtPath = findCodocByFilePath(session.codocs, input.filePath);
+    if (existingAtPath && existingAtPath.id !== parsed.id) {
+      session.codocs.delete(existingAtPath.id);
+    }
+
+    const existingById = session.codocs.get(parsed.id);
+    if (existingById && existingById.filePath !== input.filePath) {
+      session.codocs.clear();
+      restoreCodocMap(session.codocs, previousCodocs);
+      throw new Error(`Codoc id "${parsed.id}" already exists at "${existingById.filePath}".`);
+    }
+
+    session.codocs.set(parsed.id, parsed);
+
+    try {
+      session.lastBuild = session.dag.rebuildCodoc(parsed);
+      syncRuntimeState(session);
+      await this.#options.codocStore?.write(session.root, {
+        codocId: input.codocId,
+        filePath: input.filePath,
+        content: input.content,
+        ...(input.overwrite !== undefined ? { overwrite: input.overwrite } : {})
+      });
+
+      return {
+        codocId: parsed.id,
+        filePath: input.filePath,
+        changed: true,
+        build: session.lastBuild
+      };
+    } catch (error) {
+      session.codocs.clear();
+      restoreCodocMap(session.codocs, previousCodocs);
+      session.lastBuild = session.dag.build(Array.from(session.codocs.values()));
+      syncRuntimeState(session);
+      throw error;
+    }
   }
 }
 
@@ -516,4 +584,13 @@ function findCodocByFilePath(
   }
 
   return null;
+}
+
+function restoreCodocMap(
+  target: Map<string, ParsedCodoc>,
+  source: Map<string, ParsedCodoc>
+): void {
+  for (const [id, codoc] of source.entries()) {
+    target.set(id, codoc);
+  }
 }

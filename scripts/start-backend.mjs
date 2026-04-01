@@ -7,9 +7,11 @@ import { argv, cwd, env, exit, stderr, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55432/cobook_dev";
 
 async function main() {
   const parsed = parseArgs(argv.slice(2));
+  const runtimeEnv = ensureDatabaseEnv(env);
   const runtimeDir = await prepareRuntimeDirectory(parsed.runtimeDir);
   const workspaceRoot = resolve(repoRoot, parsed.root);
   const staticRoot = resolve(repoRoot, "apps", "web", "public");
@@ -43,7 +45,7 @@ async function main() {
     ],
     {
       cwd: repoRoot,
-      env,
+      env: runtimeEnv,
       stdio: "inherit"
     }
   );
@@ -56,6 +58,26 @@ async function main() {
 
     exit(code ?? 0);
   });
+}
+
+function ensureDatabaseEnv(currentEnv) {
+  if (currentEnv.COBOOK_DATABASE_URL?.trim()) {
+    return currentEnv;
+  }
+
+  const result = spawnSync(process.execPath, [join(repoRoot, "scripts", "dev-postgres.mjs"), "up"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: "inherit"
+  });
+  if (result.status !== 0) {
+    throw new Error("Failed to start the local PostgreSQL container.");
+  }
+
+  return {
+    ...currentEnv,
+    COBOOK_DATABASE_URL: DEFAULT_DATABASE_URL
+  };
 }
 
 function parseArgs(rawArgv) {
@@ -175,24 +197,26 @@ async function linkWorkspacePackages(runtimeDir) {
     await symlink(join(runtimeDir, "packages", pkg, "src"), join(cobookNodeModulesDir, pkg), "dir");
   }
 
-  const yamlDir = await findYamlPackageDir();
-  await symlink(yamlDir, join(runtimeDir, "node_modules", "yaml"), "dir");
+  for (const pkg of ["yaml", "pg"]) {
+    const packageDir = await findPackageDir(pkg);
+    await symlink(packageDir, join(runtimeDir, "node_modules", pkg), "dir");
+  }
 }
 
-async function findYamlPackageDir() {
+async function findPackageDir(packageName) {
   const pnpmDir = join(repoRoot, "node_modules", ".pnpm");
   const entries = await readdir(pnpmDir);
-  const yamlEntry = entries.find((entry) => entry.startsWith("yaml@"));
-  if (!yamlEntry) {
-    throw new Error('Could not locate "yaml" package under node_modules/.pnpm.');
+  const packageEntry = entries.find((entry) => entry.startsWith(`${packageName}@`));
+  if (!packageEntry) {
+    throw new Error(`Could not locate "${packageName}" package under node_modules/.pnpm.`);
   }
 
-  const yamlDir = join(pnpmDir, yamlEntry, "node_modules", "yaml");
-  if (!existsSync(yamlDir)) {
-    throw new Error(`Resolved yaml package path does not exist: ${yamlDir}`);
+  const packageDir = join(pnpmDir, packageEntry, "node_modules", packageName);
+  if (!existsSync(packageDir)) {
+    throw new Error(`Resolved package path does not exist: ${packageDir}`);
   }
 
-  return yamlDir;
+  return packageDir;
 }
 
 main().catch((error) => {

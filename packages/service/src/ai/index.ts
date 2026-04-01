@@ -2,6 +2,9 @@ export interface ChatInput {
   message: string;
   pinnedCodocIds?: string[];
   agentId?: string;
+  sessionId?: string;
+  activeCodocId?: string;
+  selectedArticleId?: string;
 }
 
 export type ChatEvent = StatusEvent | MessageEvent | ArtifactEvent;

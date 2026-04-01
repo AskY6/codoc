@@ -1,12 +1,14 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { argv, env, exit, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55432/cobook_dev";
 
 function main() {
   const parsed = parseArgs(argv.slice(2));
+  const runtimeEnv = ensureDatabaseEnv(env);
   const backendUrl = `http://${parsed.backendHost}:${parsed.backendPort}`;
   const webUrl = `http://${parsed.webHost}:${parsed.webPort}`;
   const children = new Set();
@@ -34,7 +36,7 @@ function main() {
     ],
     {
       cwd: repoRoot,
-      env,
+      env: runtimeEnv,
       stdio: "inherit"
     }
   );
@@ -56,6 +58,7 @@ function main() {
       cwd: repoRoot,
       env: {
         ...env,
+        COBOOK_DATABASE_URL: runtimeEnv.COBOOK_DATABASE_URL,
         COBOOK_API_ORIGIN: backendUrl,
         COBOOK_WEB_HOST: parsed.webHost,
         COBOOK_WEB_PORT: String(parsed.webPort)
@@ -112,6 +115,26 @@ function main() {
   process.on("SIGTERM", () => {
     shutdown("SIGTERM");
   });
+}
+
+function ensureDatabaseEnv(currentEnv) {
+  if (currentEnv.COBOOK_DATABASE_URL?.trim()) {
+    return currentEnv;
+  }
+
+  const started = spawnSync(process.execPath, [resolve(repoRoot, "scripts", "dev-postgres.mjs"), "up"], {
+    cwd: repoRoot,
+    env: currentEnv,
+    stdio: "inherit"
+  });
+  if (started.status !== 0) {
+    throw new Error("Failed to start the local PostgreSQL container.");
+  }
+
+  return {
+    ...currentEnv,
+    COBOOK_DATABASE_URL: DEFAULT_DATABASE_URL
+  };
 }
 
 function parseArgs(rawArgv) {

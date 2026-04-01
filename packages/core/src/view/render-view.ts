@@ -120,6 +120,7 @@ export interface RenderTableColumn {
 
 export interface RenderTableRow {
   cells: unknown[];
+  record?: unknown;
 }
 
 export interface RenderTableNode {
@@ -291,7 +292,8 @@ function renderViewNode(
           label: interpolateTemplate(column.label ?? column.key, context)
         })),
         rows: normalizedRows.map((row) => ({
-          cells: spec.columns.map((column) => resolveTableCell(row, column.key))
+          cells: spec.columns.map((column) => resolveTableCell(row, column.key)),
+          record: row
         }))
       };
     }

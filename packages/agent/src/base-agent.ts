@@ -94,6 +94,21 @@ export class RuleBasedBaseAgent implements BaseAgent {
     const message = input.message.trim();
     const lower = message.toLowerCase();
 
+    if (isCapabilityRequest(message, lower)) {
+      yield {
+        kind: "status",
+        status: "reading",
+        message: "Summarizing available capabilities."
+      };
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
+      yield {
+        kind: "message",
+        content: formatCapabilitySummary(contextPlan)
+      };
+      yield doneEvent();
+      return;
+    }
+
     if (isProjectSummaryRequest(lower)) {
       yield {
         kind: "status",
@@ -165,6 +180,21 @@ export class RuleBasedBaseAgent implements BaseAgent {
           null,
           2
         )
+      };
+      yield doneEvent();
+      return;
+    }
+
+    if (isContextRequest(lower)) {
+      yield {
+        kind: "status",
+        status: "reading",
+        message: "Summarizing the current chat context."
+      };
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
+      yield {
+        kind: "message",
+        content: JSON.stringify(buildContextSnapshot(contextPlan), null, 2)
       };
       yield doneEvent();
       return;
@@ -435,31 +465,7 @@ export class RuleBasedBaseAgent implements BaseAgent {
 
     yield {
       kind: "message",
-      content: JSON.stringify(
-        {
-          message:
-            "The base agent currently supports: project summary, list codocs, list agents, list workflows, run workflow <id>, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
-          requestedAgentId: contextPlan.requestedAgentId,
-          activeAgent: contextPlan.activeAgent,
-          ...(contextPlan.availableAgents.length > 0
-            ? { availableAgents: contextPlan.availableAgents }
-            : {}),
-          ...(contextPlan.availableWorkflows.length > 0
-            ? { availableWorkflows: contextPlan.availableWorkflows }
-            : {}),
-          projectSummary: contextPlan.projectSummary,
-          context: {
-            agentPinnedCodocIds: contextPlan.agentPinnedCodocIds,
-            requestedPinnedCodocIds: contextPlan.requestedPinnedCodocIds,
-            pinnedCodocIds: contextPlan.pinnedCodocIds,
-            ignoredPinnedCodocIds: contextPlan.ignoredPinnedCodocIds,
-            contextCodocIds: contextPlan.contextCodocIds
-          },
-          ...(contextPlan.pinnedCodocs.length > 0 ? { pinned: contextPlan.pinnedCodocs } : {})
-        },
-        null,
-        2
-      )
+      content: formatFallbackSummary(contextPlan)
     };
     yield doneEvent();
   }
@@ -469,6 +475,13 @@ export class StubBaseAgent extends RuleBasedBaseAgent {}
 
 function isProjectSummaryRequest(message: string): boolean {
   return /\b(workspace|project)\s+summary\b/.test(message);
+}
+
+function isCapabilityRequest(rawMessage: string, lowerMessage: string): boolean {
+  return (
+    /\b(what can you do|capabilities|help)\b/.test(lowerMessage) ||
+    /(你能做什么|你会什么|能做什么|帮助|帮我做什么)/.test(rawMessage)
+  );
 }
 
 function isListRequest(message: string): boolean {
@@ -841,6 +854,65 @@ function normalizeOutputDir(outputDir: string | undefined): string | null {
 
   const normalized = outputDir.trim().replace(/^\.\//, "").replace(/\/+$/, "");
   return normalized.length > 0 ? normalized : null;
+}
+
+function isContextRequest(lower: string): boolean {
+  return /(^|\b)(show|list|print)\s+me\s+the\s+current\s+context\b/.test(lower) ||
+    /\bcurrent\s+context\b/.test(lower);
+}
+
+function buildContextSnapshot(contextPlan: ChatContextPlan) {
+  return {
+    requestedAgentId: contextPlan.requestedAgentId,
+    activeAgent: contextPlan.activeAgent,
+    context: {
+      agentPinnedCodocIds: contextPlan.agentPinnedCodocIds,
+      requestedPinnedCodocIds: contextPlan.requestedPinnedCodocIds,
+      pinnedCodocIds: contextPlan.pinnedCodocIds,
+      ignoredPinnedCodocIds: contextPlan.ignoredPinnedCodocIds,
+      contextCodocIds: contextPlan.contextCodocIds
+    },
+    pinned: contextPlan.pinnedCodocs.map((entry) => ({
+      codocId: entry.codocId,
+      filePath: entry.codoc.filePath
+    }))
+  };
+}
+
+function formatCapabilitySummary(contextPlan: ChatContextPlan): string {
+  return [
+    "我现在可以帮助你：",
+    "1. 概览当前 workspace / project",
+    "2. 列出 codoc、agent、workflow",
+    "3. 读取 codoc 或 resolve 某个节点",
+    "4. 创建、更新、重构 codoc",
+    contextPlan.availableAgents.length > 0 ? "" : null,
+    contextPlan.availableAgents.length > 0 ? "当前可用的场景 agent：" : null,
+    ...contextPlan.availableAgents.map((agent) =>
+      `- ${agent.name}${agent.description ? `：${agent.description}` : ""}`
+    )
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+function formatFallbackSummary(contextPlan: ChatContextPlan): string {
+  return [
+    "我先按通用 agent 理解你的请求。",
+    "如果你是要操作 codoc，可以直接用这些表达：",
+    "- `list codocs`",
+    "- `read codoc <id>`",
+    "- `resolve <node>`",
+    "- `create note codoc <id> about <topic>`",
+    "- `update codoc <id>` 并附上 fenced code block",
+    contextPlan.availableAgents.length > 0 ? "" : null,
+    contextPlan.availableAgents.length > 0 ? "当前也有可分发的场景 agent：" : null,
+    ...contextPlan.availableAgents.map((agent) => `- ${agent.id}: ${agent.name}`),
+    "" ,
+    `当前 workspace 里共有 ${contextPlan.projectSummary.codocCount} 个 codoc。`
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 async function attemptWriteCodoc(

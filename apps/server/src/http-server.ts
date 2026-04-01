@@ -146,6 +146,11 @@ async function handleApiRequest(
       service.chat({
         message: body.message,
         ...(typeof body.agentId === "string" ? { agentId: body.agentId } : {}),
+        ...(typeof body.sessionId === "string" ? { sessionId: body.sessionId } : {}),
+        ...(typeof body.activeCodocId === "string" ? { activeCodocId: body.activeCodocId } : {}),
+        ...(typeof body.selectedArticleId === "string"
+          ? { selectedArticleId: body.selectedArticleId }
+          : {}),
         ...(isStringArray(body.pinnedCodocIds) ? { pinnedCodocIds: body.pinnedCodocIds } : {})
       })
     );
