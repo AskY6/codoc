@@ -1,9 +1,5 @@
 # Cobook Design
 
-> 稳定设计主线，不承载分阶段实现细节  
-> 路线规划见 [roadmap.md](/Users/kxzhang/code/local-tool/codoc/roadmap.md)  
-> 第一阶段细化见 [mvp-cli-first.md](/Users/kxzhang/code/local-tool/codoc/mvp-cli-first.md)
-
 ## 1. Cobook 是什么
 
 Cobook 不是单纯的 AI 聊天工具，也不是普通文档系统。
@@ -353,11 +349,3 @@ AI 的输入边界需要显式控制，而不是“把整个项目一股脑塞�
 - [design.md](/Users/kxzhang/code/local-tool/codoc/design.md)
   - 描述稳定设计主线
   - 关注对象模型、边界、原则和约束
-
-- [roadmap.md](/Users/kxzhang/code/local-tool/codoc/roadmap.md)
-  - 描述宽泛阶段规划
-  - 关注先后顺序、每阶段目标和退出条件
-
-- [mvp-cli-first.md](/Users/kxzhang/code/local-tool/codoc/mvp-cli-first.md)
-  - 作为 roadmap Phase 1 的细化文档
-  - 关注目录结构、服务接口和首批模块边界

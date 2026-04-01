@@ -4,14 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "scripts": {
-    "dev": "node scripts/start-dev.mjs",
-    "backend:dev": "node scripts/start-backend.mjs",
-    "db:dev": "node scripts/dev-postgres.mjs up",
-    "db:down": "node scripts/dev-postgres.mjs down",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:e2e": "node --test tests/e2e.test.mjs",
-    "web": "pnpm run dev",
-    "web:dev": "pnpm --dir apps/web dev"
+
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

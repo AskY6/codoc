@@ -1,9 +1,0 @@
-{
-  "name": "@cobook/core",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "yaml": "^2.6.0"
-  }
-}

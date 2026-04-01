@@ -1,7 +1,0 @@
-hero:
-  $source: builtin
-  name: hero
-
-profileHero:
-  $source: local
-  path: panels/hero-card
