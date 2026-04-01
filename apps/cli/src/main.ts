@@ -20,6 +20,7 @@ interface ParsedCliArgs {
   help: boolean;
   root: string;
   transport: "local" | "rpc" | "stdio";
+  agentId?: string;
   command?: CliCommandName;
   args: string[];
 }
@@ -73,7 +74,8 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
     const app = createCliApp(service);
     const result = await app.run({
       command: parsed.command,
-      args: parsed.args
+      args: parsed.args,
+      ...(parsed.agentId ? { agentId: parsed.agentId } : {})
     });
 
     stdout.write(`${formatResult(result)}\n`);
@@ -88,6 +90,7 @@ function parseCliArgs(rawArgv: string[]): ParsedCliArgs {
   let help = false;
   let root = cwd();
   let transport: ParsedCliArgs["transport"] = "local";
+  let agentId: string | undefined;
   const positional: string[] = [];
 
   for (let index = 0; index < rawArgv.length; index += 1) {
@@ -125,6 +128,17 @@ function parseCliArgs(rawArgv: string[]): ParsedCliArgs {
       continue;
     }
 
+    if (entry === "--agent") {
+      const next = rawArgv[index + 1];
+      if (!next) {
+        throw new Error("Missing value for --agent.");
+      }
+
+      agentId = next;
+      index += 1;
+      continue;
+    }
+
     positional.push(entry);
   }
 
@@ -132,6 +146,7 @@ function parseCliArgs(rawArgv: string[]): ParsedCliArgs {
     help,
     root,
     transport,
+    ...(agentId ? { agentId } : {}),
     ...(positional[0] ? { command: positional[0] as CliCommandName } : {}),
     args: positional.slice(1)
   };
@@ -143,7 +158,7 @@ function renderHelp(): string {
   ).join("\n");
 
   return [
-    "Usage: cobook [--root <path>] [--transport local|rpc|stdio] <command> [args...]",
+    "Usage: cobook [--root <path>] [--transport local|rpc|stdio] [--agent <id>] <command> [args...]",
     "",
     "Commands:",
     commands

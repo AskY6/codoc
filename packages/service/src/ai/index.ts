@@ -1,6 +1,7 @@
 export interface ChatInput {
   message: string;
   pinnedCodocIds?: string[];
+  agentId?: string;
 }
 
 export type ChatEvent = StatusEvent | MessageEvent | ArtifactEvent;

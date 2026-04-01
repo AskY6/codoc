@@ -2,6 +2,14 @@ export interface RefDirectory {
   $ref: string;
 }
 
+export interface CobookAgentConfig {
+  name: string;
+  description?: string;
+  prompt?: string;
+  pinnedCodocIds?: string[];
+  outputDir?: string;
+}
+
 export interface CobookConfig {
   cobook: string;
   name: string;
@@ -10,7 +18,7 @@ export interface CobookConfig {
   exclude?: string[];
   schemas?: RefDirectory;
   components?: RefDirectory;
-  agents?: Record<string, unknown>;
+  agents?: Record<string, CobookAgentConfig>;
   sources?: unknown[];
   build?: Record<string, unknown>;
 }

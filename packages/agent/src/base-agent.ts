@@ -25,6 +25,10 @@ interface ProjectSummary {
 
 interface ChatContextPlan {
   projectSummary: ProjectSummary;
+  availableAgents: WorkspaceAgent[];
+  requestedAgentId: string | null;
+  activeAgent: WorkspaceAgent | null;
+  agentPinnedCodocIds: string[];
   requestedPinnedCodocIds: string[];
   pinnedCodocIds: string[];
   ignoredPinnedCodocIds: string[];
@@ -33,6 +37,15 @@ interface ChatContextPlan {
     codocId: string;
     codoc: ParsedCodoc;
   }>;
+}
+
+interface WorkspaceAgent {
+  id: string;
+  name: string;
+  description?: string;
+  prompt?: string;
+  pinnedCodocIds: string[];
+  outputDir?: string;
 }
 
 type WriteAttemptResult =
@@ -95,6 +108,29 @@ export class RuleBasedBaseAgent implements BaseAgent {
       yield {
         kind: "message",
         content: JSON.stringify(codocs, null, 2)
+      };
+      yield doneEvent();
+      return;
+    }
+
+    if (isListAgentsRequest(lower)) {
+      yield {
+        kind: "status",
+        status: "reading",
+        message: "Listing configured agents."
+      };
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
+      yield {
+        kind: "message",
+        content: JSON.stringify(
+          {
+            requestedAgentId: contextPlan.requestedAgentId,
+            activeAgent: contextPlan.activeAgent,
+            agents: contextPlan.availableAgents
+          },
+          null,
+          2
+        )
       };
       yield doneEvent();
       return;
@@ -227,7 +263,7 @@ export class RuleBasedBaseAgent implements BaseAgent {
 
     const generatedRequest = extractGeneratedCodocRequest(message);
     if (generatedRequest) {
-      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds);
+      const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
       const generated = await generateTemplateCodoc(
         service,
         generatedRequest,
@@ -237,7 +273,9 @@ export class RuleBasedBaseAgent implements BaseAgent {
       yield {
         kind: "status",
         status: "writing",
-        message: `Generating "${generated.filePath}".`
+        message: contextPlan.activeAgent
+          ? `Generating "${generated.filePath}" with agent "${contextPlan.activeAgent.id}".`
+          : `Generating "${generated.filePath}".`
       };
       const writeAttempt = await attemptWriteCodoc(service, {
         codocId: generated.codocId,
@@ -266,7 +304,14 @@ export class RuleBasedBaseAgent implements BaseAgent {
       };
       yield {
         kind: "message",
-        content: formatWriteResult(written)
+        content: [
+          contextPlan.activeAgent
+            ? `Used configured agent "${contextPlan.activeAgent.id}" (${contextPlan.activeAgent.name}).`
+            : null,
+          formatWriteResult(written)
+        ]
+          .filter((line): line is string => Boolean(line))
+          .join("\n")
       };
       yield doneEvent();
       return;
@@ -275,19 +320,25 @@ export class RuleBasedBaseAgent implements BaseAgent {
     yield {
       kind: "status",
       status: "reading",
-      message: "Reading project summary and pinned codocs."
+      message: "Reading project summary, configured agents, and pinned codocs."
     };
 
-    const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds);
+    const contextPlan = await buildChatContextPlan(service, input.pinnedCodocIds, input.agentId);
 
     yield {
       kind: "message",
       content: JSON.stringify(
         {
           message:
-            "The base agent currently supports: project summary, list codocs, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
+            "The base agent currently supports: project summary, list codocs, list agents, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
+          requestedAgentId: contextPlan.requestedAgentId,
+          activeAgent: contextPlan.activeAgent,
+          ...(contextPlan.availableAgents.length > 0
+            ? { availableAgents: contextPlan.availableAgents }
+            : {}),
           projectSummary: contextPlan.projectSummary,
           context: {
+            agentPinnedCodocIds: contextPlan.agentPinnedCodocIds,
             requestedPinnedCodocIds: contextPlan.requestedPinnedCodocIds,
             pinnedCodocIds: contextPlan.pinnedCodocIds,
             ignoredPinnedCodocIds: contextPlan.ignoredPinnedCodocIds,
@@ -311,6 +362,10 @@ function isProjectSummaryRequest(message: string): boolean {
 
 function isListRequest(message: string): boolean {
   return /\b(list|show)\s+codocs\b/.test(message);
+}
+
+function isListAgentsRequest(message: string): boolean {
+  return /\b(list|show)\s+agents\b/.test(message);
 }
 
 function extractCodocBlock(
@@ -398,14 +453,19 @@ async function generateTemplateCodoc(
   const relatedCodocs = contextPlan.contextCodocIds.filter((codocId) => codocId !== request.codocId);
   const title = toTitleCase(request.codocId.replace(/[._/-]+/g, " "));
   const summary = request.topic ?? "Fill in the key point you want this codoc to capture.";
-  const contentLines = [
-    'codoc: "0.1"',
-    `id: ${JSON.stringify(request.codocId)}`,
-    "",
-    "data:",
-    `  title: ${JSON.stringify(title)}`,
-    `  summary: ${JSON.stringify(summary)}`
-  ];
+  const contentLines = ['codoc: "0.1"', `id: ${JSON.stringify(request.codocId)}`];
+
+  if (contextPlan.activeAgent) {
+    contentLines.push(
+      "",
+      "meta:",
+      "  agent:",
+      `    id: ${JSON.stringify(contextPlan.activeAgent.id)}`,
+      `    name: ${JSON.stringify(contextPlan.activeAgent.name)}`
+    );
+  }
+
+  contentLines.push("", "data:", `  title: ${JSON.stringify(title)}`, `  summary: ${JSON.stringify(summary)}`);
 
   if (relatedCodocs && relatedCodocs.length > 0) {
     contentLines.push("  relatedCodocs:");
@@ -424,7 +484,10 @@ async function generateTemplateCodoc(
 
   return {
     codocId: request.codocId,
-    filePath: request.filePath ?? existingCodoc?.filePath ?? `${request.codocId}.codoc`,
+    filePath:
+      request.filePath ??
+      existingCodoc?.filePath ??
+      buildGeneratedCodocFilePath(request.codocId, contextPlan.activeAgent),
     content: `${contentLines.join("\n")}\n`,
     overwrite: request.overwrite || existingCodoc !== null
   };
@@ -432,6 +495,10 @@ async function generateTemplateCodoc(
 
 async function buildProjectSummary(service: CobookService): Promise<ProjectSummary> {
   const workspace = await service.getWorkspace();
+  return buildProjectSummaryFromWorkspace(workspace);
+}
+
+function buildProjectSummaryFromWorkspace(workspace: WorkspaceSnapshot): ProjectSummary {
   const entryFilePath = normalizeEntryPath(workspace);
   const codocs = workspace.codocs.map((codoc) => ({
     ...codoc,
@@ -456,12 +523,20 @@ async function buildProjectSummary(service: CobookService): Promise<ProjectSumma
 
 async function buildChatContextPlan(
   service: CobookService,
-  rawPinnedCodocIds: string[] | undefined
+  rawPinnedCodocIds: string[] | undefined,
+  requestedAgentId: string | undefined
 ): Promise<ChatContextPlan> {
-  const projectSummary = await buildProjectSummary(service);
+  const workspace = await service.getWorkspace();
+  const projectSummary = buildProjectSummaryFromWorkspace(workspace);
   const codocOrder = new Map(projectSummary.codocs.map((codoc, index) => [codoc.id, index]));
+  const availableAgents = listWorkspaceAgents(workspace);
+  const activeAgent = resolveWorkspaceAgent(availableAgents, requestedAgentId);
+  const agentPinnedCodocIds = uniqueStrings(activeAgent?.pinnedCodocIds ?? []);
   const requestedPinnedCodocIds = rawPinnedCodocIds ?? [];
-  const uniqueRequestedPinnedCodocIds = uniqueStrings(requestedPinnedCodocIds);
+  const uniqueRequestedPinnedCodocIds = uniqueStrings([
+    ...agentPinnedCodocIds,
+    ...requestedPinnedCodocIds
+  ]);
   const pinnedIds = uniqueRequestedPinnedCodocIds.filter((codocId) => codocOrder.has(codocId));
   const pinnedCodocIds = sortCodocIdsByProjectOrder(pinnedIds, codocOrder);
   const ignoredPinnedCodocIds = uniqueRequestedPinnedCodocIds.filter(
@@ -481,12 +556,43 @@ async function buildChatContextPlan(
 
   return {
     projectSummary,
+    availableAgents,
+    requestedAgentId: requestedAgentId ?? null,
+    activeAgent,
+    agentPinnedCodocIds,
     requestedPinnedCodocIds,
     pinnedCodocIds,
     ignoredPinnedCodocIds,
     contextCodocIds,
     pinnedCodocs
   };
+}
+
+function listWorkspaceAgents(workspace: WorkspaceSnapshot): WorkspaceAgent[] {
+  return Object.entries(workspace.config.agents ?? {}).map(([id, spec]) => ({
+    id,
+    name: spec.name,
+    ...(spec.description ? { description: spec.description } : {}),
+    ...(spec.prompt ? { prompt: spec.prompt } : {}),
+    pinnedCodocIds: spec.pinnedCodocIds ?? [],
+    ...(spec.outputDir ? { outputDir: spec.outputDir } : {})
+  }));
+}
+
+function resolveWorkspaceAgent(
+  availableAgents: WorkspaceAgent[],
+  requestedAgentId: string | undefined
+): WorkspaceAgent | null {
+  if (!requestedAgentId) {
+    return null;
+  }
+
+  const activeAgent = availableAgents.find((agent) => agent.id === requestedAgentId);
+  if (!activeAgent) {
+    throw new Error(`Configured agent "${requestedAgentId}" was not found in this workspace.`);
+  }
+
+  return activeAgent;
 }
 
 function normalizeEntryPath(workspace: WorkspaceSnapshot): string | null {
@@ -509,6 +615,20 @@ function sortCodocIdsByProjectOrder(
     return (codocOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
       (codocOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
   });
+}
+
+function buildGeneratedCodocFilePath(codocId: string, activeAgent: WorkspaceAgent | null): string {
+  const outputDir = normalizeOutputDir(activeAgent?.outputDir);
+  return outputDir ? `${outputDir}/${codocId}.codoc` : `${codocId}.codoc`;
+}
+
+function normalizeOutputDir(outputDir: string | undefined): string | null {
+  if (!outputDir) {
+    return null;
+  }
+
+  const normalized = outputDir.trim().replace(/^\.\//, "").replace(/\/+$/, "");
+  return normalized.length > 0 ? normalized : null;
 }
 
 async function attemptWriteCodoc(

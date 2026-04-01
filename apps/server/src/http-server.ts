@@ -145,6 +145,7 @@ async function handleApiRequest(
     const events = await collectEvents(
       service.chat({
         message: body.message,
+        ...(typeof body.agentId === "string" ? { agentId: body.agentId } : {}),
         ...(isStringArray(body.pinnedCodocIds) ? { pinnedCodocIds: body.pinnedCodocIds } : {})
       })
     );

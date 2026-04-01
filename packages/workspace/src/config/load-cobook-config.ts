@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { parse as parseYaml } from "yaml";
 
-import type { CobookConfig } from "./types.js";
+import type { CobookAgentConfig, CobookConfig } from "./types.js";
 
 export async function loadCobookConfig(root: string): Promise<CobookConfig> {
   const configPath = join(root, "cobook.yaml");
@@ -26,10 +26,58 @@ export async function loadCobookConfig(root: string): Promise<CobookConfig> {
     ...(isRecord(parsed.components) && typeof parsed.components.$ref === "string"
       ? { components: { $ref: parsed.components.$ref } }
       : {}),
-    ...(isRecord(parsed.agents) ? { agents: parsed.agents } : {}),
+    ...(parsed.agents !== undefined ? { agents: parseAgents(parsed.agents, configPath) } : {}),
     ...(Array.isArray(parsed.sources) ? { sources: parsed.sources } : {}),
     ...(isRecord(parsed.build) ? { build: parsed.build } : {})
   };
+}
+
+function parseAgents(value: unknown, configPath: string): Record<string, CobookAgentConfig> {
+  if (!isRecord(value)) {
+    throw new Error(`${configPath}: "agents" must be an object if provided.`);
+  }
+
+  const agents: Record<string, CobookAgentConfig> = {};
+
+  for (const [id, rawSpec] of Object.entries(value)) {
+    if (!isRecord(rawSpec)) {
+      throw new Error(`${configPath}: agent "${id}" must be an object.`);
+    }
+
+    if ("name" in rawSpec && typeof rawSpec.name !== "string") {
+      throw new Error(`${configPath}: agent "${id}" field "name" must be a string.`);
+    }
+
+    if ("description" in rawSpec && typeof rawSpec.description !== "string") {
+      throw new Error(`${configPath}: agent "${id}" field "description" must be a string.`);
+    }
+
+    if ("prompt" in rawSpec && typeof rawSpec.prompt !== "string") {
+      throw new Error(`${configPath}: agent "${id}" field "prompt" must be a string.`);
+    }
+
+    if ("outputDir" in rawSpec && typeof rawSpec.outputDir !== "string") {
+      throw new Error(`${configPath}: agent "${id}" field "outputDir" must be a string.`);
+    }
+
+    if ("pinnedCodocIds" in rawSpec && !isStringArray(rawSpec.pinnedCodocIds)) {
+      throw new Error(
+        `${configPath}: agent "${id}" field "pinnedCodocIds" must be an array of strings.`
+      );
+    }
+
+    agents[id] = {
+      name: typeof rawSpec.name === "string" ? rawSpec.name : toTitleCase(id),
+      ...(typeof rawSpec.description === "string" ? { description: rawSpec.description } : {}),
+      ...(typeof rawSpec.prompt === "string" ? { prompt: rawSpec.prompt } : {}),
+      ...(isStringArray(rawSpec.pinnedCodocIds)
+        ? { pinnedCodocIds: rawSpec.pinnedCodocIds }
+        : {}),
+      ...(typeof rawSpec.outputDir === "string" ? { outputDir: rawSpec.outputDir } : {})
+    };
+  }
+
+  return agents;
 }
 
 function expectString(value: unknown, message: string): string {
@@ -46,4 +94,13 @@ function isStringArray(value: unknown): value is string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .replace(/[._/-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

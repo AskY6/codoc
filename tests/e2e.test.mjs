@@ -784,6 +784,7 @@ test("http chat normalizes pinned codoc context", async (t) => {
 
   const contextBody = JSON.parse(contextMessage.content);
   assert.deepEqual(contextBody.context, {
+    agentPinnedCodocIds: [],
     requestedPinnedCodocIds: ["user", "missing", "dashboard", "user"],
     pinnedCodocIds: ["dashboard", "user"],
     ignoredPinnedCodocIds: ["missing"],
@@ -819,6 +820,195 @@ test("http chat normalizes pinned codoc context", async (t) => {
     title: "Pinned Context Note",
     summary: "Normalize pinned context",
     relatedCodocs: ["dashboard", "user"]
+  });
+});
+
+test("cli chat applies configured scene agents", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-cli-scene-agent-");
+  const configPath = join(workspace, "cobook.yaml");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  await writeFile(
+    join(workspace, "sources.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "sources"',
+      "",
+      "data:",
+      "  topics:",
+      "    $source: static",
+      "    value:",
+      '      - "Ship notes"',
+      '      - "Open questions"',
+      "",
+      "view: |",
+      "  # Sources",
+      "",
+      "  {data.topics.0}",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  await writeFile(
+    configPath,
+    [
+      (await readFile(configPath, "utf8")).trimEnd(),
+      "",
+      "agents:",
+      "  research:",
+      '    name: "Research Scout"',
+      '    description: "Draft research codocs from a focused scene context."',
+      '    prompt: "Prefer sources, open questions, and unresolved risk."',
+      "    pinnedCodocIds:",
+      '      - "sources"',
+      '    outputDir: "research"'
+    ].join("\n") + "\n",
+    "utf8"
+  );
+
+  const chat = runCli(runtime, workspace, [
+    "--agent",
+    "research",
+    "chat",
+    "create note codoc cli-market-scan about Validate cli scene agent"
+  ]);
+  assert.match(chat.stdout, /Used configured agent "research" \(Research Scout\)\./);
+  assert.match(chat.stdout, /\[artifact\] research\/cli-market-scan\.codoc/);
+
+  const document = parseJsonOutput(
+    runCli(runtime, workspace, ["resolve", "cli-market-scan:data"]).stdout
+  );
+  assert.deepEqual(document.value, {
+    title: "Cli Market Scan",
+    summary: "Validate cli scene agent",
+    relatedCodocs: ["sources", "dashboard", "user"]
+  });
+});
+
+test("http chat applies configured scene agents", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-scene-agent-");
+  const configPath = join(workspace, "cobook.yaml");
+  const sourcesCodocPath = join(workspace, "sources.codoc");
+
+  await writeFile(
+    sourcesCodocPath,
+    [
+      'codoc: "0.1"',
+      'id: "sources"',
+      "",
+      "data:",
+      "  topics:",
+      "    $source: static",
+      "    value:",
+      '      - "Ship notes"',
+      '      - "Open questions"',
+      "",
+      "view: |",
+      "  # Sources",
+      "",
+      "  {data.topics.0}",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  await writeFile(
+    configPath,
+    [
+      (await readFile(configPath, "utf8")).trimEnd(),
+      "",
+      "agents:",
+      "  research:",
+      '    name: "Research Scout"',
+      '    description: "Draft research codocs from a focused scene context."',
+      '    prompt: "Prefer sources, open questions, and unresolved risk."',
+      "    pinnedCodocIds:",
+      '      - "sources"',
+      '    outputDir: "research"'
+    ].join("\n") + "\n",
+    "utf8"
+  );
+
+  const http = await createHttpHarness(runtime, workspace);
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+    await http.close();
+  });
+
+  const contextPayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "show me the current context",
+        agentId: "research"
+      })
+    })
+  );
+  const contextMessage = contextPayload.events.find((event) => event.kind === "message");
+  assert.ok(contextMessage, "Expected a message event from the scene agent response.");
+
+  const contextBody = JSON.parse(contextMessage.content);
+  assert.deepEqual(contextBody.activeAgent, {
+    id: "research",
+    name: "Research Scout",
+    description: "Draft research codocs from a focused scene context.",
+    prompt: "Prefer sources, open questions, and unresolved risk.",
+    pinnedCodocIds: ["sources"],
+    outputDir: "research"
+  });
+  assert.deepEqual(contextBody.context, {
+    agentPinnedCodocIds: ["sources"],
+    requestedPinnedCodocIds: [],
+    pinnedCodocIds: ["sources"],
+    ignoredPinnedCodocIds: [],
+    contextCodocIds: ["sources", "dashboard", "user"]
+  });
+
+  const writePayload = parseJsonBody(
+    await http.request({
+      method: "POST",
+      url: "/api/chat",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        message: "create note codoc market-scan about Map the open questions",
+        agentId: "research"
+      })
+    })
+  );
+  assert.ok(
+    writePayload.events.some(
+      (event) => event.kind === "artifact" && event.filePath === "research/market-scan.codoc"
+    )
+  );
+
+  const marketScanDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/market-scan/document"
+    })
+  );
+  assert.equal(marketScanDocument.codoc.filePath, "research/market-scan.codoc");
+  assert.deepEqual(marketScanDocument.codoc.meta.agent, {
+    id: "research",
+    name: "Research Scout"
+  });
+  assert.deepEqual(marketScanDocument.resolvedData, {
+    title: "Market Scan",
+    summary: "Map the open questions",
+    relatedCodocs: ["sources", "dashboard", "user"]
   });
 });
 

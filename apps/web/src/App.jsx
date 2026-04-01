@@ -11,6 +11,7 @@ const initialSnapshot = {
 export default function App() {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [selectedCodocId, setSelectedCodocId] = useState(null);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [events, setEvents] = useState([]);
   const [transcript, setTranscript] = useState([]);
@@ -125,10 +126,20 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    setSelectedAgentId((current) => {
+      const workspaceAgents = snapshot.workspace?.config?.agents ?? {};
+      return current && workspaceAgents[current] ? current : "";
+    });
+  }, [snapshot.workspace]);
+
   const buildSuccess = snapshot.diagnostics?.build?.success ?? false;
   const resolvedData = selectedDocument?.resolvedData ?? {};
   const renderedView = selectedDocument?.renderedView ?? null;
   const nodeStates = selectedDocument?.nodeStates ?? [];
+  const workspaceAgents = snapshot.workspace?.config?.agents ?? {};
+  const agentEntries = Object.entries(workspaceAgents);
+  const activeAgent = selectedAgentId ? workspaceAgents[selectedAgentId] ?? null : null;
 
   async function handleChatSubmit(submitEvent) {
     submitEvent.preventDefault();
@@ -146,6 +157,7 @@ export default function App() {
         },
         body: JSON.stringify({
           message: trimmedMessage,
+          ...(selectedAgentId ? { agentId: selectedAgentId } : {}),
           ...(selectedCodocId ? { pinnedCodocIds: [selectedCodocId] } : {})
         })
       });
@@ -277,6 +289,29 @@ export default function App() {
           </div>
 
           <form className="chat-form" onSubmit={handleChatSubmit}>
+            {agentEntries.length > 0 ? (
+              <label className="chat-agent-picker">
+                <span className="field-label">Scene Agent</span>
+                <select
+                  value={selectedAgentId}
+                  onChange={(event) => {
+                    setSelectedAgentId(event.target.value);
+                  }}
+                >
+                  <option value="">Base agent</option>
+                  {agentEntries.map(([agentId, agent]) => (
+                    <option key={agentId} value={agentId}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="chat-agent-summary">
+                  {activeAgent
+                    ? formatAgentSummary(activeAgent)
+                    : "Use the base agent without an extra scene preset."}
+                </p>
+              </label>
+            ) : null}
             <textarea
               name="message"
               rows="8"
@@ -372,6 +407,19 @@ function selectPreferredCodoc(workspace, codocs) {
     codocs[0] ??
     null
   );
+}
+
+function formatAgentSummary(agent) {
+  const summaryParts = [
+    agent.description,
+    agent.prompt,
+    Array.isArray(agent.pinnedCodocIds) && agent.pinnedCodocIds.length > 0
+      ? `Pins: ${agent.pinnedCodocIds.join(", ")}`
+      : null,
+    agent.outputDir ? `Output: ${agent.outputDir}` : null
+  ].filter(Boolean);
+
+  return summaryParts.join(" · ");
 }
 
 function formatError(error) {

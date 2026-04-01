@@ -262,6 +262,7 @@ function expectChatInput(params: unknown) {
 
   return {
     message: params.message,
+    ...(typeof params.agentId === "string" ? { agentId: params.agentId } : {}),
     ...(Array.isArray(params.pinnedCodocIds) &&
     params.pinnedCodocIds.every((entry) => typeof entry === "string")
       ? { pinnedCodocIds: params.pinnedCodocIds }

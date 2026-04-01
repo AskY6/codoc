@@ -14,6 +14,7 @@ import { collectChatTranscript } from "./tui/index.js";
 export interface CliRunInput {
   command: CliCommandName;
   args: string[];
+  agentId?: string;
 }
 
 export type CliRunResult =
@@ -64,7 +65,8 @@ export function createCliApp(service: CobookService): CliApp {
         case "chat":
           return collectChatTranscript(
             service.chat({
-              message: input.args.join(" ")
+              message: input.args.join(" "),
+              ...(input.agentId ? { agentId: input.agentId } : {})
             })
           );
       }
