@@ -1,4 +1,5 @@
 import type {
+  ComponentMeta,
   ComponentSpec,
   ViewGridColumns,
   ViewNodeSpec,
@@ -43,6 +44,7 @@ export interface RenderComponentNode {
   component: string;
   props: Record<string, unknown>;
   runtime: RenderComponentRuntime;
+  propsSchema?: Record<string, unknown>;
 }
 
 export type RenderComponentRuntime =
@@ -110,6 +112,7 @@ export interface RenderResolvedViewInput {
   view: unknown;
   data?: unknown;
   components?: Record<string, ComponentSpec>;
+  componentMeta?: Record<string, ComponentMeta>;
 }
 
 export function renderResolvedView(input: RenderResolvedViewInput): RenderViewDocument {
@@ -139,7 +142,7 @@ export function renderResolvedView(input: RenderResolvedViewInput): RenderViewDo
   }
 
   if (isViewNodeSpec(input.view)) {
-    const rendered = renderViewNode(input.view, context, input.components);
+    const rendered = renderViewNode(input.view, context, input.components, input.componentMeta);
     if (rendered.type === "stack") {
       return rendered;
     }
@@ -167,14 +170,17 @@ export function renderResolvedView(input: RenderResolvedViewInput): RenderViewDo
 function renderViewNode(
   spec: ViewNodeSpec,
   context: Record<string, unknown>,
-  components: Record<string, ComponentSpec> | undefined
+  components: Record<string, ComponentSpec> | undefined,
+  componentMeta: Record<string, ComponentMeta> | undefined
 ): RenderViewNode {
   switch (spec.type) {
     case "stack":
       return {
         type: "stack",
         gap: spec.gap ?? "md",
-        children: spec.children.map((child) => renderViewNode(child, context, components))
+        children: spec.children.map((child) =>
+          renderViewNode(child, context, components, componentMeta)
+        )
       };
     case "markdown":
       return {
@@ -186,7 +192,9 @@ function renderViewNode(
         type: "grid",
         columns: spec.columns ?? 2,
         gap: spec.gap ?? "md",
-        children: spec.children.map((child) => renderViewNode(child, context, components))
+        children: spec.children.map((child) =>
+          renderViewNode(child, context, components, componentMeta)
+        )
       };
     case "text":
       return {
@@ -218,12 +226,19 @@ function renderViewNode(
     }
     case "component": {
       const resolvedComponent = resolveComponentReference(spec.component, components);
+      const componentMetaEntry = resolvedComponent.alias
+        ? componentMeta?.[resolvedComponent.alias]
+        : null;
+      const componentSchema =
+        componentMetaEntry && isRecord(componentMetaEntry.props) ? componentMetaEntry.props : null;
+
       return {
         type: "component",
         source: resolvedComponent.source,
         ...(resolvedComponent.alias ? { alias: resolvedComponent.alias } : {}),
         component: resolvedComponent.component,
         runtime: resolvedComponent.runtime,
+        ...(componentSchema ? { propsSchema: componentSchema } : {}),
         props: isRecord(spec.props)
           ? (resolveTemplateValue(spec.props, context) as Record<string, unknown>)
           : {}

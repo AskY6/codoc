@@ -49,12 +49,13 @@ function LocalHeroCard({ eyebrow, title, subtitle }) {
 
 function UnsupportedComponent({ source, component, alias, reason }) {
   return (
-    <section className="component-card unsupported-component">
-      <strong>Unsupported component</strong>
-      <div>{alias ? `${alias} -> ` : ""}{component}</div>
-      <div className="muted">source: {source}</div>
-      {reason ? <div className="muted">{reason}</div> : null}
-    </section>
+    <ComponentStatusCard
+      title="Unsupported component"
+      source={source}
+      component={component}
+      alias={alias}
+      reason={reason}
+    />
   );
 }
 
@@ -188,6 +189,19 @@ function formatCellValue(value) {
 }
 
 function RuntimeComponentNode({ node, codocs, currentCodoc, visitedCodocIds }) {
+  const propsValidationError = validatePropsAgainstSchema(node.props, node.propsSchema);
+  if (propsValidationError) {
+    return (
+      <ComponentStatusCard
+        title="Invalid component props"
+        source={node.source}
+        component={node.component}
+        alias={node.alias}
+        reason={propsValidationError}
+      />
+    );
+  }
+
   if (node.runtime?.kind === "codoc") {
     return (
       <CodocRuntimeNode
@@ -220,7 +234,7 @@ function RuntimeComponentNode({ node, codocs, currentCodoc, visitedCodocIds }) {
   }
 
   const Component = resolveComponent(node);
-  return <Component {...node.props} source={node.source} component={node.component} alias={node.alias} />;
+  return <SafeRenderedComponent node={node} Component={Component} />;
 }
 
 function AsyncRuntimeComponent({ node, loader, cacheKey }) {
@@ -267,7 +281,7 @@ function AsyncRuntimeComponent({ node, loader, cacheKey }) {
     return <LoadingComponent source={node.source} component={node.component} alias={node.alias} />;
   }
 
-  return <Component {...node.props} source={node.source} component={node.component} alias={node.alias} />;
+  return <SafeRenderedComponent node={node} Component={Component} />;
 }
 
 function CodocRuntimeNode({ node, codocs, currentCodoc, visitedCodocIds }) {
@@ -349,14 +363,16 @@ function CodocRuntimeNode({ node, codocs, currentCodoc, visitedCodocIds }) {
   }
 
   return (
-    <section className="component-card component-embed">
-      <ViewRenderer
-        document={document.renderedView}
-        codocs={codocs}
-        currentCodoc={document.codoc}
-        visitedCodocIds={[...visitedCodocIds, targetCodocId]}
-      />
-    </section>
+    <ComponentErrorBoundary node={node}>
+      <section className="component-card component-embed">
+        <ViewRenderer
+          document={document.renderedView}
+          codocs={codocs}
+          currentCodoc={document.codoc}
+          visitedCodocIds={[...visitedCodocIds, targetCodocId]}
+        />
+      </section>
+    </ComponentErrorBoundary>
   );
 }
 
@@ -374,12 +390,76 @@ function resolveComponent(node) {
 
 function LoadingComponent({ source, component, alias }) {
   return (
+    <ComponentStatusCard
+      title="Loading component"
+      source={source}
+      component={component}
+      alias={alias}
+    />
+  );
+}
+
+function SafeRenderedComponent({ node, Component }) {
+  return (
+    <ComponentErrorBoundary node={node}>
+      <Component
+        {...node.props}
+        source={node.source}
+        component={node.component}
+        alias={node.alias}
+      />
+    </ComponentErrorBoundary>
+  );
+}
+
+function ComponentStatusCard({ title, source, component, alias, reason }) {
+  return (
     <section className="component-card unsupported-component">
-      <strong>Loading component</strong>
+      <strong>{title}</strong>
       <div>{alias ? `${alias} -> ` : ""}{component}</div>
       <div className="muted">source: {source}</div>
+      {reason ? <div className="muted">{reason}</div> : null}
     </section>
   );
+}
+
+class ComponentErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      error: null
+    };
+  }
+
+  static getDerivedStateFromError(error) {
+    return {
+      error
+    };
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.node !== this.props.node && this.state.error) {
+      this.setState({
+        error: null
+      });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <ComponentStatusCard
+          title="Component crashed"
+          source={this.props.node.source}
+          component={this.props.node.component}
+          alias={this.props.node.alias}
+          reason={this.state.error.message}
+        />
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function loadInlineComponent(code) {
@@ -488,6 +568,70 @@ function normalizeWorkspacePath(fromFilePath, targetPath) {
   }
 
   return segments.join("/");
+}
+
+function validatePropsAgainstSchema(value, schema, path = "props") {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return null;
+  }
+
+  const type = schema.type;
+  if (type === "object") {
+    if (!isRecord(value)) {
+      return `${path} must be an object.`;
+    }
+
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    for (const key of required) {
+      if (typeof key === "string" && !(key in value)) {
+        return `${path}.${key} is required.`;
+      }
+    }
+
+    const properties = isRecord(schema.properties) ? schema.properties : {};
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      if (!(key in value)) {
+        continue;
+      }
+
+      const nestedError = validatePropsAgainstSchema(
+        value[key],
+        propertySchema,
+        `${path}.${key}`
+      );
+      if (nestedError) {
+        return nestedError;
+      }
+    }
+
+    return null;
+  }
+
+  if (type === "array") {
+    if (!Array.isArray(value)) {
+      return `${path} must be an array.`;
+    }
+
+    return null;
+  }
+
+  if (type === "string" && typeof value !== "string") {
+    return `${path} must be a string.`;
+  }
+
+  if (type === "number" && typeof value !== "number") {
+    return `${path} must be a number.`;
+  }
+
+  if (type === "boolean" && typeof value !== "boolean") {
+    return `${path} must be a boolean.`;
+  }
+
+  return null;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseMarkdown(content) {

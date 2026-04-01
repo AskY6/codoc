@@ -195,7 +195,8 @@ async function buildCodocDocument(service: CobookService, codocId: string) {
       components: {
         ...workspace.componentRegistry,
         ...(codoc.component ?? {})
-      }
+      },
+      ...(codoc.meta?.component ? { componentMeta: codoc.meta.component } : {})
     }),
     nodeStates: diagnostics.nodes.filter((entry) => entry.node.codocId === codocId)
   };

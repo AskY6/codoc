@@ -10,6 +10,33 @@ meta:
       role:
         type: string
     required: [name, role]
+  component:
+    inlineGreeting:
+      props:
+        type: object
+        properties:
+          eyebrow:
+            type: string
+          title:
+            type: string
+          subtitle:
+            type: string
+        required: [title]
+    dashboardEmbed:
+      props:
+        type: object
+        properties: {}
+    remoteGreeting:
+      props:
+        type: object
+        properties:
+          eyebrow:
+            type: string
+          title:
+            type: string
+          subtitle:
+            type: string
+        required: [title]
 
 data:
   name:

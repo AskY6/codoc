@@ -780,6 +780,21 @@ test("http web experience end-to-end", async (t) => {
   assert.equal(userDocument.renderedView.children[1].type, "grid");
   assert.equal(userDocument.renderedView.children[1].children[0].source, "inline");
   assert.equal(userDocument.renderedView.children[1].children[0].runtime.kind, "inline");
+  assert.deepEqual(userDocument.renderedView.children[1].children[0].propsSchema, {
+    type: "object",
+    properties: {
+      eyebrow: {
+        type: "string"
+      },
+      title: {
+        type: "string"
+      },
+      subtitle: {
+        type: "string"
+      }
+    },
+    required: ["title"]
+  });
   assert.match(userDocument.renderedView.children[1].children[0].runtime.code, /React\.createElement/);
   assert.equal(userDocument.renderedView.children[1].children[1].source, "remote");
   assert.deepEqual(userDocument.renderedView.children[1].children[1].runtime, {
@@ -787,11 +802,30 @@ test("http web experience end-to-end", async (t) => {
     url: "/components/remote-greeting.mjs",
     export: "RemoteGreeting"
   });
+  assert.deepEqual(userDocument.renderedView.children[1].children[1].propsSchema, {
+    type: "object",
+    properties: {
+      eyebrow: {
+        type: "string"
+      },
+      title: {
+        type: "string"
+      },
+      subtitle: {
+        type: "string"
+      }
+    },
+    required: ["title"]
+  });
   assert.equal(userDocument.renderedView.children[2].type, "component");
   assert.equal(userDocument.renderedView.children[2].source, "codoc");
   assert.deepEqual(userDocument.renderedView.children[2].runtime, {
     kind: "codoc",
     ref: "dashboard"
+  });
+  assert.deepEqual(userDocument.renderedView.children[2].propsSchema, {
+    type: "object",
+    properties: {}
   });
   assert.equal(userDocument.renderedView.children[3].type, "table");
   assert.deepEqual(userDocument.renderedView.children[3].rows[1].cells, ["Role", "editor"]);
