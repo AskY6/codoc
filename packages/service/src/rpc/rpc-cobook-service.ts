@@ -19,10 +19,12 @@ import type {
 } from "../cobook-service.js";
 
 import type { ServiceTransport } from "./types.js";
+import type { WatchRpcNextResult } from "./types.js";
 
 export class RpcCobookService implements CobookService {
   readonly #transport: ServiceTransport;
   #requestId = 0;
+  #watchId = 0;
 
   constructor(transport: ServiceTransport) {
     this.#transport = transport;
@@ -82,8 +84,42 @@ export class RpcCobookService implements CobookService {
     return this.send("diagnostics");
   }
 
-  async *watch(_signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
-    throw new Error("RPC watch transport is not implemented yet.");
+  async *watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent> {
+    const watchId = `watch-${this.#watchId++}`;
+    let started = false;
+    const abortPromise = createAbortPromise(signal);
+
+    try {
+      await this.send("watchStart", {
+        watchId
+      });
+      started = true;
+
+      while (true) {
+        const next = (await Promise.race([
+          this.send<WatchRpcNextResult>("watchNext", {
+            watchId
+          }),
+          abortPromise
+        ])) as WatchRpcNextResult;
+
+        if (next.done) {
+          break;
+        }
+
+        yield next.event as WorkspaceWatchEvent;
+      }
+    } finally {
+      if (started) {
+        try {
+          await this.send("watchStop", {
+            watchId
+          });
+        } catch {
+          // Ignore teardown errors on already-closed watch sessions.
+        }
+      }
+    }
   }
 
   async *chat(input: ChatInput): AsyncIterable<ChatEvent> {
@@ -107,4 +143,30 @@ export class RpcCobookService implements CobookService {
 
     return response.result;
   }
+}
+
+function createAbortPromise(signal: AbortSignal | undefined): Promise<never> {
+  if (!signal) {
+    return new Promise<never>(() => {});
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted.")
+    );
+  }
+
+  return new Promise<never>((_, reject) => {
+    signal.addEventListener(
+      "abort",
+      () => {
+        reject(
+          signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted.")
+        );
+      },
+      {
+        once: true
+      }
+    );
+  });
 }

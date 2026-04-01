@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { ViewRenderer } from "./view-renderer.jsx";
+
 const initialSnapshot = {
   workspace: null,
   diagnostics: null,
@@ -125,7 +127,7 @@ export default function App() {
 
   const buildSuccess = snapshot.diagnostics?.build?.success ?? false;
   const resolvedData = selectedDocument?.resolvedData ?? {};
-  const resolvedView = renderView(selectedDocument?.resolvedView, resolvedData);
+  const renderedView = selectedDocument?.renderedView ?? null;
   const nodeStates = selectedDocument?.nodeStates ?? [];
 
   async function handleChatSubmit(submitEvent) {
@@ -230,7 +232,9 @@ export default function App() {
           <div className="detail-grid">
             <section className="subpanel">
               <h3>View</h3>
-              <pre className="viewer">{resolvedView || "No view node."}</pre>
+              <div className="render-surface">
+                <ViewRenderer document={renderedView} />
+              </div>
             </section>
 
             <section className="subpanel">
@@ -364,29 +368,6 @@ function selectPreferredCodoc(workspace, codocs) {
     codocs[0] ??
     null
   );
-}
-
-function renderView(view, resolvedData) {
-  if (typeof view !== "string") {
-    return "";
-  }
-
-  return view.replace(/\{([^}]+)\}/g, (_, expression) => {
-    const value = resolvePathExpression(expression.trim(), {
-      data: resolvedData
-    });
-    return value === undefined ? `{${expression}}` : String(value);
-  });
-}
-
-function resolvePathExpression(expression, context) {
-  return expression.split(".").reduce((current, segment) => {
-    if (current && typeof current === "object" && segment in current) {
-      return current[segment];
-    }
-
-    return undefined;
-  }, context);
 }
 
 function formatError(error) {

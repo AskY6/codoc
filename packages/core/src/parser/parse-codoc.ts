@@ -7,6 +7,8 @@ import type {
   ComponentSpec,
   FileViewSpec,
   ParsedCodoc,
+  ViewGridColumns,
+  ViewNodeSpec,
   ViewSpec
 } from "./types.js";
 import type { DataSpec } from "../source-spec/types.js";
@@ -195,7 +197,122 @@ function parseViewSpec(input: unknown, filePath: string): ViewSpec | undefined {
     } satisfies FileViewSpec;
   }
 
-  throw new Error(`${filePath}: "view" must be a string or file source.`);
+  if (isRecord(input)) {
+    return parseViewNode(input, `${filePath}#/view`);
+  }
+
+  throw new Error(`${filePath}: "view" must be a string, file source, or structured view node.`);
+}
+
+function parseViewNode(input: unknown, location: string): ViewNodeSpec {
+  if (typeof input === "string") {
+    return {
+      type: "markdown",
+      content: input
+    };
+  }
+
+  if (!isRecord(input) || typeof input.type !== "string") {
+    throw new Error(`${location}: structured view nodes require a string "type".`);
+  }
+
+  switch (input.type) {
+    case "stack":
+      if (!Array.isArray(input.children)) {
+        throw new Error(`${location}: stack view requires an array "children".`);
+      }
+
+      return {
+        type: "stack",
+        children: input.children.map((child, index) =>
+          parseViewNode(child, `${location}/children/${index}`)
+        ),
+        ...(input.gap === "sm" || input.gap === "md" || input.gap === "lg" ? { gap: input.gap } : {})
+      };
+    case "grid":
+      if (!Array.isArray(input.children)) {
+        throw new Error(`${location}: grid view requires an array "children".`);
+      }
+
+      const columns = parseGridColumns(input.columns, location);
+      return {
+        type: "grid",
+        children: input.children.map((child, index) =>
+          parseViewNode(child, `${location}/children/${index}`)
+        ),
+        ...(input.gap === "sm" || input.gap === "md" || input.gap === "lg" ? { gap: input.gap } : {}),
+        ...(columns ? { columns } : {})
+      };
+    case "markdown":
+      return {
+        type: "markdown",
+        content: expectString(input.content, `${location}: markdown view requires "content".`)
+      };
+    case "text":
+      return {
+        type: "text",
+        content: expectString(input.content, `${location}: text view requires "content".`),
+        ...(input.tone === "default" ||
+        input.tone === "muted" ||
+        input.tone === "eyebrow" ||
+        input.tone === "title"
+          ? { tone: input.tone }
+          : {})
+      };
+    case "json":
+      return {
+        type: "json",
+        ...(typeof input.title === "string" ? { title: input.title } : {}),
+        ...(input.value !== undefined ? { value: input.value } : {})
+      };
+    case "table":
+      if (!Array.isArray(input.columns)) {
+        throw new Error(`${location}: table view requires an array "columns".`);
+      }
+
+      return {
+        type: "table",
+        ...(typeof input.title === "string" ? { title: input.title } : {}),
+        columns: input.columns.map((column, index) => {
+          if (!isRecord(column)) {
+            throw new Error(`${location}/columns/${index}: table column must be an object.`);
+          }
+
+          return {
+            key: expectString(column.key, `${location}/columns/${index}: column requires "key".`),
+            ...(typeof column.label === "string" ? { label: column.label } : {})
+          };
+        }),
+        rows: input.rows ?? []
+      };
+    case "component":
+      if (input.props !== undefined && !isRecord(input.props)) {
+        throw new Error(`${location}: component view "props" must be an object.`);
+      }
+
+      return {
+        type: "component",
+        component: expectString(
+          input.component,
+          `${location}: component view requires "component".`
+        ),
+        ...(input.props ? { props: input.props } : {})
+      };
+    default:
+      throw new Error(`${location}: unsupported structured view type "${input.type}".`);
+  }
+}
+
+function parseGridColumns(value: unknown, location: string): ViewGridColumns | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === 1 || value === 2 || value === 3) {
+    return value;
+  }
+
+  throw new Error(`${location}: grid view "columns" must be 1, 2, or 3.`);
 }
 
 function parseFileFormat(format: unknown, pathValue: unknown): "text" | "json" | "yaml" | "csv" {

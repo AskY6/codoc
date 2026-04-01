@@ -230,6 +230,33 @@ test("http web experience end-to-end", async (t) => {
       role: "editor"
     }
   });
+  assert.equal(dashboardDocument.renderedView.type, "stack");
+  assert.equal(dashboardDocument.renderedView.children[1].type, "grid");
+  assert.equal(dashboardDocument.renderedView.children[1].columns, 2);
+  assert.equal(dashboardDocument.renderedView.children[1].children[0].type, "component");
+  assert.equal(dashboardDocument.renderedView.children[1].children[0].component, "hero");
+  assert.equal(dashboardDocument.renderedView.children[1].children[0].props.subtitle, "Ada (editor)");
+  assert.deepEqual(dashboardDocument.renderedView.children[1].children[1].value, {
+    name: "Ada",
+    role: "editor"
+  });
+  assert.equal(dashboardDocument.renderedView.children[2].type, "table");
+  assert.deepEqual(dashboardDocument.renderedView.children[2].rows[0].cells, ["Name", "Ada"]);
+  assert.deepEqual(dashboardDocument.renderedView.children[2].rows[1].cells, ["Role", "editor"]);
+
+  const userDocument = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/user/document"
+    })
+  );
+  assert.equal(userDocument.renderedView.children[0].type, "grid");
+  assert.equal(userDocument.renderedView.children[0].children[0].type, "component");
+  assert.equal(userDocument.renderedView.children[0].children[0].source, "local");
+  assert.equal(userDocument.renderedView.children[0].children[0].component, "panels/hero-card");
+  assert.equal(userDocument.renderedView.children[0].children[0].props.title, "Ada");
+  assert.equal(userDocument.renderedView.children[1].type, "table");
+  assert.deepEqual(userDocument.renderedView.children[1].rows[1].cells, ["Role", "editor"]);
 
   const chatResult = parseJsonBody(
     await http.request({
@@ -256,6 +283,8 @@ test("http web experience end-to-end", async (t) => {
     title: "Web Note",
     summary: "Validate web experience"
   });
+  assert.equal(webNoteDocument.renderedView.type, "stack");
+  assert.equal(webNoteDocument.renderedView.children[0].type, "markdown");
 
   const eventStream = await http.openEventStream("/api/events");
   const eventPromise = eventStream.nextEvent();
@@ -281,7 +310,7 @@ test("watch rebuilds after workspace change", async (t) => {
     await cleanup(runtime, workspace);
   });
 
-  const watchResultPromise = watchForFirstEvent(runtime, workspace);
+  const watchResultPromise = watchForFirstEvent(runtime, workspace, "local");
   await sleep(800);
 
   const userCodocPath = join(workspace, "user.codoc");
@@ -306,6 +335,60 @@ test("watch rebuilds after workspace change", async (t) => {
     name: "Grace",
     role: "editor"
   });
+});
+
+test("rpc watch rebuilds after workspace change", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-rpc-watch-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const watchResultPromise = watchForFirstEvent(runtime, workspace, "rpc");
+  await sleep(800);
+
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  await writeFile(userCodocPath, originalUserCodoc.replace("Ada", "Grace"), "utf8");
+
+  const watchResult = await watchResultPromise;
+  const watchEvent = parseJsonOutput(watchResult.stdout);
+
+  assert.deepEqual(watchEvent.change, {
+    kind: "updated",
+    path: "user.codoc"
+  });
+  assert.equal(watchEvent.build.success, true);
+  assert.ok(watchEvent.build.affectedNodes.includes("user:data/name"));
+  assert.ok(watchEvent.build.affectedNodes.includes("dashboard:data/currentUser"));
+});
+
+test("stdio watch rebuilds after workspace change", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-stdio-watch-");
+
+  t.after(async () => {
+    await cleanup(runtime, workspace);
+  });
+
+  const watchResultPromise = watchForFirstEvent(runtime, workspace, "stdio");
+  await sleep(800);
+
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  await writeFile(userCodocPath, originalUserCodoc.replace("Ada", "Grace"), "utf8");
+
+  const watchResult = await watchResultPromise;
+  const watchEvent = parseJsonOutput(watchResult.stdout);
+
+  assert.deepEqual(watchEvent.change, {
+    kind: "updated",
+    path: "user.codoc"
+  });
+  assert.equal(watchEvent.build.success, true);
+  assert.ok(watchEvent.build.affectedNodes.includes("user:data/name"));
+  assert.ok(watchEvent.build.affectedNodes.includes("dashboard:data/currentUser"));
 });
 
 async function buildRuntime() {
@@ -384,10 +467,10 @@ function runCli(runtime, workspace, args, transport = "local") {
   return result;
 }
 
-async function watchForFirstEvent(runtime, workspace) {
+async function watchForFirstEvent(runtime, workspace, transport = "local") {
   const child = spawn(
     process.execPath,
-    [runtime.cliPath, "--transport", "local", "--root", workspace, "watch"],
+    [runtime.cliPath, "--transport", transport, "--root", workspace, "watch"],
     {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"]

@@ -220,6 +220,152 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.render-surface {
+  min-height: 180px;
+  margin-top: 12px;
+}
+
+.view-stack {
+  display: grid;
+}
+
+.view-grid {
+  display: grid;
+}
+
+.view-stack.gap-sm {
+  gap: 10px;
+}
+
+.view-stack.gap-md {
+  gap: 16px;
+}
+
+.view-stack.gap-lg {
+  gap: 24px;
+}
+
+.view-grid.gap-sm {
+  gap: 10px;
+}
+
+.view-grid.gap-md {
+  gap: 16px;
+}
+
+.view-grid.gap-lg {
+  gap: 24px;
+}
+
+.view-grid.columns-1 {
+  grid-template-columns: 1fr;
+}
+
+.view-grid.columns-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.view-grid.columns-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.markdown-block h1,
+.markdown-block h2,
+.render-json h3,
+.render-table h3,
+.component-card h3 {
+  margin: 0 0 8px;
+}
+
+.markdown-block p,
+.markdown-block ul,
+.render-json .viewer {
+  margin: 0;
+}
+
+.markdown-block {
+  display: grid;
+  gap: 12px;
+}
+
+.markdown-block ul {
+  padding-left: 20px;
+}
+
+.view-text {
+  margin: 0;
+}
+
+.view-text.tone-muted {
+  color: var(--muted);
+}
+
+.view-text.tone-eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.view-text.tone-title {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+.component-card,
+.render-json,
+.render-table {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  background: #fff;
+}
+
+.hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(182, 84, 43, 0.14), transparent 28%),
+    linear-gradient(180deg, #fff8ef, #fff4e6);
+}
+
+.local-hero-card {
+  background:
+    radial-gradient(circle at top left, rgba(64, 104, 130, 0.16), transparent 26%),
+    linear-gradient(180deg, #eef6fb, #f7fbff);
+}
+
+.unsupported-component {
+  border-style: dashed;
+}
+
+.table-shell {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.render-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.render-table th,
+.render-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.render-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.render-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 .viewer,
 .transcript,
 .event-log,
@@ -307,6 +453,11 @@ textarea:focus {
   }
 
   .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .view-grid.columns-2,
+  .view-grid.columns-3 {
     grid-template-columns: 1fr;
   }
 

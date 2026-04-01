@@ -10,7 +10,10 @@ export type ServiceRpcMethod =
   | "resolve"
   | "graph"
   | "diagnostics"
-  | "chat";
+  | "chat"
+  | "watchStart"
+  | "watchNext"
+  | "watchStop";
 
 export interface ServiceRpcRequest {
   id: string;
@@ -43,3 +46,14 @@ export interface ServiceTransport {
 export interface ClosableServiceTransport extends ServiceTransport {
   close(): Promise<void>;
 }
+
+export interface WatchRpcEventResult {
+  done: false;
+  event: unknown;
+}
+
+export interface WatchRpcDoneResult {
+  done: true;
+}
+
+export type WatchRpcNextResult = WatchRpcEventResult | WatchRpcDoneResult;

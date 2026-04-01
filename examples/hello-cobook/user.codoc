@@ -17,7 +17,37 @@ data:
     value: "Ada"
   role: "editor"
 
-view: |
-  # User
+component:
+  profileHero:
+    $source: local
+    path: "panels/hero-card"
 
-  {data.name} ({data.role})
+view:
+  type: stack
+  children:
+    - type: grid
+      columns: 2
+      children:
+        - type: component
+          component: profileHero
+          props:
+            eyebrow: User
+            title: "{data.name}"
+            subtitle: "{data.role}"
+        - type: markdown
+          content: |
+            # User
+
+            This profile is resolved from codoc data.
+    - type: table
+      title: Profile snapshot
+      columns:
+        - key: label
+          label: Field
+        - key: value
+          label: Value
+      rows:
+        - label: Name
+          value: "{data.name}"
+        - label: Role
+          value: "{data.role}"

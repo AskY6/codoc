@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, normalize } from "node:path";
 import { URL } from "node:url";
 
+import { renderResolvedView } from "@cobook/core";
 import type { ChatEvent, CobookService } from "@cobook/service";
 
 export interface StartHttpServerOptions {
@@ -180,6 +181,11 @@ async function buildCodocDocument(service: CobookService, codocId: string) {
     codoc,
     resolvedData,
     resolvedView,
+    renderedView: renderResolvedView({
+      view: resolvedView,
+      data: resolvedData,
+      ...(codoc.component ? { components: codoc.component } : {})
+    }),
     nodeStates: diagnostics.nodes.filter((entry) => entry.node.codocId === codocId)
   };
 }

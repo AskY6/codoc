@@ -61,10 +61,6 @@ export async function runCliProgram(rawArgv: string[] = argv.slice(2)): Promise<
     await service.openWorkspace(parsed.root);
 
     if (parsed.command === "watch") {
-      if (parsed.transport !== "local") {
-        throw new Error("The watch command currently requires the local service transport.");
-      }
-
       for await (const event of service.watch()) {
         stdout.write(`${formatJson(event)}\n`);
       }

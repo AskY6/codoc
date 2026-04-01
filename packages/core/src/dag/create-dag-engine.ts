@@ -335,6 +335,10 @@ class DefaultDagEngine implements DagEngine {
       return node.view;
     }
 
+    if ("type" in node.view) {
+      return node.view;
+    }
+
     if (!this.#options.loadFileSource) {
       throw new Error(`No file source loader was configured for "${node.id}".`);
     }

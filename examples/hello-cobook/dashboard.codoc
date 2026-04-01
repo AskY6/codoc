@@ -6,7 +6,33 @@ data:
     $source: codoc
     $ref: "./user.codoc#/data"
 
-view: |
-  # Dashboard
-
-  Current user: {data.currentUser.name}
+view:
+  type: stack
+  children:
+    - type: markdown
+      content: |
+        # Dashboard
+    - type: grid
+      columns: 2
+      children:
+        - type: component
+          component: hero
+          props:
+            eyebrow: Workspace
+            title: Current user
+            subtitle: "{data.currentUser.name} ({data.currentUser.role})"
+        - type: json
+          title: Resolved current user
+          value: "{data.currentUser}"
+    - type: table
+      title: Current user fields
+      columns:
+        - key: label
+          label: Field
+        - key: value
+          label: Value
+      rows:
+        - label: Name
+          value: "{data.currentUser.name}"
+        - label: Role
+          value: "{data.currentUser.role}"
