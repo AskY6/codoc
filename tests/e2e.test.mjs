@@ -58,6 +58,29 @@ test("local transport end-to-end", async (t) => {
   assert.match(workspaceSummary.stdout, /"entryCodocId": "dashboard"/);
   assert.match(workspaceSummary.stdout, /"defaultContextCodocIds": \[\s*"dashboard",\s*"user"\s*\]/);
 
+  const userCodocPath = join(workspace, "user.codoc");
+  const originalUserCodoc = await readFile(userCodocPath, "utf8");
+  const refactoredChat = runCli(runtime, workspace, ["chat", "refactor codoc user"]);
+  assert.match(refactoredChat.stdout, /Refactoring "user\.codoc"/);
+  assert.match(
+    refactoredChat.stdout,
+    /Refactored codoc "user" to the canonical workspace format\./
+  );
+  assert.match(refactoredChat.stdout, /\[artifact\] user\.codoc/);
+
+  const refactoredUserCodoc = await readFile(userCodocPath, "utf8");
+  assert.notEqual(refactoredUserCodoc, originalUserCodoc);
+  assert.match(refactoredUserCodoc, /\$source: static/);
+  assert.match(refactoredUserCodoc, /value: editor/);
+
+  const resolvedDashboardAfterRefactor = parseJsonOutput(
+    runCli(runtime, workspace, ["resolve", "dashboard:data/currentUser"]).stdout
+  );
+  assert.deepEqual(resolvedDashboardAfterRefactor.value, {
+    name: "Ada",
+    role: "editor"
+  });
+
   const generatedChat = runCli(runtime, workspace, [
     "chat",
     "create note codoc idea at notes/idea.codoc about Capture the next product direction"

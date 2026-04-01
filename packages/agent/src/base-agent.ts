@@ -1,5 +1,6 @@
 import type { ChatEvent, ChatInput, CobookService } from "@cobook/service";
 import type { CodocSummary, ParsedCodoc, WorkspaceSnapshot } from "@cobook/service";
+import { stringify as stringifyYaml } from "yaml";
 
 export interface BaseAgent {
   run(input: ChatInput, service: CobookService): AsyncIterable<ChatEvent>;
@@ -106,6 +107,38 @@ export class RuleBasedBaseAgent implements BaseAgent {
       return;
     }
 
+    const refactorMatch = message.match(/\brefactor\s+codoc\s+([a-z0-9._/-]+)\b/i);
+    if (refactorMatch?.[1]) {
+      const codocId = refactorMatch[1];
+      const existingCodoc = await service.readCodoc(codocId);
+      const content = serializeParsedCodoc(existingCodoc);
+
+      yield {
+        kind: "status",
+        status: "writing",
+        message: `Refactoring "${existingCodoc.filePath}".`
+      };
+      const written = await service.writeCodoc({
+        codocId: existingCodoc.id,
+        filePath: existingCodoc.filePath,
+        content,
+        overwrite: true
+      });
+      yield {
+        kind: "artifact",
+        filePath: written.filePath
+      };
+      yield {
+        kind: "message",
+        content: [
+          `Refactored codoc "${existingCodoc.id}" to the canonical workspace format.`,
+          formatWriteResult(written)
+        ].join("\n")
+      };
+      yield doneEvent();
+      return;
+    }
+
     const codocBlock = extractCodocBlock(message);
     if (codocBlock) {
       const existingCodoc = await tryReadCodoc(service, codocBlock.codocId);
@@ -180,7 +213,7 @@ export class RuleBasedBaseAgent implements BaseAgent {
       content: JSON.stringify(
         {
           message:
-            "The base agent currently supports: project summary, list codocs, read codoc <id>, resolve <node>, or write/update a codoc via a fenced code block.",
+            "The base agent currently supports: project summary, list codocs, read codoc <id>, resolve <node>, refactor codoc <id>, or write/update a codoc via a fenced code block.",
           projectSummary: contextPlan.projectSummary,
           context: {
             requestedPinnedCodocIds: contextPlan.requestedPinnedCodocIds,
@@ -404,6 +437,144 @@ function sortCodocIdsByProjectOrder(
     return (codocOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
       (codocOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
   });
+}
+
+function serializeParsedCodoc(codoc: ParsedCodoc): string {
+  const document = {
+    codoc: codoc.codoc,
+    id: codoc.id,
+    ...(codoc.meta ? { meta: codoc.meta } : {}),
+    ...(codoc.data ? { data: serializeDataSection(codoc.data) } : {}),
+    ...(codoc.component ? { component: serializeComponentSection(codoc.component) } : {}),
+    ...(codoc.view ? { view: serializeViewSpec(codoc.view) } : {})
+  };
+
+  return stringifyYaml(document, {
+    lineWidth: 0
+  });
+}
+
+function serializeDataSection(data: ParsedCodoc["data"]): Record<string, unknown> {
+  const serialized: Record<string, unknown> = {};
+
+  for (const [key, spec] of Object.entries(data ?? {})) {
+    serialized[key] = serializeDataSpec(spec);
+  }
+
+  return serialized;
+}
+
+function serializeDataSpec(spec: unknown): unknown {
+  if (!isRecord(spec) || typeof spec.kind !== "string") {
+    return spec;
+  }
+
+  switch (spec.kind) {
+    case "static":
+      return {
+        $source: "static",
+        value: spec.value
+      };
+    case "file":
+      return {
+        $source: "file",
+        path: spec.path,
+        format: spec.format
+      };
+    case "codoc":
+      return {
+        $source: "codoc",
+        ...(isRecord(spec.ref) && typeof spec.ref.raw === "string" ? { $ref: spec.ref.raw } : {}),
+        ...(spec.defaultValue !== undefined ? { $default: spec.defaultValue } : {})
+      };
+    case "object": {
+      const fields = isRecord(spec.fields) ? spec.fields : {};
+      const serializedFields: Record<string, unknown> = {};
+
+      for (const [key, fieldSpec] of Object.entries(fields)) {
+        serializedFields[key] = serializeDataSpec(fieldSpec);
+      }
+
+      return serializedFields;
+    }
+    default:
+      return spec;
+  }
+}
+
+function serializeComponentSection(component: ParsedCodoc["component"]): Record<string, unknown> {
+  const serialized: Record<string, unknown> = {};
+
+  for (const [key, spec] of Object.entries(component ?? {})) {
+    serialized[key] = serializeComponentSpec(spec);
+  }
+
+  return serialized;
+}
+
+function serializeComponentSpec(spec: unknown): unknown {
+  if (!isRecord(spec) || typeof spec.kind !== "string") {
+    return spec;
+  }
+
+  switch (spec.kind) {
+    case "local":
+      return {
+        $source: "local",
+        path: spec.path
+      };
+    case "inline":
+      return {
+        $source: "inline",
+        code: spec.code
+      };
+    case "codoc":
+      return {
+        $source: "codoc",
+        $ref: spec.ref
+      };
+    case "builtin":
+      return {
+        $source: "builtin",
+        name: spec.name
+      };
+    case "remote":
+      return {
+        $source: "remote",
+        ...(spec.package !== undefined ? { package: spec.package } : {}),
+        ...(spec.url !== undefined ? { url: spec.url } : {}),
+        ...(spec.export !== undefined ? { export: spec.export } : {})
+      };
+    default:
+      return spec;
+  }
+}
+
+function serializeViewSpec(view: ParsedCodoc["view"]): unknown {
+  if (typeof view === "string") {
+    return view;
+  }
+
+  if (isFileViewSpec(view)) {
+    return {
+      $source: "file",
+      path: view.path
+    };
+  }
+
+  return view;
+}
+
+function isFileViewSpec(value: ParsedCodoc["view"]): value is Extract<ParsedCodoc["view"], { kind: "file" }> {
+  return (
+    isRecord(value) &&
+    value.kind === "file" &&
+    typeof value.path === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatWriteResult(result: {

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@cobook/service": "workspace:*"
+    "@cobook/service": "workspace:*",
+    "yaml": "^2.6.0"
   }
 }
