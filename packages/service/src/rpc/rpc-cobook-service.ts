@@ -1,4 +1,5 @@
 import type {
+  AgentSessionSnapshot,
   ChatEvent,
   ChatInput,
   CobookService,
@@ -146,6 +147,18 @@ export class RpcCobookService implements CobookService {
     for (const event of events) {
       yield event;
     }
+  }
+
+  async readAgentSession(sessionId: string): Promise<AgentSessionSnapshot | null> {
+    return this.send("readAgentSession", this.sessionParams({ agentSessionId: sessionId }));
+  }
+
+  async writeAgentSession(input: AgentSessionSnapshot): Promise<AgentSessionSnapshot> {
+    return this.send("writeAgentSession", this.sessionParams(input));
+  }
+
+  async clearAgentSession(sessionId: string): Promise<void> {
+    await this.send("clearAgentSession", this.sessionParams({ agentSessionId: sessionId }));
   }
 
   private sessionParams<T extends object>(params?: T): { sessionId: string } & T {

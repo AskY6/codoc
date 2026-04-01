@@ -126,6 +126,18 @@ async function handleRequest(state: RpcServerState, request: ServiceRpcRequest):
       return withManagedSession(state, request.params, (managed, params) =>
         collectEvents(managed.service.chat(expectChatInput(params)))
       );
+    case "readAgentSession":
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.readAgentSession(expectObjectWithString(params, "agentSessionId"))
+      );
+    case "writeAgentSession":
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.writeAgentSession(expectAgentSessionInput(params))
+      );
+    case "clearAgentSession":
+      return withManagedSession(state, request.params, (managed, params) =>
+        managed.service.clearAgentSession(expectObjectWithString(params, "agentSessionId"))
+      );
     case "watchStart": {
       const params = expectSessionParams(request.params);
       return startWatchSubscription(
@@ -265,13 +277,30 @@ function expectChatInput(params: unknown) {
     ...(typeof params.agentId === "string" ? { agentId: params.agentId } : {}),
     ...(typeof params.sessionId === "string" ? { sessionId: params.sessionId } : {}),
     ...(typeof params.activeCodocId === "string" ? { activeCodocId: params.activeCodocId } : {}),
-    ...(typeof params.selectedArticleId === "string"
-      ? { selectedArticleId: params.selectedArticleId }
+    ...(typeof params.selectedResourceId === "string"
+      ? { selectedResourceId: params.selectedResourceId }
       : {}),
     ...(Array.isArray(params.pinnedCodocIds) &&
     params.pinnedCodocIds.every((entry) => typeof entry === "string")
       ? { pinnedCodocIds: params.pinnedCodocIds }
       : {})
+  };
+}
+
+function expectAgentSessionInput(params: unknown) {
+  if (
+    !isRecord(params) ||
+    typeof params.sessionId !== "string" ||
+    !("state" in params) ||
+    !isRecord(params.state)
+  ) {
+    throw new Error("RPC writeAgentSession params are invalid.");
+  }
+
+  return {
+    sessionId: params.sessionId,
+    activeSceneId: typeof params.activeSceneId === "string" ? params.activeSceneId : null,
+    state: params.state
   };
 }
 

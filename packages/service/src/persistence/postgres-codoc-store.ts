@@ -4,87 +4,66 @@ import { join, resolve } from "node:path";
 
 import { parseCodocText, type ParsedCodoc } from "@cobook/core";
 
-import { getPostgresDatabase } from "../database/postgres.js";
+import { PostgresDocumentRepository } from "../repositories/postgres-document-repository.js";
 
 import type { CodocStore } from "./types.js";
 
-interface DocumentRow {
-  document_id: string;
-  source_path: string;
-  content: string;
-}
-
 export interface PostgresCodocStoreOptions {
-  connectionString?: string;
+  connectionString?: string | undefined;
 }
 
 export class PostgresCodocStore implements CodocStore {
   readonly #options: PostgresCodocStoreOptions;
-  readonly #database;
+  readonly #documents;
 
   constructor(options: PostgresCodocStoreOptions = {}) {
     this.#options = options;
-    this.#database = getPostgresDatabase(this.#options.connectionString);
+    this.#documents = new PostgresDocumentRepository({
+      connectionString: this.#options.connectionString
+    });
   }
 
   async load(
     root: string,
     fallbackCodocs: Map<string, ParsedCodoc>
   ): Promise<Map<string, ParsedCodoc>> {
-    const pool = await this.#database.ready();
-    const client = await pool.connect();
     const workspaceRoot = normalizeWorkspaceRoot(root);
-
-    try {
-      await client.query("BEGIN");
-      for (const codoc of fallbackCodocs.values()) {
-        await client.query(
-          [
-            "INSERT INTO documents (workspace_root, document_id, source_path, document_kind, content, metadata)",
-            "VALUES ($1, $2, $3, 'codoc', $4, $5::jsonb)",
-            "ON CONFLICT (workspace_root, document_id) DO NOTHING"
-          ].join(" "),
-          [
-            workspaceRoot,
-            codoc.id,
-            codoc.filePath,
-            readFallbackCodocContent(root, codoc.filePath),
-            JSON.stringify(codoc.meta ?? {})
-          ]
-        );
+    for (const codoc of fallbackCodocs.values()) {
+      const existing =
+        (await this.#documents.getById(workspaceRoot, codoc.id)) ??
+        (await this.#documents.getBySourcePath(workspaceRoot, codoc.filePath));
+      if (!existing) {
+        await this.#documents.upsert({
+          workspaceRoot,
+          documentId: codoc.id,
+          sourcePath: codoc.filePath,
+          documentKind: "codoc",
+          content: readFallbackCodocContent(root, codoc.filePath),
+          metadata: codoc.meta ?? {}
+        });
       }
-
-      const rows = await client.query<DocumentRow>(
-        [
-          "SELECT document_id, source_path, content FROM documents",
-          "WHERE workspace_root = $1 AND document_kind = 'codoc'",
-          "ORDER BY created_at, document_id"
-        ].join(" "),
-        [workspaceRoot]
-      );
-      await client.query("COMMIT");
-      return parseRows(rows.rows);
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
     }
+
+    const documents = await this.#documents.listByWorkspace(workspaceRoot);
+    return parseRows(
+      documents
+        .filter((document) => document.documentKind === "codoc")
+        .map((document) => ({
+          source_path: document.sourcePath,
+          content: document.content
+        }))
+    );
   }
 
   async readContent(root: string, codocId: string, filePath: string): Promise<string | null> {
-    const pool = await this.#database.ready();
-    const result = await pool.query<{ content: string }>(
-      [
-        "SELECT content FROM documents",
-        "WHERE workspace_root = $1 AND document_kind = 'codoc'",
-        "AND (document_id = $2 OR source_path = $3)",
-        "ORDER BY CASE WHEN document_id = $2 THEN 0 ELSE 1 END",
-        "LIMIT 1"
-      ].join(" "),
-      [normalizeWorkspaceRoot(root), codocId, filePath]
-    );
-    return result.rows[0]?.content ?? null;
+    const workspaceRoot = normalizeWorkspaceRoot(root);
+    const byId = await this.#documents.getById(workspaceRoot, codocId);
+    if (byId?.documentKind === "codoc") {
+      return byId.content;
+    }
+
+    const byPath = await this.#documents.getBySourcePath(workspaceRoot, filePath);
+    return byPath?.documentKind === "codoc" ? byPath.content : null;
   }
 
   async write(
@@ -96,35 +75,26 @@ export class PostgresCodocStore implements CodocStore {
       overwrite?: boolean;
     }
   ): Promise<void> {
-    const pool = await this.#database.ready();
     const workspaceRoot = normalizeWorkspaceRoot(root);
 
     if (input.overwrite === false) {
-      const existing = await pool.query(
-        [
-          "SELECT 1 FROM documents",
-          "WHERE workspace_root = $1 AND document_kind = 'codoc'",
-          "AND (document_id = $2 OR source_path = $3)",
-          "LIMIT 1"
-        ].join(" "),
-        [workspaceRoot, input.codocId, input.filePath]
-      );
-      if (existing.rowCount) {
+      const existingById = await this.#documents.getById(workspaceRoot, input.codocId);
+      const existingByPath = await this.#documents.getBySourcePath(workspaceRoot, input.filePath);
+      if (
+        (existingById && existingById.documentKind === "codoc") ||
+        (existingByPath && existingByPath.documentKind === "codoc")
+      ) {
         throw new Error(`Codoc "${input.codocId}" already exists in PostgreSQL storage.`);
       }
     }
 
-    await pool.query(
-      [
-        "INSERT INTO documents (workspace_root, document_id, source_path, document_kind, content, metadata)",
-        "VALUES ($1, $2, $3, 'codoc', $4, '{}'::jsonb)",
-        "ON CONFLICT (workspace_root, document_id) DO UPDATE SET",
-        "source_path = EXCLUDED.source_path,",
-        "content = EXCLUDED.content,",
-        "updated_at = NOW()"
-      ].join(" "),
-      [workspaceRoot, input.codocId, input.filePath, input.content]
-    );
+    await this.#documents.upsert({
+      workspaceRoot,
+      documentId: input.codocId,
+      sourcePath: input.filePath,
+      documentKind: "codoc",
+      content: input.content
+    });
   }
 
   async importFile(root: string, filePath: string): Promise<ParsedCodoc> {
@@ -148,7 +118,7 @@ function readFallbackCodocContent(root: string, filePath: string): string {
   return readFileSync(join(root, filePath), "utf8");
 }
 
-function parseRows(rows: DocumentRow[]): Map<string, ParsedCodoc> {
+function parseRows(rows: Array<{ source_path: string; content: string }>): Map<string, ParsedCodoc> {
   const codocs = new Map<string, ParsedCodoc>();
 
   for (const row of rows) {

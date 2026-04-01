@@ -77,49 +77,13 @@ const MIGRATIONS: MigrationDefinition[] = [
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (workspace_root, session_id)
       );
-
-      CREATE TABLE IF NOT EXISTS rss_sources (
-        workspace_root TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        document_id TEXT,
-        title TEXT,
-        feed_url TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        sync_state TEXT NOT NULL DEFAULT 'idle',
-        last_synced_at TIMESTAMPTZ,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (workspace_root, source_id),
-        UNIQUE (workspace_root, feed_url),
-        FOREIGN KEY (workspace_root, document_id)
-          REFERENCES documents (workspace_root, document_id)
-          ON DELETE CASCADE
-      );
-
-      CREATE INDEX IF NOT EXISTS rss_sources_document_idx
-        ON rss_sources (workspace_root, document_id);
-
-      CREATE TABLE IF NOT EXISTS rss_articles (
-        workspace_root TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        article_id TEXT NOT NULL,
-        title TEXT,
-        link TEXT,
-        summary TEXT,
-        content TEXT,
-        published_at TIMESTAMPTZ,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (workspace_root, source_id, article_id),
-        FOREIGN KEY (workspace_root, source_id)
-          REFERENCES rss_sources (workspace_root, source_id)
-          ON DELETE CASCADE
-      );
-
-      CREATE INDEX IF NOT EXISTS rss_articles_source_published_idx
-        ON rss_articles (workspace_root, source_id, published_at DESC NULLS LAST);
+    `
+  },
+  {
+    id: "0002_drop_platform_rss_tables",
+    sql: `
+      DROP TABLE IF EXISTS rss_articles;
+      DROP TABLE IF EXISTS rss_sources;
     `
   }
 ];

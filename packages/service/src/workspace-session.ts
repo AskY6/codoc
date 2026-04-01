@@ -2,6 +2,7 @@ import type { BuildResult, ComponentSpec, DagEngine, ParsedCodoc, RuntimeContext
 import type { CobookConfig } from "@cobook/workspace";
 
 import type { SourceExecutor } from "./source-executor/index.js";
+import type { AgentSessionSnapshot } from "./cobook-service.js";
 
 export interface WorkspaceSession {
   root: string;
@@ -13,4 +14,5 @@ export interface WorkspaceSession {
   sourceExecutor: SourceExecutor;
   lastBuild: BuildResult | null;
   watchControllers: Set<AbortController>;
+  agentSessions: Map<string, AgentSessionSnapshot>;
 }

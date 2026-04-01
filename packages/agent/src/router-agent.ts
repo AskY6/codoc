@@ -5,15 +5,16 @@ import type { BaseAgent } from "./base-agent.js";
 
 interface SceneAgentSessionState {
   activeSceneId: string | null;
-  rssPending:
-    | null
-    | {
-        step: "awaiting_feed_url";
-      };
+  state: Record<string, unknown>;
 }
 
 interface SceneAgent {
   id: string;
+  shouldHandle(
+    input: ChatInput,
+    service: CobookService,
+    session: SceneAgentSessionState
+  ): Promise<boolean>;
   run(
     input: ChatInput,
     service: CobookService,
@@ -21,10 +22,21 @@ interface SceneAgent {
   ): AsyncIterable<ChatEvent>;
 }
 
+interface RssSceneState {
+  pendingStep?: "awaiting_feed_url";
+}
+
+interface RssArticleRecord {
+  title?: string;
+  link?: string;
+  description?: string;
+  publishedAt?: string;
+  id?: string;
+}
+
 export class RouterAgent implements BaseAgent {
   readonly #fallback: BaseAgent;
   readonly #scenes: Map<string, SceneAgent>;
-  readonly #sessions = new Map<string, SceneAgentSessionState>();
 
   constructor(fallback: BaseAgent, scenes: SceneAgent[]) {
     this.#fallback = fallback;
@@ -32,33 +44,36 @@ export class RouterAgent implements BaseAgent {
   }
 
   async *run(input: ChatInput, service: CobookService): AsyncIterable<ChatEvent> {
-    const session = this.getSession(input.sessionId);
+    const sessionId = normalizeSessionId(input.sessionId);
+    const session = await this.getSession(sessionId, service);
     const route = await this.pickScene(input, service, session);
 
     if (route) {
       session.activeSceneId = route.id;
       yield* route.run(input, service, session);
+      await service.writeAgentSession({
+        sessionId,
+        activeSceneId: session.activeSceneId,
+        state: session.state
+      });
       return;
     }
 
     session.activeSceneId = null;
-    session.rssPending = null;
+    session.state = {};
+    await service.clearAgentSession(sessionId);
     yield* this.#fallback.run(input, service);
   }
 
-  private getSession(sessionId: string | undefined): SceneAgentSessionState {
-    const key = sessionId?.trim() || "__default__";
-    const existing = this.#sessions.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const created: SceneAgentSessionState = {
-      activeSceneId: null,
-      rssPending: null
+  private async getSession(
+    sessionId: string,
+    service: CobookService
+  ): Promise<SceneAgentSessionState> {
+    const existing = await service.readAgentSession(sessionId);
+    return {
+      activeSceneId: existing?.activeSceneId ?? null,
+      state: existing?.state ?? {}
     };
-    this.#sessions.set(key, created);
-    return created;
   }
 
   private async pickScene(
@@ -74,21 +89,23 @@ export class RouterAgent implements BaseAgent {
       return this.#scenes.get(preferred) ?? null;
     }
 
-    if (session.rssPending && enabledSceneIds.has("rss")) {
-      return this.#scenes.get("rss") ?? null;
-    }
+    const orderedSceneIds = uniqueStrings([
+      ...(session.activeSceneId ? [session.activeSceneId] : []),
+      ...enabledSceneIds
+    ]);
+    for (const sceneId of orderedSceneIds) {
+      if (!enabledSceneIds.has(sceneId)) {
+        continue;
+      }
 
-    const activeCodoc = input.activeCodocId
-      ? await tryReadCodoc(service, input.activeCodocId)
-      : null;
-    if (
-      enabledSceneIds.has("rss") &&
-      (looksLikeRssIntent(input.message) ||
-        input.selectedArticleId ||
-        isRssSceneCodoc(activeCodoc) ||
-        session.activeSceneId === "rss")
-    ) {
-      return this.#scenes.get("rss") ?? null;
+      const scene = this.#scenes.get(sceneId);
+      if (!scene) {
+        continue;
+      }
+
+      if (await scene.shouldHandle(input, service, session)) {
+        return scene;
+      }
     }
 
     return null;
@@ -98,6 +115,27 @@ export class RouterAgent implements BaseAgent {
 export class RssSceneAgent implements SceneAgent {
   readonly id = "rss";
 
+  async shouldHandle(
+    input: ChatInput,
+    service: CobookService,
+    session: SceneAgentSessionState
+  ): Promise<boolean> {
+    const state = readSceneState<RssSceneState>(session, this.id);
+    if (state.pendingStep === "awaiting_feed_url") {
+      return true;
+    }
+
+    const activeCodoc = input.activeCodocId
+      ? await tryReadCodoc(service, input.activeCodocId)
+      : null;
+    return (
+      looksLikeRssIntent(input.message) ||
+      Boolean(input.selectedResourceId) ||
+      isRssSceneCodoc(activeCodoc) ||
+      session.activeSceneId === this.id
+    );
+  }
+
   async *run(
     input: ChatInput,
     service: CobookService,
@@ -105,16 +143,17 @@ export class RssSceneAgent implements SceneAgent {
   ): AsyncIterable<ChatEvent> {
     const message = input.message.trim();
     const feedUrl = extractFeedUrl(message);
+    const state = readSceneState<RssSceneState>(session, this.id);
 
-    if (session.rssPending?.step === "awaiting_feed_url" && feedUrl) {
+    if (state.pendingStep === "awaiting_feed_url" && feedUrl) {
       yield* this.createSubscription(feedUrl, service, session);
       return;
     }
 
     if (looksLikeRssIntent(message) && !feedUrl) {
-      session.rssPending = {
-        step: "awaiting_feed_url"
-      };
+      writeSceneState<RssSceneState>(session, this.id, {
+        pendingStep: "awaiting_feed_url"
+      });
       yield {
         kind: "status",
         status: "reading",
@@ -123,7 +162,7 @@ export class RssSceneAgent implements SceneAgent {
       yield {
         kind: "message",
         content:
-          "可以。把 RSS/Atom 源链接直接发给我，我会先帮你接入这个源，再生成一个可浏览文章列表的 source 文档。接入后，你点开这个源并选中某篇文章，就可以继续在 chat 里讨论它。"
+          "可以。把 RSS/Atom 源链接直接发给我，我会先帮你接入这个源，再生成一个可浏览条目列表的 source 文档。接入后，你点开这个源并选中某个条目，就可以继续在 chat 里讨论它。"
       };
       yield doneEvent();
       return;
@@ -140,14 +179,14 @@ export class RssSceneAgent implements SceneAgent {
     if (activeCodoc && isRssSceneCodoc(activeCodoc)) {
       const selection = await resolveSelectedArticle(service, activeCodoc.id, {
         message,
-        ...(input.selectedArticleId ? { selectedArticleId: input.selectedArticleId } : {})
+        ...(input.selectedResourceId ? { selectedResourceId: input.selectedResourceId } : {})
       });
       if (selection) {
-        session.rssPending = null;
+        clearSceneState(session, this.id);
         yield {
           kind: "status",
           status: "reading",
-          message: `Discussing article "${selection.title ?? selection.id ?? "selected"}".`
+          message: `Discussing item "${selection.title ?? selection.id ?? "selected"}".`
         };
         yield {
           kind: "message",
@@ -159,18 +198,18 @@ export class RssSceneAgent implements SceneAgent {
 
       const articles = await resolveRssArticles(service, activeCodoc.id);
       if (articles.length > 0) {
-        session.rssPending = null;
+        clearSceneState(session, this.id);
         yield {
           kind: "status",
           status: "reading",
-          message: `Reading articles from "${activeCodoc.id}".`
+          message: `Reading items from "${activeCodoc.id}".`
         };
         yield {
           kind: "message",
           content: [
-            `当前源 "${activeCodoc.id}" 有 ${articles.length} 篇文章。`,
-            "你可以点选其中一篇，再继续问我“这篇文章讲了什么”或“这篇文章值得关注吗”。",
-            "最近文章：",
+            `当前源 "${activeCodoc.id}" 有 ${articles.length} 个条目。`,
+            "你可以点选其中一个条目，再继续问我“这个条目讲了什么”或“帮我提炼重点”。",
+            "最近条目：",
             ...articles.slice(0, 5).map((article, index) =>
               `${index + 1}. ${article.title ?? article.id ?? "Untitled"}`
             )
@@ -181,7 +220,7 @@ export class RssSceneAgent implements SceneAgent {
       }
     }
 
-    session.rssPending = null;
+    clearSceneState(session, this.id);
     yield {
       kind: "status",
       status: "reading",
@@ -190,7 +229,7 @@ export class RssSceneAgent implements SceneAgent {
     yield {
       kind: "message",
       content:
-        "我可以继续处理 RSS 场景。你可以直接发一个 RSS/Atom 链接，或者先点开某个 RSS source 文档并选中一篇文章，再继续讨论。"
+        "我可以继续处理 RSS 场景。你可以直接发一个 RSS/Atom 链接，或者先点开某个 source 文档并选中一个条目，再继续讨论。"
     };
     yield doneEvent();
   }
@@ -219,8 +258,8 @@ export class RssSceneAgent implements SceneAgent {
       overwrite: false
     });
 
-    session.rssPending = null;
-    session.activeSceneId = "rss";
+    clearSceneState(session, this.id);
+    session.activeSceneId = this.id;
 
     yield {
       kind: "artifact",
@@ -230,20 +269,12 @@ export class RssSceneAgent implements SceneAgent {
       kind: "message",
       content: [
         `已接入 RSS 源：${feedUrl}`,
-        `我创建了 source 文档 "${codocId}"。你现在点开它就能看到文章列表。`,
-        "接下来你可以选中某篇文章，再继续问我“这篇文章讲了什么”或“帮我提炼重点”。"
+        `我创建了 source 文档 "${codocId}"。你现在点开它就能看到条目列表。`,
+        "接下来你可以选中某个条目，再继续问我“这个条目讲了什么”或“帮我提炼重点”。"
       ].join("\n")
     };
     yield doneEvent();
   }
-}
-
-interface RssArticleRecord {
-  title?: string;
-  link?: string;
-  description?: string;
-  publishedAt?: string;
-  id?: string;
 }
 
 async function tryReadCodoc(service: CobookService, codocId: string): Promise<ParsedCodoc | null> {
@@ -312,6 +343,13 @@ function buildRssSourceCodoc(codocId: string, title: string, feedUrl: string): s
         scene: {
           kind: "rss-source",
           sourceUrl: feedUrl
+        },
+        selection: {
+          mode: "table-row",
+          idKey: "id",
+          titleKey: "title",
+          descriptionKey: "description",
+          urlKey: "link"
         }
       },
       data: {
@@ -344,7 +382,7 @@ function buildRssSourceCodoc(codocId: string, title: string, feedUrl: string): s
           },
           {
             type: "table",
-            title: "Articles",
+            title: "Items",
             columns: [
               {
                 key: "title",
@@ -387,7 +425,7 @@ async function resolveSelectedArticle(
   service: CobookService,
   codocId: string,
   input: {
-    selectedArticleId?: string;
+    selectedResourceId?: string;
     message: string;
   }
 ): Promise<RssArticleRecord | null> {
@@ -396,8 +434,8 @@ async function resolveSelectedArticle(
     return null;
   }
 
-  if (input.selectedArticleId) {
-    const byId = items.find((item) => item.id === input.selectedArticleId);
+  if (input.selectedResourceId) {
+    const byId = items.find((item) => item.id === input.selectedResourceId);
     if (byId) {
       return byId;
     }
@@ -409,14 +447,11 @@ async function resolveSelectedArticle(
   }
 
   const lower = input.message.toLowerCase();
-  return (
-    items.find((item) => item.title && lower.includes(item.title.toLowerCase())) ??
-    null
-  );
+  return items.find((item) => item.title && lower.includes(item.title.toLowerCase())) ?? null;
 }
 
 function extractOrdinalSelection(message: string): number | null {
-  const chineseMatch = message.match(/第\s*([0-9]+)\s*篇/);
+  const chineseMatch = message.match(/第\s*([0-9]+)\s*(篇|个)/);
   if (chineseMatch?.[1]) {
     return Math.max(0, Number.parseInt(chineseMatch[1], 10) - 1);
   }
@@ -430,8 +465,8 @@ function extractOrdinalSelection(message: string): number | null {
 }
 
 function formatArticleDiscussion(article: RssArticleRecord): string {
-  const title = article.title ?? article.id ?? "Untitled article";
-  const summary = article.description?.trim() || "这篇文章没有提供摘要。";
+  const title = article.title ?? article.id ?? "Untitled item";
+  const summary = article.description?.trim() || "这个条目没有提供摘要。";
 
   return [
     `正在讨论：《${title}》`,
@@ -442,9 +477,9 @@ function formatArticleDiscussion(article: RssArticleRecord): string {
     summary,
     "",
     "可以继续让我做：",
-    "1. 提炼这篇文章的核心观点",
+    "1. 提炼这个条目的核心观点",
     "2. 结合当前上下文讨论它为什么重要",
-    "3. 把这篇文章整理成新的 note/digest codoc"
+    "3. 把这个条目整理成新的 note/digest codoc"
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
@@ -455,4 +490,40 @@ function doneEvent(): ChatEvent {
     kind: "status",
     status: "done"
   };
+}
+
+function normalizeSessionId(sessionId: string | undefined): string {
+  const normalized = sessionId?.trim();
+  return normalized && normalized.length > 0 ? normalized : "__default__";
+}
+
+function readSceneState<T extends object>(
+  session: SceneAgentSessionState,
+  sceneId: string
+): T {
+  const raw = session.state[sceneId];
+  return typeof raw === "object" && raw !== null ? (raw as T) : ({} as T);
+}
+
+function writeSceneState<T extends object>(
+  session: SceneAgentSessionState,
+  sceneId: string,
+  state: T
+): void {
+  session.state = {
+    ...session.state,
+    [sceneId]: state
+  };
+}
+
+function clearSceneState(session: SceneAgentSessionState, sceneId: string): void {
+  const next = {
+    ...session.state
+  };
+  delete next[sceneId];
+  session.state = next;
+}
+
+function uniqueStrings(values: Iterable<string>): string[] {
+  return Array.from(new Set(values));
 }

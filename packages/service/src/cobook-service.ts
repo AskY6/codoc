@@ -16,6 +16,12 @@ import type {
 
 import type { ChatEvent, ChatInput } from "./ai/index.js";
 
+export interface AgentSessionSnapshot {
+  sessionId: string;
+  activeSceneId: string | null;
+  state: Record<string, unknown>;
+}
+
 export interface WriteCodocInput {
   codocId: string;
   filePath: string;
@@ -62,6 +68,9 @@ export interface CobookService {
   diagnostics(): Promise<WorkspaceDiagnostics>;
   watch(signal?: AbortSignal): AsyncIterable<WorkspaceWatchEvent>;
   chat(input: ChatInput): AsyncIterable<ChatEvent>;
+  readAgentSession(sessionId: string): Promise<AgentSessionSnapshot | null>;
+  writeAgentSession(input: AgentSessionSnapshot): Promise<AgentSessionSnapshot>;
+  clearAgentSession(sessionId: string): Promise<void>;
 }
 
 export type {

@@ -15,6 +15,7 @@ import type { WorkspaceSnapshot } from "@cobook/workspace";
 
 import type { ChatEvent, ChatInput } from "./ai/index.js";
 import type {
+  AgentSessionSnapshot,
   CobookService,
   WorkspaceDiagnostics,
   WorkspaceWatchEvent,
@@ -23,11 +24,13 @@ import type {
 } from "./cobook-service.js";
 import { createLocalSourceExecutor } from "./source-executor/index.js";
 import type { CodocStore } from "./persistence/types.js";
+import type { ServiceRepositories } from "./repositories/types.js";
 import type { WorkspaceSession } from "./workspace-session.js";
 
 export interface LocalCobookServiceOptions {
   chatHandler?: (input: ChatInput, service: CobookService) => AsyncIterable<ChatEvent>;
   codocStore?: CodocStore;
+  repositories?: ServiceRepositories;
 }
 
 function workspaceNotOpen(): never {
@@ -71,7 +74,10 @@ export class LocalCobookService implements CobookService {
       runtime: createRuntimeContext(),
       sourceExecutor,
       lastBuild: null,
-      watchControllers: previousWatchControllers
+      watchControllers: previousWatchControllers,
+      agentSessions: previousSession && previousSession.root === workspace.root
+        ? previousSession.agentSessions
+        : new Map()
     };
     this.#session.lastBuild = this.#session.dag.build(Array.from(this.#session.codocs.values()));
     syncRuntimeState(this.#session);
@@ -386,6 +392,66 @@ export class LocalCobookService implements CobookService {
     };
   }
 
+  async readAgentSession(sessionId: string): Promise<AgentSessionSnapshot | null> {
+    const session = requireSession(this.#session);
+    const normalizedSessionId = normalizeSessionId(sessionId);
+    const persisted = this.#options.repositories?.agentSessions
+      ? await this.#options.repositories.agentSessions.getBySessionId(session.root, normalizedSessionId)
+      : null;
+    if (persisted) {
+      const snapshot = {
+        sessionId: persisted.sessionId,
+        activeSceneId: persisted.activeSceneId,
+        state: persisted.state
+      };
+      session.agentSessions.set(normalizedSessionId, snapshot);
+      return snapshot;
+    }
+
+    return session.agentSessions.get(normalizedSessionId) ?? null;
+  }
+
+  async writeAgentSession(input: AgentSessionSnapshot): Promise<AgentSessionSnapshot> {
+    const session = requireSession(this.#session);
+    const normalizedSessionId = normalizeSessionId(input.sessionId);
+    const snapshot: AgentSessionSnapshot = {
+      sessionId: normalizedSessionId,
+      activeSceneId: input.activeSceneId,
+      state: input.state
+    };
+
+    if (this.#options.repositories?.agentSessions) {
+      const persisted = await this.#options.repositories.agentSessions.upsert({
+        workspaceRoot: session.root,
+        sessionId: normalizedSessionId,
+        activeSceneId: input.activeSceneId,
+        state: input.state
+      });
+      const normalized = {
+        sessionId: persisted.sessionId,
+        activeSceneId: persisted.activeSceneId,
+        state: persisted.state
+      };
+      session.agentSessions.set(normalizedSessionId, normalized);
+      return normalized;
+    }
+
+    session.agentSessions.set(normalizedSessionId, snapshot);
+    return snapshot;
+  }
+
+  async clearAgentSession(sessionId: string): Promise<void> {
+    const session = requireSession(this.#session);
+    const normalizedSessionId = normalizeSessionId(sessionId);
+    session.agentSessions.delete(normalizedSessionId);
+    if (this.#options.repositories?.agentSessions) {
+      await this.#options.repositories.agentSessions.deleteBySessionId(
+        session.root,
+        normalizedSessionId
+      );
+    }
+  }
+
   private async applyWorkspaceChange(change: { kind: string; path: string }): Promise<BuildResult> {
     const session = requireSession(this.#session);
 
@@ -517,6 +583,11 @@ function emptyBuildResult(): BuildResult {
     errors: [],
     affectedNodes: []
   };
+}
+
+function normalizeSessionId(sessionId: string): string {
+  const normalized = sessionId.trim();
+  return normalized.length > 0 ? normalized : "__default__";
 }
 
 async function snapshotFileState(path: string): Promise<

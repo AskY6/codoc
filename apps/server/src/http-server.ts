@@ -148,8 +148,8 @@ async function handleApiRequest(
         ...(typeof body.agentId === "string" ? { agentId: body.agentId } : {}),
         ...(typeof body.sessionId === "string" ? { sessionId: body.sessionId } : {}),
         ...(typeof body.activeCodocId === "string" ? { activeCodocId: body.activeCodocId } : {}),
-        ...(typeof body.selectedArticleId === "string"
-          ? { selectedArticleId: body.selectedArticleId }
+        ...(typeof body.selectedResourceId === "string"
+          ? { selectedResourceId: body.selectedResourceId }
           : {}),
         ...(isStringArray(body.pinnedCodocIds) ? { pinnedCodocIds: body.pinnedCodocIds } : {})
       })

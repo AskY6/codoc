@@ -532,7 +532,7 @@ test("http chat routes base and rss scene interactions through the web-oriented 
       body: JSON.stringify({
         sessionId: "rss-web-session",
         activeCodocId: createdCodocId,
-        selectedArticleId: "first-item",
+        selectedResourceId: "first-item",
         message: "这篇文章讲了什么？"
       })
     })

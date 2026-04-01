@@ -23,7 +23,10 @@ export interface UpsertRepositoryDocumentInput {
 export interface DocumentRepository {
   listByWorkspace(workspaceRoot: string): Promise<RepositoryDocumentRecord[]>;
   getById(workspaceRoot: string, documentId: string): Promise<RepositoryDocumentRecord | null>;
-  getBySourcePath(workspaceRoot: string, sourcePath: string): Promise<RepositoryDocumentRecord | null>;
+  getBySourcePath(
+    workspaceRoot: string,
+    sourcePath: string
+  ): Promise<RepositoryDocumentRecord | null>;
   upsert(input: UpsertRepositoryDocumentInput): Promise<RepositoryDocumentRecord>;
 }
 
@@ -63,37 +66,17 @@ export interface AgentSessionRecord {
 
 export interface AgentSessionRepository {
   getBySessionId(workspaceRoot: string, sessionId: string): Promise<AgentSessionRecord | null>;
+  upsert(input: {
+    workspaceRoot: string;
+    sessionId: string;
+    activeSceneId: string | null;
+    state: Record<string, unknown>;
+  }): Promise<AgentSessionRecord>;
+  deleteBySessionId(workspaceRoot: string, sessionId: string): Promise<void>;
 }
 
-export interface RssSourceRecord {
-  workspaceRoot: string;
-  sourceId: string;
-  documentId: string | null;
-  title: string | null;
-  feedUrl: string;
-  status: string;
-  syncState: string;
-  lastSyncedAt: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RssArticleRecord {
-  workspaceRoot: string;
-  sourceId: string;
-  articleId: string;
-  title: string | null;
-  link: string | null;
-  summary: string | null;
-  content: string | null;
-  publishedAt: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RssRepository {
-  getSourceByDocumentId(workspaceRoot: string, documentId: string): Promise<RssSourceRecord | null>;
-  listArticles(workspaceRoot: string, sourceId: string): Promise<RssArticleRecord[]>;
+export interface ServiceRepositories {
+  documents?: DocumentRepository;
+  chats?: ChatRepository;
+  agentSessions?: AgentSessionRepository;
 }

@@ -12,6 +12,9 @@ export type ServiceRpcMethod =
   | "graph"
   | "diagnostics"
   | "chat"
+  | "readAgentSession"
+  | "writeAgentSession"
+  | "clearAgentSession"
   | "watchStart"
   | "watchNext"
   | "watchStop";

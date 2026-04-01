@@ -4,7 +4,7 @@ export interface ChatInput {
   agentId?: string;
   sessionId?: string;
   activeCodocId?: string;
-  selectedArticleId?: string;
+  selectedResourceId?: string;
 }
 
 export type ChatEvent = StatusEvent | MessageEvent | ArtifactEvent;
