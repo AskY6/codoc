@@ -283,11 +283,12 @@ class DefaultDagEngine implements DagEngine {
       case "static":
         return node.spec.value;
       case "file":
-        if (!this.#options.loadFileSource) {
-          throw new Error(`No file source loader was configured for "${node.id}".`);
+      case "http":
+        if (!this.#options.loadSource) {
+          throw new Error(`No source loader was configured for "${node.id}".`);
         }
 
-        return this.#options.loadFileSource(node.spec, {
+        return this.#options.loadSource(node.spec, {
           node: node.id,
           codocId: node.codocId,
           codocFilePath: node.codocFilePath
@@ -339,11 +340,11 @@ class DefaultDagEngine implements DagEngine {
       return node.view;
     }
 
-    if (!this.#options.loadFileSource) {
-      throw new Error(`No file source loader was configured for "${node.id}".`);
+    if (!this.#options.loadSource) {
+      throw new Error(`No source loader was configured for "${node.id}".`);
     }
 
-    return this.#options.loadFileSource(
+    return this.#options.loadSource(
       {
         kind: "file",
         path: node.view.path,

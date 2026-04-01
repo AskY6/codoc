@@ -1,9 +1,9 @@
 import { parse as parseYaml } from "yaml";
 
-import type { FileSourceSpec } from "./types.js";
+import type { SourceDataFormat } from "./types.js";
 
 export function parseFileSourceContent(
-  format: FileSourceSpec["format"],
+  format: SourceDataFormat,
   text: string
 ): unknown {
   switch (format) {

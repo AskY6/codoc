@@ -103,6 +103,17 @@ function parseDataSpec(value: unknown, location: string): DataSpec {
       };
     }
 
+    if (source === "http") {
+      return {
+        kind: "http",
+        url: expectString(value.url, `${location}: http source requires "url".`),
+        method: parseHttpMethod(value.method),
+        ...(isStringRecord(value.headers) ? { headers: value.headers } : {}),
+        ...(typeof value.body === "string" ? { body: value.body } : {}),
+        format: parseFileFormat(value.format, value.url)
+      };
+    }
+
     if (source === "codoc" || (source === undefined && typeof value.$ref === "string")) {
       return {
         kind: "codoc",
@@ -416,6 +427,20 @@ function parseFileFormat(format: unknown, pathValue: unknown): "text" | "json" |
   return "text";
 }
 
+function parseHttpMethod(method: unknown): "GET" | "POST" | "PUT" | "PATCH" | "DELETE" {
+  if (
+    method === "GET" ||
+    method === "POST" ||
+    method === "PUT" ||
+    method === "PATCH" ||
+    method === "DELETE"
+  ) {
+    return method;
+  }
+
+  return "GET";
+}
+
 function shouldTreatAsObjectShape(value: Record<string, unknown>): boolean {
   return Object.values(value).some((child) => {
     if (!isRecord(child)) {
@@ -440,4 +465,8 @@ function expectString(value: unknown, message: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }

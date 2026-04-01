@@ -28,6 +28,22 @@ export function createLocalSourceExecutor(): SourceExecutor {
           const raw = await readFile(absolutePath, "utf8");
           return parseFileSourceContent(spec.format, raw);
         }
+        case "http": {
+          const response = await fetch(spec.url, {
+            method: spec.method,
+            ...(spec.headers ? { headers: spec.headers } : {}),
+            ...(spec.body !== undefined ? { body: spec.body } : {})
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `HTTP source "${spec.url}" failed with ${response.status} ${response.statusText}.`
+            );
+          }
+
+          const raw = await response.text();
+          return parseFileSourceContent(spec.format, raw);
+        }
         case "codoc":
         case "object":
           throw new Error(

@@ -49,7 +49,7 @@ export class LocalCobookService implements CobookService {
     const workspace = await loadWorkspace(root);
     const sourceExecutor = createLocalSourceExecutor();
     const dag = createDagEngine({
-      loadFileSource: (spec, context) =>
+      loadSource: (spec, context) =>
         sourceExecutor.resolve(spec, {
           workspaceRoot: workspace.root,
           node: context.node,

@@ -635,6 +635,15 @@ function serializeDataSpec(spec: unknown): unknown {
         path: spec.path,
         format: spec.format
       };
+    case "http":
+      return {
+        $source: "http",
+        url: spec.url,
+        ...(spec.method !== undefined ? { method: spec.method } : {}),
+        ...(spec.headers !== undefined ? { headers: spec.headers } : {}),
+        ...(spec.body !== undefined ? { body: spec.body } : {}),
+        format: spec.format
+      };
     case "codoc":
       return {
         $source: "codoc",

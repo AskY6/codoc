@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile, cp } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -210,6 +211,61 @@ test("stdio transport end-to-end", async (t) => {
     summary: "Validate stdio transport",
     relatedCodocs: ["dashboard", "user"]
   });
+});
+
+test("http data sources resolve remote payloads", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-http-source-");
+  const sourceServer = await createSourceServer();
+  let http = null;
+
+  t.after(async () => {
+    await Promise.all([
+      cleanup(runtime, workspace),
+      sourceServer.close(),
+      http ? http.close() : Promise.resolve()
+    ]);
+  });
+
+  await writeFile(
+    join(workspace, "http-profile.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "http-profile"',
+      "",
+      "data:",
+      "  profile:",
+      '    $source: http',
+      `    url: "http://127.0.0.1:${sourceServer.port}/lookup.json"`,
+      '    method: "POST"',
+      "    headers:",
+      '      x-cobook-auth: "secret-token"',
+      '    body: "{\\"user\\":\\"ada\\"}"',
+      '    format: "json"',
+      "",
+      "view: |",
+      "  {data.profile.name} ({data.profile.role})",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  http = await createHttpHarness(runtime, workspace);
+
+  const document = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/http-profile/document"
+    })
+  );
+  assert.deepEqual(document.resolvedData, {
+    profile: {
+      name: "Ada",
+      role: "editor",
+      source: "http"
+    }
+  });
+  assert.equal(document.renderedView.children[0].content.trim(), "Ada (editor)");
 });
 
 test("local service tears down stale watch streams across workspace lifecycle", async (t) => {
@@ -1192,6 +1248,71 @@ async function createHttpHarness(runtime, workspace) {
     },
     async close() {
       return Promise.resolve();
+    }
+  };
+}
+
+async function createSourceServer() {
+  const server = createServer(async (request, response) => {
+    if (request.method !== "POST" || request.url !== "/lookup.json") {
+      response.writeHead(404, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({
+        error: "Not found."
+      }));
+      return;
+    }
+
+    let body = "";
+    for await (const chunk of request) {
+      body += chunk;
+    }
+
+    if (request.headers["x-cobook-auth"] !== "secret-token" || body !== '{"user":"ada"}') {
+      response.writeHead(401, {
+        "content-type": "application/json"
+      });
+      response.end(JSON.stringify({
+        error: "Unauthorized."
+      }));
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "application/json"
+    });
+    response.end(JSON.stringify({
+      name: "Ada",
+      role: "editor",
+      source: "http"
+    }));
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  return {
+    port: address.port,
+    close() {
+      return new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
     }
   };
 }

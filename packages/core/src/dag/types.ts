@@ -1,7 +1,7 @@
 import type { NodeKind, NodeKey } from "../ids/node-id.js";
 import type { ParsedCodoc } from "../parser/types.js";
 import type { ResolveOptions } from "../runtime/types.js";
-import type { FileSourceSpec } from "../source-spec/types.js";
+import type { FileSourceSpec, HttpSourceSpec } from "../source-spec/types.js";
 
 export interface DagNode {
   id: NodeKey;
@@ -43,16 +43,16 @@ export interface ResolvedValue {
   version: number;
 }
 
-export interface FileSourceLoadContext {
+export interface SourceLoadContext {
   node: NodeKey;
   codocId: string;
   codocFilePath: string;
 }
 
 export interface DagEngineOptions {
-  loadFileSource?: (
-    spec: FileSourceSpec,
-    context: FileSourceLoadContext
+  loadSource?: (
+    spec: FileSourceSpec | HttpSourceSpec,
+    context: SourceLoadContext
   ) => Promise<unknown>;
 }
 
