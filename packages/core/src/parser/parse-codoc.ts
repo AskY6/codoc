@@ -114,6 +114,17 @@ function parseDataSpec(value: unknown, location: string): DataSpec {
       };
     }
 
+    if (source === "rss") {
+      return {
+        kind: "rss",
+        url: expectString(value.url, `${location}: rss source requires "url".`),
+        ...(isStringRecord(value.headers) ? { headers: value.headers } : {}),
+        ...(typeof value.limit === "number" && Number.isInteger(value.limit) && value.limit >= 0
+          ? { limit: value.limit }
+          : {})
+      };
+    }
+
     if (source === "codoc" || (source === undefined && typeof value.$ref === "string")) {
       return {
         kind: "codoc",

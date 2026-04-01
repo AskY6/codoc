@@ -644,6 +644,13 @@ function serializeDataSpec(spec: unknown): unknown {
         ...(spec.body !== undefined ? { body: spec.body } : {}),
         format: spec.format
       };
+    case "rss":
+      return {
+        $source: "rss",
+        url: spec.url,
+        ...(spec.headers !== undefined ? { headers: spec.headers } : {}),
+        ...(spec.limit !== undefined ? { limit: spec.limit } : {})
+      };
     case "codoc":
       return {
         $source: "codoc",

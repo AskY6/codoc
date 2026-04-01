@@ -284,6 +284,7 @@ class DefaultDagEngine implements DagEngine {
         return node.spec.value;
       case "file":
       case "http":
+      case "rss":
         if (!this.#options.loadSource) {
           throw new Error(`No source loader was configured for "${node.id}".`);
         }

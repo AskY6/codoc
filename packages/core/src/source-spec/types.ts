@@ -4,6 +4,7 @@ export type DataSpec =
   | StaticSourceSpec
   | FileSourceSpec
   | HttpSourceSpec
+  | RssSourceSpec
   | CodocSourceSpec
   | ObjectShapeSpec;
 
@@ -27,6 +28,13 @@ export interface HttpSourceSpec {
   headers?: Record<string, string>;
   body?: string;
   format: SourceDataFormat;
+}
+
+export interface RssSourceSpec {
+  kind: "rss";
+  url: string;
+  headers?: Record<string, string>;
+  limit?: number;
 }
 
 export interface CodocSourceSpec {

@@ -268,6 +268,83 @@ test("http data sources resolve remote payloads", async (t) => {
   assert.equal(document.renderedView.children[0].content.trim(), "Ada (editor)");
 });
 
+test("rss data sources resolve feed items", async (t) => {
+  const runtime = await buildRuntime();
+  const workspace = await cloneExampleWorkspace("cobook-e2e-rss-source-");
+  const rssServer = await createRssSourceServer();
+  let http = null;
+
+  t.after(async () => {
+    await Promise.all([
+      cleanup(runtime, workspace),
+      rssServer.close(),
+      http ? http.close() : Promise.resolve()
+    ]);
+  });
+
+  await writeFile(
+    join(workspace, "rss-feed.codoc"),
+    [
+      'codoc: "0.1"',
+      'id: "rss-feed"',
+      "",
+      "data:",
+      "  items:",
+      '    $source: rss',
+      `    url: "http://127.0.0.1:${rssServer.port}/feed.xml"`,
+      "    limit: 2",
+      "",
+      "view:",
+      "  type: table",
+      '  title: "Feed"',
+      "  columns:",
+      '    - key: "title"',
+      '      label: "Title"',
+      '    - key: "publishedAt"',
+      '      label: "Published"',
+      "  rows: '{data.items}'",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  http = await createHttpHarness(runtime, workspace);
+
+  const document = parseJsonBody(
+    await http.request({
+      method: "GET",
+      url: "/api/codocs/rss-feed/document"
+    })
+  );
+  assert.deepEqual(document.resolvedData, {
+    items: [
+      {
+        title: "First item",
+        link: "https://example.com/first",
+        description: "First summary",
+        publishedAt: "Mon, 01 Apr 2024 10:00:00 GMT",
+        id: "first-item"
+      },
+      {
+        title: "Second item",
+        link: "https://example.com/second",
+        description: "Second summary",
+        publishedAt: "Tue, 02 Apr 2024 11:30:00 GMT",
+        id: "second-item"
+      }
+    ]
+  });
+  assert.equal(document.renderedView.children[0].type, "table");
+  assert.deepEqual(document.renderedView.children[0].rows[0].cells, [
+    "First item",
+    "Mon, 01 Apr 2024 10:00:00 GMT"
+  ]);
+  assert.deepEqual(document.renderedView.children[0].rows[1].cells, [
+    "Second item",
+    "Tue, 02 Apr 2024 11:30:00 GMT"
+  ]);
+});
+
 test("local service tears down stale watch streams across workspace lifecycle", async (t) => {
   const runtime = await buildRuntime();
   const workspaceA = await cloneExampleWorkspace("cobook-e2e-local-watch-a-");
@@ -1287,6 +1364,78 @@ async function createSourceServer() {
       role: "editor",
       source: "http"
     }));
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+
+  return {
+    port: address.port,
+    close() {
+      return new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+  };
+}
+
+async function createRssSourceServer() {
+  const server = createServer((request, response) => {
+    if (request.method !== "GET" || request.url !== "/feed.xml") {
+      response.writeHead(404, {
+        "content-type": "text/plain; charset=utf-8"
+      });
+      response.end("not found");
+      return;
+    }
+
+    response.writeHead(200, {
+      "content-type": "application/rss+xml; charset=utf-8"
+    });
+    response.end([
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      "<rss version=\"2.0\">",
+      "  <channel>",
+      "    <title>Example feed</title>",
+      "    <item>",
+      "      <title>First item</title>",
+      "      <link>https://example.com/first</link>",
+      "      <description><![CDATA[First summary]]></description>",
+      "      <pubDate>Mon, 01 Apr 2024 10:00:00 GMT</pubDate>",
+      "      <guid>first-item</guid>",
+      "    </item>",
+      "    <item>",
+      "      <title>Second item</title>",
+      "      <link>https://example.com/second</link>",
+      "      <description>Second summary</description>",
+      "      <pubDate>Tue, 02 Apr 2024 11:30:00 GMT</pubDate>",
+      "      <guid>second-item</guid>",
+      "    </item>",
+      "    <item>",
+      "      <title>Third item</title>",
+      "      <link>https://example.com/third</link>",
+      "      <description>Third summary</description>",
+      "      <pubDate>Wed, 03 Apr 2024 09:15:00 GMT</pubDate>",
+      "      <guid>third-item</guid>",
+      "    </item>",
+      "  </channel>",
+      "</rss>"
+    ].join("\n"));
   });
 
   await new Promise((resolve, reject) => {

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { parseFileSourceContent, type DataSpec, type NodeKey } from "@cobook/core";
+import { parseFileSourceContent, parseRssSourceContent, type DataSpec, type NodeKey } from "@cobook/core";
 
 export interface SourceExecutionContext {
   workspaceRoot: string;
@@ -43,6 +43,21 @@ export function createLocalSourceExecutor(): SourceExecutor {
 
           const raw = await response.text();
           return parseFileSourceContent(spec.format, raw);
+        }
+        case "rss": {
+          const response = await fetch(spec.url, {
+            method: "GET",
+            ...(spec.headers ? { headers: spec.headers } : {})
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `RSS source "${spec.url}" failed with ${response.status} ${response.statusText}.`
+            );
+          }
+
+          const raw = await response.text();
+          return parseRssSourceContent(raw, spec.limit);
         }
         case "codoc":
         case "object":
