@@ -53,6 +53,11 @@ test("local transport end-to-end", async (t) => {
   assert.ok(invalidation.dirtiedNodes.includes("user:data/name"));
   assert.ok(invalidation.dirtiedNodes.includes("dashboard:data/currentUser"));
 
+  const workspaceSummary = runCli(runtime, workspace, ["chat", "workspace summary"]);
+  assert.match(workspaceSummary.stdout, /"name": "hello-cobook"/);
+  assert.match(workspaceSummary.stdout, /"entryCodocId": "dashboard"/);
+  assert.match(workspaceSummary.stdout, /"defaultContextCodocIds": \[\s*"dashboard",\s*"user"\s*\]/);
+
   const generatedChat = runCli(runtime, workspace, [
     "chat",
     "create note codoc idea at notes/idea.codoc about Capture the next product direction"
@@ -63,7 +68,8 @@ test("local transport end-to-end", async (t) => {
   const resolvedIdea = parseJsonOutput(runCli(runtime, workspace, ["resolve", "idea:data"]).stdout);
   assert.deepEqual(resolvedIdea.value, {
     title: "Idea",
-    summary: "Capture the next product direction"
+    summary: "Capture the next product direction",
+    relatedCodocs: ["dashboard", "user"]
   });
 
   const updateMessage = [
@@ -134,7 +140,8 @@ test("rpc transport end-to-end", async (t) => {
   );
   assert.deepEqual(resolvedRpcNote.value, {
     title: "Rpc Note",
-    summary: "Validate rpc transport"
+    summary: "Validate rpc transport",
+    relatedCodocs: ["dashboard", "user"]
   });
 });
 
@@ -177,7 +184,8 @@ test("stdio transport end-to-end", async (t) => {
   );
   assert.deepEqual(resolvedStdioNote.value, {
     title: "Stdio Note",
-    summary: "Validate stdio transport"
+    summary: "Validate stdio transport",
+    relatedCodocs: ["dashboard", "user"]
   });
 });
 
@@ -593,7 +601,8 @@ test("http web experience end-to-end", async (t) => {
   );
   assert.deepEqual(webNoteDocument.resolvedData, {
     title: "Web Note",
-    summary: "Validate web experience"
+    summary: "Validate web experience",
+    relatedCodocs: ["dashboard", "user"]
   });
   assert.equal(webNoteDocument.renderedView.type, "stack");
   assert.equal(webNoteDocument.renderedView.children[0].type, "markdown");

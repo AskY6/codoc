@@ -1,7 +1,22 @@
 import type { ChatEvent, ChatInput, CobookService } from "@cobook/service";
+import type { CodocSummary, WorkspaceSnapshot } from "@cobook/service";
 
 export interface BaseAgent {
   run(input: ChatInput, service: CobookService): AsyncIterable<ChatEvent>;
+}
+
+interface ProjectSummary {
+  name: string;
+  root: string;
+  entryFilePath: string | null;
+  entryCodocId: string | null;
+  codocCount: number;
+  codocs: Array<
+    CodocSummary & {
+      isEntry: boolean;
+    }
+  >;
+  defaultContextCodocIds: string[];
 }
 
 export class RuleBasedBaseAgent implements BaseAgent {
@@ -14,6 +29,21 @@ export class RuleBasedBaseAgent implements BaseAgent {
 
     const message = input.message.trim();
     const lower = message.toLowerCase();
+
+    if (isProjectSummaryRequest(lower)) {
+      yield {
+        kind: "status",
+        status: "reading",
+        message: "Reading project summary."
+      };
+      const projectSummary = await buildProjectSummary(service);
+      yield {
+        kind: "message",
+        content: JSON.stringify(projectSummary, null, 2)
+      };
+      yield doneEvent();
+      return;
+    }
 
     if (isListRequest(lower)) {
       yield {
@@ -95,7 +125,13 @@ export class RuleBasedBaseAgent implements BaseAgent {
 
     const generatedRequest = extractGeneratedCodocRequest(message);
     if (generatedRequest) {
-      const generated = await generateTemplateCodoc(service, generatedRequest, input.pinnedCodocIds);
+      const projectSummary = await buildProjectSummary(service);
+      const generated = await generateTemplateCodoc(
+        service,
+        generatedRequest,
+        input.pinnedCodocIds,
+        projectSummary
+      );
 
       yield {
         kind: "status",
@@ -123,41 +159,45 @@ export class RuleBasedBaseAgent implements BaseAgent {
     yield {
       kind: "status",
       status: "reading",
-      message: "Reading pinned codocs."
+      message: "Reading project summary and pinned codocs."
     };
 
-    if (input.pinnedCodocIds && input.pinnedCodocIds.length > 0) {
-      const pinned = await Promise.all(
-        input.pinnedCodocIds.map(async (codocId) => ({
-          codocId,
-          codoc: await service.readCodoc(codocId)
-        }))
-      );
-      yield {
-        kind: "message",
-        content: JSON.stringify(
-          {
-            message:
-              "The base agent currently supports: list codocs, read codoc <id>, resolve <node>, or write/update a codoc via a fenced code block.",
-            pinned
-          },
-          null,
-          2
-        )
-      };
-      yield doneEvent();
-      return;
-    }
+    const projectSummary = await buildProjectSummary(service);
+    const pinned =
+      input.pinnedCodocIds && input.pinnedCodocIds.length > 0
+        ? await Promise.all(
+            input.pinnedCodocIds.map(async (codocId) => ({
+              codocId,
+              codoc: await service.readCodoc(codocId)
+            }))
+          )
+        : [];
 
-    yield unsupportedEvent();
+    yield {
+      kind: "message",
+      content: JSON.stringify(
+        {
+          message:
+            "The base agent currently supports: project summary, list codocs, read codoc <id>, resolve <node>, or write/update a codoc via a fenced code block.",
+          projectSummary,
+          ...(pinned.length > 0 ? { pinned } : {})
+        },
+        null,
+        2
+      )
+    };
     yield doneEvent();
   }
 }
 
 export class StubBaseAgent extends RuleBasedBaseAgent {}
 
+function isProjectSummaryRequest(message: string): boolean {
+  return /\b(workspace|project)\s+summary\b/.test(message);
+}
+
 function isListRequest(message: string): boolean {
-  return /\b(list|show)\s+codocs\b/.test(message) || /\bworkspace\s+summary\b/.test(message);
+  return /\b(list|show)\s+codocs\b/.test(message);
 }
 
 function extractCodocBlock(
@@ -234,7 +274,8 @@ async function generateTemplateCodoc(
     topic?: string;
     overwrite: boolean;
   },
-  pinnedCodocIds: string[] | undefined
+  pinnedCodocIds: string[] | undefined,
+  projectSummary: ProjectSummary
 ): Promise<{
   codocId: string;
   filePath: string;
@@ -242,7 +283,10 @@ async function generateTemplateCodoc(
   overwrite: boolean;
 }> {
   const existingCodoc = await tryReadCodoc(service, request.codocId);
-  const relatedCodocs = pinnedCodocIds?.length ? pinnedCodocIds : undefined;
+  const relatedCodocs = (pinnedCodocIds?.length
+    ? pinnedCodocIds
+    : projectSummary.defaultContextCodocIds
+  ).filter((codocId) => codocId !== request.codocId);
   const title = toTitleCase(request.codocId.replace(/[._/-]+/g, " "));
   const summary = request.topic ?? "Fill in the key point you want this codoc to capture.";
   const contentLines = [
@@ -275,6 +319,38 @@ async function generateTemplateCodoc(
     content: `${contentLines.join("\n")}\n`,
     overwrite: request.overwrite || existingCodoc !== null
   };
+}
+
+async function buildProjectSummary(service: CobookService): Promise<ProjectSummary> {
+  const workspace = await service.getWorkspace();
+  const entryFilePath = normalizeEntryPath(workspace);
+  const codocs = workspace.codocs.map((codoc) => ({
+    ...codoc,
+    isEntry: codoc.filePath === entryFilePath
+  }));
+  const entryCodocId = codocs.find((codoc) => codoc.isEntry)?.id ?? null;
+  const defaultContextCodocIds = [
+    ...(entryCodocId ? [entryCodocId] : []),
+    ...codocs.filter((codoc) => codoc.id !== entryCodocId).map((codoc) => codoc.id)
+  ].slice(0, 4);
+
+  return {
+    name: workspace.config.name,
+    root: workspace.root,
+    entryFilePath,
+    entryCodocId,
+    codocCount: codocs.length,
+    codocs,
+    defaultContextCodocIds
+  };
+}
+
+function normalizeEntryPath(workspace: WorkspaceSnapshot): string | null {
+  if (!workspace.config.entry) {
+    return null;
+  }
+
+  return workspace.config.entry.replace(/^\.\//, "");
 }
 
 function formatWriteResult(result: {
@@ -312,14 +388,6 @@ function toTitleCase(value: string): string {
     .filter((segment) => segment.length > 0)
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
-}
-
-function unsupportedEvent(): ChatEvent {
-  return {
-    kind: "message",
-    content:
-      'Supported chat actions: "list codocs", "read codoc <id>", "resolve <nodeKey>", or include a fenced `.codoc` block plus a target path such as "write to notes/idea.codoc".'
-  };
 }
 
 function doneEvent(): ChatEvent {
