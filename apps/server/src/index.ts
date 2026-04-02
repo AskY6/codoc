@@ -7,6 +7,7 @@ dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import {
   createDb,
   createWorkspaceRepository,
@@ -63,6 +64,8 @@ const agent = createBaseAgent({
 // ---------------------------------------------------------------------------
 
 const app = new Hono();
+
+app.use("*", cors());
 
 app.get("/", (c) => c.json({ name: "cobook", status: "ok" }));
 
