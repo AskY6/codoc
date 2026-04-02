@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { ApiClient } from "../api-client.js";
-import { resolveWorkspaceId } from "../workspace-discovery.js";
+import { requireWorkspaceId } from "../require-workspace.js";
 
 export function registerStatusCommand(
   program: Command,
@@ -11,10 +11,7 @@ export function registerStatusCommand(
     .description("Show workspace codoc status overview")
     .action(async () => {
       const client = getClient();
-      const wsId = await resolveWorkspaceId(
-        client,
-        program.opts()["workspace"] as string | undefined,
-      );
+      const wsId = requireWorkspaceId(program);
 
       const [status, codocs] = await Promise.all([
         client.getWorkspaceStatus(wsId),

@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
 import {
   parseCodoc,
   buildDAG,
@@ -37,7 +34,7 @@ export interface WorkspaceServiceDeps {
 }
 
 export interface WorkspaceService {
-  openWorkspace(dir: string): Promise<Workspace>;
+  createWorkspace(name: string): Promise<Workspace>;
   getStatus(workspaceId: string): Promise<WorkspaceStatus>;
   build(workspaceId: string): Promise<BuildDiagnostics>;
   resolve(workspaceId: string, nodeId: string): Promise<unknown>;
@@ -54,31 +51,11 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   const dagCache = new Map<string, DAG>();
 
   // -----------------------------------------------------------------------
-  // openWorkspace (3-1)
+  // createWorkspace
   // -----------------------------------------------------------------------
 
-  async function openWorkspace(dir: string): Promise<Workspace> {
-    const absDir = resolve(dir);
-
-    // Read workspace name from cobook.yaml if present
-    let name = "untitled";
-    try {
-      const raw = await readFile(resolve(absDir, "cobook.yaml"), "utf-8");
-      const cfg = parseYaml(raw);
-      if (cfg && typeof cfg === "object" && "name" in cfg && typeof cfg.name === "string") {
-        name = cfg.name;
-      }
-    } catch {
-      // cobook.yaml missing or unparseable — use default name
-    }
-
-    // Upsert workspace record
-    let ws = await workspaceRepo.findByPath(absDir);
-    if (!ws) {
-      ws = await workspaceRepo.create({ name, rootPath: absDir });
-    }
-
-    return ws;
+  async function createWorkspace(name: string): Promise<Workspace> {
+    return workspaceRepo.create({ name });
   }
 
   // -----------------------------------------------------------------------
@@ -318,7 +295,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   // -----------------------------------------------------------------------
 
   return {
-    openWorkspace,
+    createWorkspace,
     getStatus,
     build,
     resolve: resolveNode,

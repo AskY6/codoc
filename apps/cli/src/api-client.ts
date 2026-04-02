@@ -22,8 +22,8 @@ export class ConnectionError extends Error {
 
 export interface ApiClient {
   // Workspace
-  listWorkspaces(rootPath?: string): Promise<WorkspaceDTO[]>;
-  registerWorkspace(rootPath: string): Promise<WorkspaceDTO>;
+  listWorkspaces(): Promise<WorkspaceDTO[]>;
+  createWorkspace(name: string): Promise<WorkspaceDTO>;
   getWorkspace(id: string): Promise<WorkspaceDTO>;
   getWorkspaceStatus(id: string): Promise<WorkspaceStatusDTO>;
   deleteWorkspace(id: string): Promise<void>;
@@ -69,7 +69,6 @@ export interface ApiClient {
 export interface WorkspaceDTO {
   id: string;
   name: string;
-  rootPath: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -167,16 +166,13 @@ export function createApiClient(baseUrl: string): ApiClient {
 
   return {
     // Workspace
-    listWorkspaces(rootPath) {
-      const qs = rootPath
-        ? `?rootPath=${encodeURIComponent(rootPath)}`
-        : "";
-      return request(`/api/workspace${qs}`);
+    listWorkspaces() {
+      return request("/api/workspace");
     },
-    registerWorkspace(rootPath) {
+    createWorkspace(name) {
       return request("/api/workspace", {
         method: "POST",
-        body: JSON.stringify({ rootPath }),
+        body: JSON.stringify({ name }),
       });
     },
     getWorkspace(id) {

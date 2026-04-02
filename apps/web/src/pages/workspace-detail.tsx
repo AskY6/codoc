@@ -1,32 +1,38 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
-import { getWorkspace } from "../api/workspace.js";
-import { listCodocs, getCodoc } from "../api/codoc.js";
-import { triggerBuild } from "../api/build.js";
-import { getGraph } from "../api/graph.js";
-import { Sidebar } from "../components/sidebar.js";
-import { DetailPanel } from "../components/detail-panel.js";
-import { ChatPanel } from "../components/chat-panel.js";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { getWorkspace } from "@/api/workspace.js";
+import { listCodocs, getCodoc } from "@/api/codoc.js";
+import { getGraph } from "@/api/graph.js";
+import { ChatPanel } from "@/components/chat/chat-panel";
+import { CanvasPanel } from "@/components/canvas/canvas-panel";
+import { CodocBrowser } from "@/components/codoc-browser";
+import { ArrowLeft, FolderOpen, Plus } from "lucide-react";
 import type {
   Workspace,
   CodocListItem,
   CodocDetail,
   GraphData,
-  BuildResult,
-} from "../types.js";
+} from "@/types.js";
 
 export function WorkspaceDetailPage() {
   const { id: workspaceId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [codocs, setCodocs] = useState<CodocListItem[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [codocDetail, setCodocDetail] = useState<CodocDetail | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
-  const [buildResult, setBuildResult] = useState<BuildResult | null>(null);
-  const [building, setBuilding] = useState(false);
+  const [codocLoading, setCodocLoading] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
-  // Load workspace + codocs
   useEffect(() => {
     if (!workspaceId) return;
     getWorkspace(workspaceId).then(setWorkspace);
@@ -34,88 +40,95 @@ export function WorkspaceDetailPage() {
     getGraph(workspaceId).then(setGraph);
   }, [workspaceId]);
 
-  // Load codoc detail when selection changes
   useEffect(() => {
     if (!workspaceId || !selectedPath) {
       setCodocDetail(null);
       return;
     }
-    getCodoc(workspaceId, selectedPath).then(setCodocDetail);
+    setCodocLoading(true);
+    getCodoc(workspaceId, selectedPath)
+      .then(setCodocDetail)
+      .finally(() => setCodocLoading(false));
   }, [workspaceId, selectedPath]);
 
-  const handleBuild = useCallback(async () => {
-    if (!workspaceId) return;
-    setBuilding(true);
-    try {
-      const result = await triggerBuild(workspaceId);
-      setBuildResult(result);
-      // Refresh codocs and graph after build
-      listCodocs(workspaceId).then(setCodocs);
-      getGraph(workspaceId).then(setGraph);
-      if (selectedPath) getCodoc(workspaceId, selectedPath).then(setCodocDetail);
-    } finally {
-      setBuilding(false);
-    }
-  }, [workspaceId, selectedPath]);
+  const handleClearContext = useCallback(() => {
+    setSelectedPath(null);
+    setCodocDetail(null);
+  }, []);
 
   if (!workspaceId) return null;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen flex-col bg-background">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-3">
-          <a href="/" className="text-gray-400 hover:text-gray-600 text-sm">
-            &larr; Workspaces
-          </a>
-          <h1 className="font-semibold text-lg">
+      <header className="flex items-center justify-between border-b border-border bg-background px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => navigate("/")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Separator orientation="vertical" className="h-5" />
+          <h1 className="font-semibold text-sm">
             {workspace?.name ?? "Loading..."}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
-          {buildResult && (
-            <span className={`text-xs ${buildResult.ok ? "text-green-600" : "text-red-600"}`}>
-              {buildResult.ok
-                ? `Build OK (${buildResult.codocCount} codocs, ${buildResult.edgeCount} edges)`
-                : `Build failed (${buildResult.errors.length} errors)`}
-            </span>
-          )}
-          <button
-            onClick={handleBuild}
-            disabled={building}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBrowserOpen(true)}
           >
-            {building ? "Building..." : "Build"}
-          </button>
+            <FolderOpen className="h-4 w-4 mr-1.5" />
+            Codocs
+            {codocs.length > 0 && (
+              <span className="ml-1.5 text-muted-foreground">
+                {codocs.length}
+              </span>
+            )}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            const thread = null; // will auto-create on first message
+            void thread;
+          }}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Thread
+          </Button>
         </div>
       </header>
 
-      {/* Three-column layout */}
-      <div className="flex flex-1 overflow-hidden three-col-layout">
-        {/* Sidebar */}
-        <aside className="w-64 shrink-0 border-r border-gray-200 bg-white overflow-y-auto sidebar-col">
-          <Sidebar
-            codocs={codocs}
+      {/* Two-column resizable layout */}
+      <ResizablePanelGroup orientation="horizontal" className="flex-1">
+        <ResizablePanel defaultSize={55} minSize={30}>
+          <ChatPanel
+            workspaceId={workspaceId}
             selectedPath={selectedPath}
-            onSelect={setSelectedPath}
-            graph={graph}
+            onClearContext={handleClearContext}
           />
-        </aside>
+        </ResizablePanel>
 
-        {/* Detail panel */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 detail-col">
-          <DetailPanel
+        <ResizableHandle withHandle />
+
+        <ResizablePanel defaultSize={45} minSize={25}>
+          <CanvasPanel
             codocDetail={codocDetail}
-            graph={graph}
             selectedPath={selectedPath}
+            loading={codocLoading}
           />
-        </main>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
-        {/* Chat panel */}
-        <aside className="w-96 shrink-0 border-l border-gray-200 bg-white overflow-hidden chat-col">
-          <ChatPanel workspaceId={workspaceId} selectedPath={selectedPath} />
-        </aside>
-      </div>
+      {/* Codoc browser Sheet */}
+      <CodocBrowser
+        open={browserOpen}
+        onOpenChange={setBrowserOpen}
+        codocs={codocs}
+        selectedPath={selectedPath}
+        onSelect={setSelectedPath}
+      />
     </div>
   );
 }

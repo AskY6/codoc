@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { ApiClient } from "../api-client.js";
-import { resolveWorkspaceId } from "../workspace-discovery.js";
+import { requireWorkspaceId } from "../require-workspace.js";
 
 export function registerGraphCommand(
   program: Command,
@@ -12,10 +12,7 @@ export function registerGraphCommand(
     .argument("[path]", "Optional codoc path to show only its upstream/downstream")
     .action(async (path: string | undefined) => {
       const client = getClient();
-      const wsId = await resolveWorkspaceId(
-        client,
-        program.opts()["workspace"] as string | undefined,
-      );
+      const wsId = requireWorkspaceId(program);
 
       const graph = await client.getGraph(wsId);
 

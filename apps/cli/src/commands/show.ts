@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { ApiClient } from "../api-client.js";
-import { resolveWorkspaceId } from "../workspace-discovery.js";
+import { requireWorkspaceId } from "../require-workspace.js";
 
 export function registerShowCommand(
   program: Command,
@@ -12,10 +12,7 @@ export function registerShowCommand(
     .argument("<path>", "Codoc path (e.g. notes/meeting.codoc)")
     .action(async (path: string) => {
       const client = getClient();
-      const wsId = await resolveWorkspaceId(
-        client,
-        program.opts()["workspace"] as string | undefined,
-      );
+      const wsId = requireWorkspaceId(program);
 
       const info = await client.getCodoc(wsId, path);
 

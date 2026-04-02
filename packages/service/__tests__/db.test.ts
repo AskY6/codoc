@@ -47,31 +47,19 @@ describeDb("repositories (PostgreSQL)", () => {
   describe("WorkspaceRepository", () => {
     it("creates and retrieves a workspace", async () => {
       const repo = createWorkspaceRepository(db);
-      const ws = await repo.create({ name: "test-project", rootPath: "/tmp/test" });
+      const ws = await repo.create({ name: "test-project" });
 
       expect(ws.id).toBeDefined();
       expect(ws.name).toBe("test-project");
-      expect(ws.rootPath).toBe("/tmp/test");
 
       const found = await repo.findById(ws.id);
       expect(found?.name).toBe("test-project");
     });
 
-    it("finds by path", async () => {
-      const repo = createWorkspaceRepository(db);
-      await repo.create({ name: "ws", rootPath: "/tmp/unique" });
-
-      const found = await repo.findByPath("/tmp/unique");
-      expect(found?.name).toBe("ws");
-
-      const missing = await repo.findByPath("/tmp/nope");
-      expect(missing).toBeUndefined();
-    });
-
     it("lists all workspaces", async () => {
       const repo = createWorkspaceRepository(db);
-      await repo.create({ name: "a", rootPath: "/tmp/a" });
-      await repo.create({ name: "b", rootPath: "/tmp/b" });
+      await repo.create({ name: "a" });
+      await repo.create({ name: "b" });
 
       const all = await repo.list();
       expect(all).toHaveLength(2);
@@ -79,7 +67,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("deletes a workspace", async () => {
       const repo = createWorkspaceRepository(db);
-      const ws = await repo.create({ name: "del", rootPath: "/tmp/del" });
+      const ws = await repo.create({ name: "del" });
       await repo.delete(ws.id);
 
       expect(await repo.findById(ws.id)).toBeUndefined();
@@ -93,7 +81,7 @@ describeDb("repositories (PostgreSQL)", () => {
   describe("CodocRepository", () => {
     it("upserts a codoc (insert then update)", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createCodocRepository(db);
 
       // Insert
@@ -118,7 +106,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("lists codocs by workspace", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws2" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createCodocRepository(db);
 
       await repo.upsert(ws.id, "a.codoc", { content: "a" });
@@ -130,7 +118,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("deletes a codoc", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws3" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createCodocRepository(db);
 
       await repo.upsert(ws.id, "del.codoc", { content: "x" });
@@ -147,7 +135,7 @@ describeDb("repositories (PostgreSQL)", () => {
   describe("EdgeRepository", () => {
     it("replaces all edges for a workspace", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws4" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createEdgeRepository(db);
 
       // First batch
@@ -169,7 +157,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("handles empty edge list", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws5" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createEdgeRepository(db);
 
       await repo.replaceAll(ws.id, [
@@ -189,7 +177,7 @@ describeDb("repositories (PostgreSQL)", () => {
   describe("ChatRepository", () => {
     it("creates thread and adds messages", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws6" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createChatRepository(db);
 
       const thread = await repo.createThread(ws.id, "test chat");
@@ -207,7 +195,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("retrieves thread by id", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws7" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createChatRepository(db);
 
       const thread = await repo.createThread(ws.id);
@@ -217,7 +205,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("lists threads by workspace", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws8" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createChatRepository(db);
 
       await repo.createThread(ws.id, "t1");
@@ -235,7 +223,7 @@ describeDb("repositories (PostgreSQL)", () => {
   describe("AgentSessionRepository", () => {
     it("upserts agent session", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws9" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createAgentSessionRepository(db);
 
       // Insert
@@ -255,7 +243,7 @@ describeDb("repositories (PostgreSQL)", () => {
 
     it("finds by workspace", async () => {
       const wsRepo = createWorkspaceRepository(db);
-      const ws = await wsRepo.create({ name: "ws", rootPath: "/tmp/ws10" });
+      const ws = await wsRepo.create({ name: "ws" });
       const repo = createAgentSessionRepository(db);
 
       expect(await repo.findByWorkspace(ws.id)).toBeUndefined();

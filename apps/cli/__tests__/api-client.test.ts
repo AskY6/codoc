@@ -25,7 +25,6 @@ function createMockServer() {
   workspaces.set("ws-1", {
     id: "ws-1",
     name: "seed-workspace",
-    rootPath: "opaque-root-1",
     createdAt: "2025-01-01T00:00:00.000Z",
     updatedAt: "2025-01-01T00:00:00.000Z",
   });
@@ -44,17 +43,14 @@ function createMockServer() {
 
   // --- Workspace ---
   app.get("/api/workspace", (c) => {
-    const rootPath = c.req.query("rootPath");
-    const list = [...workspaces.values()];
-    if (rootPath) return c.json(list.filter((w) => w["rootPath"] === rootPath));
-    return c.json(list);
+    return c.json([...workspaces.values()]);
   });
 
   app.post("/api/workspace", async (c) => {
-    const body = await c.req.json<{ rootPath: string }>();
-    if (!body.rootPath) return c.json({ error: "rootPath is required" }, 400);
+    const body = await c.req.json<{ name: string }>();
+    if (!body.name) return c.json({ error: "name is required" }, 400);
     const id = `ws-${workspaces.size + 1}`;
-    const ws = { id, name: "created", rootPath: body.rootPath, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const ws = { id, name: body.name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     workspaces.set(id, ws);
     return c.json(ws, 201);
   });
@@ -154,26 +150,17 @@ describe("ApiClient — workspace", () => {
   it("listWorkspaces sends GET /api/workspace and parses list", async () => {
     const list = await client.listWorkspaces();
     expect(list).toHaveLength(1);
-    // Verify DTO shape — id, name, rootPath, timestamps all present
+    // Verify DTO shape — id, name, timestamps all present
     const ws = list[0]!;
     expect(ws).toHaveProperty("id");
     expect(ws).toHaveProperty("name");
-    expect(ws).toHaveProperty("rootPath");
     expect(ws).toHaveProperty("createdAt");
   });
 
-  it("listWorkspaces passes rootPath as query param and filters correctly", async () => {
-    const match = await client.listWorkspaces("opaque-root-1");
-    expect(match).toHaveLength(1);
-
-    const noMatch = await client.listWorkspaces("nonexistent-root");
-    expect(noMatch).toHaveLength(0);
-  });
-
-  it("registerWorkspace sends POST with rootPath and returns created DTO", async () => {
-    const ws = await client.registerWorkspace("any-string");
+  it("createWorkspace sends POST with name and returns created DTO", async () => {
+    const ws = await client.createWorkspace("my-project");
     expect(ws).toHaveProperty("id");
-    expect(ws.rootPath).toBe("any-string"); // server echoes what client sent
+    expect(ws.name).toBe("my-project");
   });
 
   it("getWorkspace sends GET /api/workspace/:id", async () => {
@@ -196,7 +183,7 @@ describe("ApiClient — workspace", () => {
   });
 
   it("deleteWorkspace sends DELETE and does not throw", async () => {
-    const ws = await client.registerWorkspace("to-delete");
+    const ws = await client.createWorkspace("to-delete");
     await expect(client.deleteWorkspace(ws.id)).resolves.toBeUndefined();
   });
 });

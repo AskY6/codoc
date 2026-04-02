@@ -13,10 +13,10 @@ export function getWorkspaceStatus(id: string): Promise<WorkspaceStatus> {
   return apiFetch(`/workspace/${id}/status`);
 }
 
-export function createWorkspace(rootPath: string): Promise<Workspace> {
+export function createWorkspace(name: string): Promise<Workspace> {
   return apiFetch("/workspace", {
     method: "POST",
-    body: JSON.stringify({ rootPath }),
+    body: JSON.stringify({ name }),
   });
 }
 

@@ -1,13 +1,17 @@
-import type { ViewNode } from "../types.js";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { ViewNode } from "@/types.js";
 
 interface Props {
   node: ViewNode;
   data?: Record<string, unknown> | null | undefined;
 }
 
-function resolve(bind: string | undefined, data: Record<string, unknown> | null | undefined): unknown {
+function resolve(
+  bind: string | undefined,
+  data: Record<string, unknown> | null | undefined,
+): unknown {
   if (!bind || !data) return undefined;
-  // Support dotted paths like "data.field"
   const parts = bind.replace(/^data\./, "").split(".");
   let val: unknown = data;
   for (const p of parts) {
@@ -23,32 +27,36 @@ function RenderNode({ node, data }: Props) {
   switch (node.type) {
     case "text": {
       const content = (bound as string) ?? node.props?.content ?? "";
-      return <p className="text-sm text-gray-700">{String(content)}</p>;
+      return <p className="text-sm text-foreground">{String(content)}</p>;
     }
 
     case "markdown": {
       const content = (bound as string) ?? node.props?.content ?? "";
-      // Simple markdown: just render as pre-formatted text for now
       return (
-        <div className="prose prose-sm max-w-none">
-          <pre className="whitespace-pre-wrap text-sm text-gray-700">{String(content)}</pre>
+        <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 text-foreground">
+          <Markdown remarkPlugins={[remarkGfm]}>{String(content)}</Markdown>
         </div>
       );
     }
 
     case "table": {
-      const rows = (bound ?? node.props?.rows) as Record<string, unknown>[] | undefined;
+      const rows = (bound ?? node.props?.rows) as
+        | Record<string, unknown>[]
+        | undefined;
       if (!rows || !Array.isArray(rows) || rows.length === 0) {
-        return <p className="text-sm text-gray-400 italic">No data</p>;
+        return <p className="text-sm text-muted-foreground italic">No data</p>;
       }
       const headers = Object.keys(rows[0] as Record<string, unknown>);
       return (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border border-gray-200">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="min-w-full text-sm">
             <thead>
-              <tr className="bg-gray-50">
+              <tr className="bg-muted">
                 {headers.map((h) => (
-                  <th key={h} className="px-3 py-2 text-left font-medium text-gray-600 border-b border-gray-200">
+                  <th
+                    key={h}
+                    className="px-3 py-2 text-left font-medium text-muted-foreground border-b border-border"
+                  >
                     {h}
                   </th>
                 ))}
@@ -56,9 +64,9 @@ function RenderNode({ node, data }: Props) {
             </thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i} className="border-b border-gray-100">
+                <tr key={i} className="border-b border-border last:border-0">
                   {headers.map((h) => (
-                    <td key={h} className="px-3 py-2 text-gray-700">
+                    <td key={h} className="px-3 py-2 text-foreground">
                       {String(row[h] ?? "")}
                     </td>
                   ))}
@@ -84,7 +92,9 @@ function RenderNode({ node, data }: Props) {
       return (
         <div
           className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          }}
         >
           {node.children?.map((child, i) => (
             <RenderNode key={i} node={child} data={data} />
@@ -94,12 +104,15 @@ function RenderNode({ node, data }: Props) {
     }
 
     case "tabs": {
-      // Simple tabs implementation using details/summary
       return (
         <div className="space-y-1">
           {node.children?.map((child, i) => (
-            <details key={i} open={i === 0} className="border border-gray-200 rounded-lg">
-              <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 rounded-t-lg">
+            <details
+              key={i}
+              open={i === 0}
+              className="border border-border rounded-lg"
+            >
+              <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-foreground bg-muted rounded-t-lg">
                 {(child.props?.label as string) ?? child.type ?? `Tab ${i + 1}`}
               </summary>
               <div className="p-4">
@@ -114,11 +127,11 @@ function RenderNode({ node, data }: Props) {
     case "timeline":
       return (
         <div className="relative pl-6 space-y-4">
-          <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-gray-200" />
+          <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-border" />
           {node.children?.map((child, i) => (
             <div key={i} className="relative">
-              <div className="absolute -left-4 top-1 h-3 w-3 rounded-full border-2 border-blue-500 bg-white" />
-              <div className="rounded-lg border border-gray-200 bg-white p-3">
+              <div className="absolute -left-4 top-1 h-3 w-3 rounded-full border-2 border-primary bg-background" />
+              <div className="rounded-lg border border-border bg-card p-3">
                 <RenderNode node={child} data={data} />
               </div>
             </div>
@@ -129,10 +142,12 @@ function RenderNode({ node, data }: Props) {
     case "section": {
       const title = (node.props?.title as string) ?? "";
       return (
-        <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="rounded-lg border border-border bg-card">
           {title && (
-            <div className="border-b border-gray-200 px-4 py-2">
-              <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
+            <div className="border-b border-border px-4 py-2">
+              <h3 className="text-sm font-semibold text-foreground">
+                {title}
+              </h3>
             </div>
           )}
           <div className="p-4 space-y-4">
@@ -146,7 +161,7 @@ function RenderNode({ node, data }: Props) {
 
     default:
       return (
-        <div className="rounded bg-gray-100 p-2 text-xs text-gray-500">
+        <div className="rounded bg-muted p-2 text-xs text-muted-foreground">
           Unknown view type: {node.type}
         </div>
       );

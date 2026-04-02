@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { createApiClient } from "./api-client.js";
 import { registerServerCommand } from "./commands/server.js";
-import { registerInitCommand } from "./commands/init.js";
 import { registerWorkspaceCommand } from "./commands/workspace.js";
 import { registerBuildCommand } from "./commands/build.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -21,7 +20,7 @@ program
     "Server URL",
     process.env["COBOOK_SERVER_URL"] ?? "http://localhost:3100",
   )
-  .option("--workspace <id>", "Workspace ID (overrides CWD discovery)");
+  .option("--workspace <id>", "Workspace ID");
 
 // Lazy API client — created on first use so global opts are parsed
 function getClient() {
@@ -30,7 +29,6 @@ function getClient() {
 
 // Register commands
 registerServerCommand(program);
-registerInitCommand(program, getClient);
 registerWorkspaceCommand(program, getClient);
 registerBuildCommand(program, getClient);
 registerStatusCommand(program, getClient);

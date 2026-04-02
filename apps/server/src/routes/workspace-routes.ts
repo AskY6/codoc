@@ -8,25 +8,20 @@ export function workspaceRoutes(
 ) {
   const app = new Hono();
 
-  // GET /api/workspace — list all workspaces (optional ?rootPath= filter)
+  // GET /api/workspace — list all workspaces
   app.get("/", async (c) => {
-    const rootPath = c.req.query("rootPath");
-    if (rootPath) {
-      const ws = await workspaceRepo.findByPath(rootPath);
-      return c.json(ws ? [ws] : []);
-    }
     const list = await workspaceRepo.list();
     return c.json(list);
   });
 
-  // POST /api/workspace — register workspace { rootPath }
+  // POST /api/workspace — create workspace { name }
   app.post("/", async (c) => {
-    const body = await c.req.json<{ rootPath: string }>();
-    if (!body.rootPath) {
-      return c.json({ error: "rootPath is required" }, 400);
+    const body = await c.req.json<{ name: string }>();
+    if (!body.name) {
+      return c.json({ error: "name is required" }, 400);
     }
     try {
-      const ws = await service.openWorkspace(body.rootPath);
+      const ws = await service.createWorkspace(body.name);
       return c.json(ws, 201);
     } catch (err) {
       return c.json({ error: String(err) }, 500);
@@ -50,7 +45,7 @@ export function workspaceRoutes(
     }
   });
 
-  // DELETE /api/workspace/:id — remove workspace (unregister only)
+  // DELETE /api/workspace/:id — remove workspace
   app.delete("/:id", async (c) => {
     try {
       await workspaceRepo.delete(c.req.param("id"));

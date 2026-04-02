@@ -5,7 +5,6 @@
 export interface Workspace {
   id: string;
   name: string;
-  rootPath: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,9 +60,8 @@ export interface AgentSession {
 // ---------------------------------------------------------------------------
 
 export interface WorkspaceRepository {
-  create(data: { name: string; rootPath: string }): Promise<Workspace>;
+  create(data: { name: string }): Promise<Workspace>;
   findById(id: string): Promise<Workspace | undefined>;
-  findByPath(rootPath: string): Promise<Workspace | undefined>;
   list(): Promise<Workspace[]>;
   delete(id: string): Promise<void>;
 }

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { ApiClient } from "../api-client.js";
-import { resolveWorkspaceId } from "../workspace-discovery.js";
+import { requireWorkspaceId } from "../require-workspace.js";
 
 export function registerBuildCommand(
   program: Command,
@@ -11,10 +11,7 @@ export function registerBuildCommand(
     .description("Parse all codocs, build DAG, and validate")
     .action(async () => {
       const client = getClient();
-      const wsId = await resolveWorkspaceId(
-        client,
-        program.opts()["workspace"] as string | undefined,
-      );
+      const wsId = requireWorkspaceId(program);
 
       console.log("Building...");
       const result = await client.build(wsId);

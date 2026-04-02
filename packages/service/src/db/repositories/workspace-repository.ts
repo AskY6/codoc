@@ -8,7 +8,7 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
     async create(data) {
       const [row] = await db
         .insert(workspaces)
-        .values({ name: data.name, rootPath: data.rootPath })
+        .values({ name: data.name })
         .returning();
       return row as Workspace;
     },
@@ -18,14 +18,6 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
         .select()
         .from(workspaces)
         .where(eq(workspaces.id, id));
-      return row as Workspace | undefined;
-    },
-
-    async findByPath(rootPath) {
-      const [row] = await db
-        .select()
-        .from(workspaces)
-        .where(eq(workspaces.rootPath, rootPath));
       return row as Workspace | undefined;
     },
 

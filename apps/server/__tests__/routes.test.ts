@@ -16,13 +16,12 @@ import type {
 // ---------------------------------------------------------------------------
 
 function createMockWorkspaceRepo(): WorkspaceRepository {
-  const store = new Map<string, { id: string; name: string; rootPath: string; createdAt: Date; updatedAt: Date }>();
+  const store = new Map<string, { id: string; name: string; createdAt: Date; updatedAt: Date }>();
   return {
     async create(data) {
       const ws = {
         id: crypto.randomUUID(),
         name: data.name,
-        rootPath: data.rootPath,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -31,12 +30,6 @@ function createMockWorkspaceRepo(): WorkspaceRepository {
     },
     async findById(id) {
       return store.get(id);
-    },
-    async findByPath(rootPath) {
-      for (const ws of store.values()) {
-        if (ws.rootPath === rootPath) return ws;
-      }
-      return undefined;
     },
     async list() {
       return [...store.values()];
@@ -138,10 +131,9 @@ function createMockEdgeRepo(): EdgeRepository {
 
 function createMockService(overrides?: Partial<WorkspaceService>): WorkspaceService {
   return {
-    openWorkspace: async () => ({
+    createWorkspace: async () => ({
       id: "ws-1",
       name: "test",
-      rootPath: "/tmp/test",
       createdAt: new Date(),
       updatedAt: new Date(),
     }),
@@ -201,18 +193,18 @@ describe("Server Routes", () => {
     expect(await res.json()).toEqual([]);
   });
 
-  it("POST /api/workspace registers a workspace", async () => {
+  it("POST /api/workspace creates a workspace", async () => {
     const res = await app.request("/api/workspace", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rootPath: "/tmp/test" }),
+      body: JSON.stringify({ name: "test" }),
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; name: string };
     expect(body.id).toBeDefined();
   });
 
-  it("POST /api/workspace without rootPath returns 400", async () => {
+  it("POST /api/workspace without name returns 400", async () => {
     const res = await app.request("/api/workspace", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -228,26 +220,15 @@ describe("Server Routes", () => {
 
   it("GET /api/workspace/:id/status returns status", async () => {
     // Create workspace first
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/status`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { codocCount: number };
     expect(body.codocCount).toBe(2);
   });
 
-  it("GET /api/workspace?rootPath= filters by path", async () => {
-    await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
-    const res = await app.request(
-      "/api/workspace?rootPath=" + encodeURIComponent("/tmp/test"),
-    );
-    expect(res.status).toBe(200);
-    const list = (await res.json()) as Array<{ rootPath: string }>;
-    expect(list).toHaveLength(1);
-    expect(list[0]!.rootPath).toBe("/tmp/test");
-  });
-
   it("DELETE /api/workspace/:id removes workspace", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}`, {
       method: "DELETE",
     });
@@ -258,7 +239,7 @@ describe("Server Routes", () => {
   // -- Codoc routes --
 
   it("GET /api/workspace/:id/codocs returns codoc list", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     await codocRepo.upsert(ws.id, "a.codoc", { nodeState: "ready" });
     await codocRepo.upsert(ws.id, "b.codoc", { nodeState: "error" });
 
@@ -269,7 +250,7 @@ describe("Server Routes", () => {
   });
 
   it("GET /api/workspace/:id/codoc/:path returns codoc info", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/codoc/test.codoc`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { path: string; nodeState: string };
@@ -278,7 +259,7 @@ describe("Server Routes", () => {
   });
 
   it("POST /api/workspace/:id/codoc creates a codoc", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/codoc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -290,7 +271,7 @@ describe("Server Routes", () => {
   // -- Build routes --
 
   it("POST /api/workspace/:id/build triggers build", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/build`, {
       method: "POST",
     });
@@ -301,7 +282,7 @@ describe("Server Routes", () => {
   });
 
   it("POST /api/workspace/:id/resolve resolves a node", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/resolve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -313,7 +294,7 @@ describe("Server Routes", () => {
   });
 
   it("POST /api/workspace/:id/resolve without nodeId returns 400", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     const res = await app.request(`/api/workspace/${ws.id}/resolve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -325,7 +306,7 @@ describe("Server Routes", () => {
   // -- Graph routes --
 
   it("GET /api/workspace/:id/graph returns nodes and edges", async () => {
-    const ws = await wsRepo.create({ name: "test", rootPath: "/tmp/test" });
+    const ws = await wsRepo.create({ name: "test" });
     await codocRepo.upsert(ws.id, "a.codoc", { nodeState: "ready" });
     await edgeRepo.replaceAll(ws.id, [
       { fromNodeId: "a.codoc#data.x", toNodeId: "b.codoc#data.y" },

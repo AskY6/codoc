@@ -1,9 +1,8 @@
 import dotenv from "dotenv";
-import { resolve } from "node:path";
 
 // Load .env — try CWD first, then monorepo root (for pnpm --filter runs)
 dotenv.config();
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+dotenv.config({ path: "../../.env" });
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";

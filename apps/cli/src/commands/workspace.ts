@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { resolve } from "node:path";
 import type { ApiClient } from "../api-client.js";
 
 export function registerWorkspaceCommand(
@@ -11,38 +10,36 @@ export function registerWorkspaceCommand(
     .description("Manage workspaces");
 
   ws.command("list")
-    .description("List all registered workspaces")
+    .description("List all workspaces")
     .action(async () => {
       const client = getClient();
       const list = await client.listWorkspaces();
 
       if (list.length === 0) {
-        console.log("No workspaces registered. Run `cobook init` in a project directory.");
+        console.log("No workspaces. Create one with `cobook workspace create <name>`.");
         return;
       }
 
-      // Simple table output
-      const header = padRow("NAME", "ID", "PATH");
+      const header = padRow("NAME", "ID");
       const sep = "-".repeat(header.length);
       console.log(header);
       console.log(sep);
-      for (const ws of list) {
-        console.log(padRow(ws.name, ws.id.slice(0, 8), ws.rootPath));
+      for (const w of list) {
+        console.log(padRow(w.name, w.id.slice(0, 8)));
       }
     });
 
-  ws.command("add")
-    .description("Register an existing workspace directory")
-    .argument("<path>", "Path to workspace directory")
-    .action(async (path: string) => {
+  ws.command("create")
+    .description("Create a new workspace")
+    .argument("<name>", "Workspace name")
+    .action(async (name: string) => {
       const client = getClient();
-      const absPath = resolve(path);
-      const result = await client.registerWorkspace(absPath);
-      console.log(`Workspace registered: ${result.name} (${result.id.slice(0, 8)})`);
+      const result = await client.createWorkspace(name);
+      console.log(`Workspace created: ${result.name} (${result.id.slice(0, 8)})`);
     });
 
   ws.command("remove")
-    .description("Unregister a workspace (does not delete files)")
+    .description("Remove a workspace")
     .argument("<id>", "Workspace ID")
     .action(async (id: string) => {
       const client = getClient();
@@ -51,6 +48,6 @@ export function registerWorkspaceCommand(
     });
 }
 
-function padRow(col1: string, col2: string, col3: string): string {
-  return `${col1.padEnd(20)} ${col2.padEnd(10)} ${col3}`;
+function padRow(col1: string, col2: string): string {
+  return `${col1.padEnd(24)} ${col2}`;
 }

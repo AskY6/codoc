@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { Command } from "commander";
 import type { ApiClient } from "../api-client.js";
-import { resolveWorkspaceId } from "../workspace-discovery.js";
+import { requireWorkspaceId } from "../require-workspace.js";
 
 export function registerChatCommand(
   program: Command,
@@ -14,10 +14,7 @@ export function registerChatCommand(
     .option("--thread <id>", "Resume a specific thread by ID")
     .action(async (opts: { new?: boolean; thread?: string }) => {
       const client = getClient();
-      const wsId = await resolveWorkspaceId(
-        client,
-        program.opts()["workspace"] as string | undefined,
-      );
+      const wsId = requireWorkspaceId(program);
 
       let threadId: string;
 
