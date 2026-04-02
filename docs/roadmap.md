@@ -96,7 +96,7 @@
 
 ## Phase 3: Service — 副作用集中层
 
-**目标**: `LocalCobookService` 把 core 纯计算 + db 持久化 + 文件 IO 编排起来。CLI/Web/Agent 都通过它操作。
+**目标**: `LocalCobookService` 把 core 纯计算 + db 持久化 + 文件 IO 编排起来。仅由 Server 进程持有，CLI/Web/Agent 均通过 Server HTTP API 间接调用。
 
 ### 3-1 Workspace Service
 
@@ -145,64 +145,86 @@
 
 **目标**: 用户能通过 CLI 完成 init → build → show → graph → resolve 的完整流程。
 
+**架构决策**: Server 是 single source of truth。CLI 是 thin client，所有数据操作通过 HTTP API 发往 Server，CLI 本身不持有 Service 实例。调用链：`CLI → HTTP API → Server → Service → DB`。
+
 ### 4-1 Server HTTP API
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 启动 server：`pnpm --filter server dev` | Hono 服务在 `localhost:3100` 启动，日志显示 listening |
 | `curl localhost:3100/api/workspace` | 返回已注册 workspace 列表（JSON） |
+| `curl -X POST localhost:3100/api/workspace` (body: `{ rootPath }`) | 注册新 workspace，返回带 `id` 的记录 |
 | `curl localhost:3100/api/workspace/:id/codocs` | 返回该 workspace 的 codoc 列表 |
 | `curl localhost:3100/api/workspace/:id/codoc/:path` | 返回单个 codoc 的 AST + resolved data + state |
 | `curl localhost:3100/api/workspace/:id/graph` | 返回 DAG 的节点和边（JSON） |
 | `curl localhost:3100/api/workspace/:id/build` (POST) | 触发全量 build，返回诊断结果 |
 | `curl localhost:3100/api/workspace/:id/resolve/:nodeId` (POST) | 触发 resolve，返回值 |
 
-### 4-2 CLI — init
+### 4-2 CLI — server 连接与 workspace 发现
+
+> CLI 所有数据命令均依赖 Server 运行。CLI 启动时通过 CWD 向上遍历查找 `cobook.yaml` 确定 workspace 根目录，再通过 `GET /api/workspace?rootPath=<abs>` 查询对应 workspace ID。也可通过 `--workspace <id>` 全局 flag 显式指定。
 
 | 验收操作 | 预期结果 |
 |---------|---------|
-| 在空目录运行 `cobook init` | 生成 `cobook.yaml`（含项目名），终端打印初始化成功 |
+| Server 未启动时运行 `cobook status` | 终端报错：无法连接 Server，提示运行 `cobook server start` |
+| 运行 `cobook server start` | 后台启动 Server 进程（daemon），终端打印 PID 和端口 |
+| 运行 `cobook server stop` | 停止后台 Server |
+| 在非 workspace 目录运行 `cobook status`（无 `--workspace`） | 终端报错：当前目录不是 workspace，提示 `cobook init` 或 `--workspace` |
+
+### 4-3 CLI — init
+
+| 验收操作 | 预期结果 |
+|---------|---------|
+| 在空目录运行 `cobook init` | 生成 `cobook.yaml`（含项目名），向 Server 注册该 workspace，终端打印初始化成功 |
 | 在已有 `cobook.yaml` 的目录运行 `cobook init` | 提示已初始化，不覆盖 |
 
-### 4-3 CLI — build
+### 4-4 CLI — workspace
+
+| 验收操作 | 预期结果 |
+|---------|---------|
+| 运行 `cobook workspace list` | 终端表格显示所有已注册 workspace（名称、路径、codoc 数量、状态） |
+| 运行 `cobook workspace add /path/to/project` | 将指定目录注册为 workspace |
+| 运行 `cobook workspace remove <id>` | 取消注册（不删除文件） |
+
+### 4-5 CLI — build
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 在含 3 个 codoc 的 workspace 运行 `cobook build` | 终端显示：扫描到 N 个 codoc → 建图 → M 条边 → 校验结果（通过/失败数） |
 | 其中有循环引用 | 终端红色显示循环路径 |
 
-### 4-4 CLI — status
+### 4-6 CLI — status
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 运行 `cobook status` | 终端表格显示：codoc 列表 + 每个的状态（ready/dirty/error） + 汇总统计 |
 
-### 4-5 CLI — show
+### 4-7 CLI — show
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 运行 `cobook show notes/meeting.codoc` | 终端展示该 codoc 的 meta、data resolved 值、view 定义（格式化输出） |
 | 路径不存在 | 终端报错：codoc 不存在 |
 
-### 4-6 CLI — graph
+### 4-8 CLI — graph
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 运行 `cobook graph` | 终端以 ASCII 树形或列表形式展示全局依赖关系 |
 | 运行 `cobook graph notes/meeting.codoc` | 只展示该 codoc 的上下游 |
 
-### 4-7 CLI — resolve
+### 4-9 CLI — resolve
 
 | 验收操作 | 预期结果 |
 |---------|---------|
 | 运行 `cobook resolve notes/meeting.codoc#data.summary` | 终端输出该字段的 resolved value（JSON） |
 | 引用链 A→B→C，resolve A | 终端输出 A 的最终值，过程中 B、C 按序求值 |
 
-### 4-8 端到端冒烟测试
+### 4-10 端到端冒烟测试
 
 | 验收操作 | 预期结果 |
 |---------|---------|
-| 在空目录依次执行：`cobook init` → 手动创建 3 个 `.codoc` 文件（含引用关系） → `cobook build` → `cobook status` → `cobook show <path>` → `cobook resolve <nodeId>` → `cobook graph` | 每一步输出合理，无报错，数据一致 |
+| `cobook server start` → 在空目录 `cobook init` → 手动创建 3 个 `.codoc` 文件（含引用关系） → `cobook build` → `cobook status` → `cobook show <path>` → `cobook resolve <nodeId>` → `cobook graph` → `cobook workspace list` 显示该 workspace | 每一步输出合理，无报错，数据一致，所有操作经由 Server |
 
 ---
 

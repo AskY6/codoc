@@ -31,6 +31,10 @@ export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service
 export { executeSource } from "./source-executor.js";
 export type { Source, StaticSource, FileSource } from "./source-executor.js";
 
+// Chat service
+export { createChatService } from "./chat-service.js";
+export type { ChatService, ChatServiceDeps } from "./chat-service.js";
+
 // Types
 export { SourceError } from "./types.js";
 export type {

@@ -1,1 +1,3 @@
-export const AGENT_VERSION = "0.0.0";
+export { createBaseAgent } from "./base-agent.js";
+export { toolDefinitions, executeTool } from "./tools.js";
+export type { Agent, AgentContext, AgentMessage, ChatEvent, LLMConfig } from "./types.js";
