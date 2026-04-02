@@ -70,3 +70,34 @@ cd packages/service
 npx drizzle-kit generate    # Generate migration from schema changes
 npx drizzle-kit migrate     # Apply migrations
 ```
+
+## Chat: multi-agent group chat
+
+Chat adopts a **router + specialist** group chat model. A single thread can involve multiple agents, and every assistant message is attributed to a specific agent.
+
+### Message flow
+
+```
+User sends message (optionally @agent-id)
+    ↓
+Router Agent (sees full chatContext)
+    ├── Can answer itself → replies (tagged as router)
+    └── Needs specialist  → extracts relevant context → delegates to best-matching agent
+                                                            ↓
+                                                  Agent replies (tagged as agent-x)
+```
+
+### Design constraints
+
+1. **One response per user message.** Either the router answers or exactly one specialist answers — never multiple.
+2. **Silent routing.** No intermediate "forwarding to X" messages. The user sees the specialist's reply directly.
+3. **Shared context.** All agents share the same chatContext (full message history). The router extracts relevant context before handing off.
+4. **User can @mention.** `@agent-id` in the message bypasses routing and forces that agent to respond.
+5. **Message attribution.** Every assistant message carries an `agentId` so the UI can show which agent responded.
+
+### Data model impact
+
+- `chat_messages` gains an `agent_id` column (which agent produced this assistant message).
+- `chat_threads.agent_id` single-value field is replaced by a `thread_agents` join table (many-to-many).
+- The message send API accepts an optional `targetAgentId` for explicit @-routing.
+- SSE stream events include `agentId` so the frontend can render agent identity in real time.

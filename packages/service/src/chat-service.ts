@@ -3,6 +3,8 @@ import type {
   AgentSessionRepository,
   ChatThread,
   ChatMessage,
+  ThreadCodoc,
+  ThreadAgent,
 } from "./db/repositories/types.js";
 import type { WorkspaceService } from "./workspace-service.js";
 
@@ -14,8 +16,13 @@ export interface ChatService {
   createThread(workspaceId: string, title?: string): Promise<ChatThread>;
   getThread(threadId: string): Promise<{ thread: ChatThread; messages: ChatMessage[] } | undefined>;
   listThreads(workspaceId: string): Promise<ChatThread[]>;
-  addMessage(threadId: string, msg: { role: string; content: string }): Promise<ChatMessage>;
+  updateThread(threadId: string, data: { title?: string }): Promise<ChatThread>;
+  addMessage(threadId: string, msg: { role: string; content: string; agentId?: string }): Promise<ChatMessage>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
+  setThreadCodocs(threadId: string, codocIds: string[]): Promise<void>;
+  getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;
+  setThreadAgents(threadId: string, agentIds: string[]): Promise<void>;
+  getThreadAgents(threadId: string): Promise<ThreadAgent[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,12 +53,32 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       return chatRepo.listThreads(workspaceId);
     },
 
+    async updateThread(threadId, data) {
+      return chatRepo.updateThread(threadId, data);
+    },
+
     async addMessage(threadId, msg) {
       return chatRepo.addMessage(threadId, msg);
     },
 
     async getMessages(threadId) {
       return chatRepo.getMessages(threadId);
+    },
+
+    async setThreadCodocs(threadId, codocIds) {
+      return chatRepo.setThreadCodocs(threadId, codocIds);
+    },
+
+    async getThreadCodocs(threadId) {
+      return chatRepo.getThreadCodocs(threadId);
+    },
+
+    async setThreadAgents(threadId, agentIds) {
+      return chatRepo.setThreadAgents(threadId, agentIds);
+    },
+
+    async getThreadAgents(threadId) {
+      return chatRepo.getThreadAgents(threadId);
     },
   };
 }

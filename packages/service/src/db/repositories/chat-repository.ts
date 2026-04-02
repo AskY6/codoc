@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Database } from "../client.js";
-import { chatThreads, chatMessages } from "../schema.js";
-import type { ChatThread, ChatMessage, ChatRepository } from "./types.js";
+import { chatThreads, chatMessages, threadCodocs, threadAgents } from "../schema.js";
+import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, ChatRepository } from "./types.js";
 
 export function createChatRepository(db: Database): ChatRepository {
   return {
@@ -28,10 +28,19 @@ export function createChatRepository(db: Database): ChatRepository {
         .where(eq(chatThreads.workspaceId, workspaceId))) as ChatThread[];
     },
 
+    async updateThread(threadId, data) {
+      const [row] = await db
+        .update(chatThreads)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(chatThreads.id, threadId))
+        .returning();
+      return row as ChatThread;
+    },
+
     async addMessage(threadId, msg) {
       const [row] = await db
         .insert(chatMessages)
-        .values({ threadId, role: msg.role, content: msg.content })
+        .values({ threadId, role: msg.role, content: msg.content, agentId: msg.agentId ?? null })
         .returning();
       return row as ChatMessage;
     },
@@ -41,6 +50,38 @@ export function createChatRepository(db: Database): ChatRepository {
         .select()
         .from(chatMessages)
         .where(eq(chatMessages.threadId, threadId))) as ChatMessage[];
+    },
+
+    async setThreadCodocs(threadId, codocIds) {
+      await db.delete(threadCodocs).where(eq(threadCodocs.threadId, threadId));
+      if (codocIds.length > 0) {
+        await db.insert(threadCodocs).values(
+          codocIds.map((codocId) => ({ threadId, codocId })),
+        );
+      }
+    },
+
+    async getThreadCodocs(threadId) {
+      return (await db
+        .select()
+        .from(threadCodocs)
+        .where(eq(threadCodocs.threadId, threadId))) as ThreadCodoc[];
+    },
+
+    async setThreadAgents(threadId, agentIds) {
+      await db.delete(threadAgents).where(eq(threadAgents.threadId, threadId));
+      if (agentIds.length > 0) {
+        await db.insert(threadAgents).values(
+          agentIds.map((agentId) => ({ threadId, agentId })),
+        );
+      }
+    },
+
+    async getThreadAgents(threadId) {
+      return (await db
+        .select()
+        .from(threadAgents)
+        .where(eq(threadAgents.threadId, threadId))) as ThreadAgent[];
     },
   };
 }

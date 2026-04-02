@@ -15,6 +15,20 @@
       "when": 1775142912410,
       "tag": "0001_real_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775145444092,
+      "tag": "0002_amusing_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775148073950,
+      "tag": "0003_strong_madame_masque",
+      "breakpoints": true
     }
   ]
 }

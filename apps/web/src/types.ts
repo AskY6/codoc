@@ -83,17 +83,36 @@ export interface ChatThread {
   updatedAt: string;
 }
 
+export interface ThreadCodoc {
+  id: string;
+  threadId: string;
+  codocId: string;
+  createdAt: string;
+}
+
+export interface ThreadAgent {
+  id: string;
+  threadId: string;
+  agentId: string;
+  createdAt: string;
+}
+
+export interface AgentInfo {
+  id: string;
+}
+
 export interface ChatMessage {
   id: string;
   threadId: string;
   role: "user" | "assistant";
   content: string;
+  agentId: string | null;
   createdAt: string;
 }
 
 export type ChatEvent =
-  | { kind: "text-delta"; text: string }
-  | { kind: "tool-use"; toolName: string; input: Record<string, unknown> }
-  | { kind: "tool-result"; toolName: string; output: unknown }
-  | { kind: "done"; fullText: string }
-  | { kind: "error"; message: string };
+  | { kind: "text-delta"; text: string; agentId: string }
+  | { kind: "tool-use"; toolName: string; input: Record<string, unknown>; agentId: string }
+  | { kind: "tool-result"; toolName: string; output: unknown; agentId: string }
+  | { kind: "done"; fullText: string; agentId: string }
+  | { kind: "error"; message: string; agentId?: string };

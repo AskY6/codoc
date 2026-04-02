@@ -42,6 +42,7 @@ export interface ChatMessage {
   threadId: string;
   role: string;
   content: string;
+  agentId: string | null;
   createdAt: Date;
 }
 
@@ -85,15 +86,34 @@ export interface EdgeRepository {
   listByWorkspace(workspaceId: string): Promise<Edge[]>;
 }
 
+export interface ThreadCodoc {
+  id: string;
+  threadId: string;
+  codocId: string;
+  createdAt: Date;
+}
+
+export interface ThreadAgent {
+  id: string;
+  threadId: string;
+  agentId: string;
+  createdAt: Date;
+}
+
 export interface ChatRepository {
   createThread(workspaceId: string, title?: string): Promise<ChatThread>;
   getThread(threadId: string): Promise<ChatThread | undefined>;
   listThreads(workspaceId: string): Promise<ChatThread[]>;
+  updateThread(threadId: string, data: { title?: string }): Promise<ChatThread>;
   addMessage(
     threadId: string,
-    msg: { role: string; content: string },
+    msg: { role: string; content: string; agentId?: string },
   ): Promise<ChatMessage>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
+  setThreadCodocs(threadId: string, codocIds: string[]): Promise<void>;
+  getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;
+  setThreadAgents(threadId: string, agentIds: string[]): Promise<void>;
+  getThreadAgents(threadId: string): Promise<ThreadAgent[]>;
 }
 
 export interface AgentSessionRepository {

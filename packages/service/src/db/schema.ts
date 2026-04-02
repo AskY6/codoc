@@ -89,8 +89,49 @@ export const chatMessages = pgTable("chat_messages", {
     .references(() => chatThreads.id, { onDelete: "cascade" }),
   role: text().notNull(),
   content: text().notNull(),
+  agentId: text("agent_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// agent_sessions
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// thread_codocs (which codocs are loaded into a chat thread)
+// ---------------------------------------------------------------------------
+
+export const threadCodocs = pgTable(
+  "thread_codocs",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    codocId: uuid("codoc_id")
+      .notNull()
+      .references(() => codocs.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("thread_codocs_thread_codoc_idx").on(t.threadId, t.codocId)],
+);
+
+// ---------------------------------------------------------------------------
+// thread_agents (which agents participate in a chat thread)
+// ---------------------------------------------------------------------------
+
+export const threadAgents = pgTable(
+  "thread_agents",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("thread_agents_thread_agent_idx").on(t.threadId, t.agentId)],
+);
 
 // ---------------------------------------------------------------------------
 // agent_sessions

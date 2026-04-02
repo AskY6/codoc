@@ -22,7 +22,7 @@ import { workspaceRoutes } from "./routes/workspace-routes.js";
 import { codocRoutes } from "./routes/codoc-routes.js";
 import { buildRoutes } from "./routes/build-routes.js";
 import { graphRoutes } from "./routes/graph-routes.js";
-import { chatRoutes } from "./routes/chat-routes.js";
+import { chatRoutes, type AgentRegistry } from "./routes/chat-routes.js";
 
 // ---------------------------------------------------------------------------
 // Database
@@ -52,11 +52,12 @@ const chatService = createChatService({ chatRepo, agentSessionRepo });
 const llmBaseURL = process.env["LLM_BASE_URL"];
 const llmApiKey = process.env["LLM_API_KEY"];
 const llmModel = process.env["LLM_MODEL"];
-const agent = createBaseAgent({
+const agents: AgentRegistry = new Map();
+agents.set("base", createBaseAgent({
   ...(llmBaseURL && { baseURL: llmBaseURL }),
   ...(llmApiKey && { apiKey: llmApiKey }),
   ...(llmModel && { model: llmModel }),
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Hono app
@@ -72,7 +73,7 @@ app.route("/api/workspace", workspaceRoutes(service, workspaceRepo));
 app.route("/api/workspace", codocRoutes(service, codocRepo));
 app.route("/api/workspace", buildRoutes(service));
 app.route("/api/workspace", graphRoutes(codocRepo, edgeRepo));
-app.route("/api/chat", chatRoutes(chatService, service, agent));
+app.route("/api/chat", chatRoutes(chatService, service, agents));
 
 // ---------------------------------------------------------------------------
 // Start

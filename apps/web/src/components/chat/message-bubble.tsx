@@ -2,7 +2,7 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, Wrench } from "lucide-react";
 
 interface ToolCall {
   toolName: string;
@@ -13,6 +13,7 @@ interface ToolCall {
 interface Props {
   role: "user" | "assistant";
   content: string;
+  agentId?: string | null;
   toolCalls?: ToolCall[];
   isStreaming?: boolean;
 }
@@ -59,7 +60,7 @@ function ToolCallChip({ tc }: { tc: ToolCall }) {
   );
 }
 
-export function MessageBubble({ role, content, toolCalls, isStreaming }: Props) {
+export function MessageBubble({ role, content, agentId, toolCalls, isStreaming }: Props) {
   if (role === "user") {
     return (
       <div className="flex justify-end">
@@ -73,6 +74,12 @@ export function MessageBubble({ role, content, toolCalls, isStreaming }: Props) 
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] space-y-2">
+        {agentId && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Bot className="h-3 w-3" />
+            <span>{agentId}</span>
+          </div>
+        )}
         {toolCalls && toolCalls.length > 0 && (
           <div className="space-y-0.5">
             {toolCalls.map((tc, i) => (

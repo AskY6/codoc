@@ -15,6 +15,8 @@ export type {
   Edge,
   ChatThread,
   ChatMessage,
+  ThreadCodoc,
+  ThreadAgent,
   AgentSession,
   WorkspaceRepository,
   CodocRepository,

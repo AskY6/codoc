@@ -14,6 +14,7 @@ interface ToolCall {
 interface StreamingState {
   text: string;
   toolCalls: ToolCall[];
+  agentId: string | null;
 }
 
 interface Props {
@@ -67,13 +68,14 @@ export function MessageList({ messages, streaming, onSuggest }: Props) {
         )}
 
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} role={msg.role} content={msg.content} />
+          <MessageBubble key={msg.id} role={msg.role} content={msg.content} agentId={msg.agentId} />
         ))}
 
         {streaming && (
           <MessageBubble
             role="assistant"
             content={streaming.text}
+            agentId={streaming.agentId}
             toolCalls={streaming.toolCalls}
             isStreaming
           />

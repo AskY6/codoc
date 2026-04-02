@@ -1,5 +1,5 @@
 import { apiFetch, apiSSE } from "./client.js";
-import type { ChatThread, ChatMessage } from "../types.js";
+import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo } from "../types.js";
 
 export function createThread(
   workspaceId: string,
@@ -19,6 +19,48 @@ export function getThread(
 
 export function listThreads(workspaceId: string): Promise<ChatThread[]> {
   return apiFetch(`/chat/threads?workspaceId=${workspaceId}`);
+}
+
+export function updateThread(
+  threadId: string,
+  data: { title?: string },
+): Promise<ChatThread> {
+  return apiFetch(`/chat/thread/${threadId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function setThreadCodocs(
+  threadId: string,
+  codocIds: string[],
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/chat/thread/${threadId}/codocs`, {
+    method: "PUT",
+    body: JSON.stringify({ codocIds }),
+  });
+}
+
+export function getThreadCodocs(threadId: string): Promise<ThreadCodoc[]> {
+  return apiFetch(`/chat/thread/${threadId}/codocs`);
+}
+
+export function setThreadAgents(
+  threadId: string,
+  agentIds: string[],
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/chat/thread/${threadId}/agents`, {
+    method: "PUT",
+    body: JSON.stringify({ agentIds }),
+  });
+}
+
+export function getThreadAgents(threadId: string): Promise<ThreadAgent[]> {
+  return apiFetch(`/chat/thread/${threadId}/agents`);
+}
+
+export function listAgents(): Promise<AgentInfo[]> {
+  return apiFetch("/chat/agents");
 }
 
 export function sendMessage(
