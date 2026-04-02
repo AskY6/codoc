@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, writeFile, mkdir, rm, readFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb, type Database } from "../src/db/client.js";
@@ -41,7 +41,7 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
     await db.delete(codocs);
     await db.delete(workspaces);
 
-    // Create temp workspace dir
+    // Create temp workspace dir (for cobook.yaml only)
     tmpDir = await mkdtemp(join(tmpdir(), "codoc-ws-"));
 
     service = createWorkspaceService({
@@ -60,30 +60,16 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
   // -----------------------------------------------------------------------
 
   describe("openWorkspace", () => {
-    it("scans codoc files and registers workspace", async () => {
+    it("reads cobook.yaml and registers workspace", async () => {
       await writeFile(join(tmpDir, "cobook.yaml"), "name: test-project\n");
-      await writeFile(
-        join(tmpDir, "a.codoc"),
-        "meta:\n  title: A\ndata:\n  x: 1\n",
-      );
-      await mkdir(join(tmpDir, "notes"));
-      await writeFile(
-        join(tmpDir, "notes", "b.codoc"),
-        "meta:\n  title: B\ndata:\n  y: hello\n",
-      );
 
       const ws = await service.openWorkspace(tmpDir);
 
       expect(ws.name).toBe("test-project");
       expect(ws.rootPath).toBe(tmpDir);
-
-      const status = await service.getStatus(ws.id);
-      expect(status.codocCount).toBe(2);
     });
 
     it("uses default name when cobook.yaml is missing", async () => {
-      await writeFile(join(tmpDir, "a.codoc"), "data:\n  x: 1\n");
-
       const ws = await service.openWorkspace(tmpDir);
       expect(ws.name).toBe("untitled");
     });
@@ -103,14 +89,14 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
 
   describe("getStatus", () => {
     it("returns state distribution", async () => {
-      await writeFile(join(tmpDir, "a.codoc"), "data:\n  x: 1\n");
-      await writeFile(join(tmpDir, "b.codoc"), "data:\n  y: 2\n");
-
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
       const ws = await service.openWorkspace(tmpDir);
-      const status = await service.getStatus(ws.id);
 
+      await service.createCodoc(ws.id, "a.codoc", "data:\n  x: 1\n");
+      await service.createCodoc(ws.id, "b.codoc", "data:\n  y: 2\n");
+
+      const status = await service.getStatus(ws.id);
       expect(status.codocCount).toBe(2);
-      expect(status.states["idle"]).toBe(2);
     });
   });
 
@@ -120,21 +106,21 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
 
   describe("build", () => {
     it("builds DAG from codocs with refs", async () => {
-      // C has static data, B refs C, A refs B
-      await writeFile(
-        join(tmpDir, "c.codoc"),
-        'data:\n  val: 100\n',
-      );
-      await writeFile(
-        join(tmpDir, "b.codoc"),
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(ws.id, "c.codoc", "data:\n  val: 100\n");
+      await service.createCodoc(
+        ws.id,
+        "b.codoc",
         'data:\n  val:\n    $ref: "./c.codoc#data.val"\n',
       );
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./b.codoc#data.val"\n',
       );
 
-      const ws = await service.openWorkspace(tmpDir);
       const diag = await service.build(ws.id);
 
       expect(diag.ok).toBe(true);
@@ -144,16 +130,20 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
     });
 
     it("reports cycle errors", async () => {
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./b.codoc#data.val"\n',
       );
-      await writeFile(
-        join(tmpDir, "b.codoc"),
+      await service.createCodoc(
+        ws.id,
+        "b.codoc",
         'data:\n  val:\n    $ref: "./a.codoc#data.val"\n',
       );
 
-      const ws = await service.openWorkspace(tmpDir);
       const diag = await service.build(ws.id);
 
       expect(diag.ok).toBe(false);
@@ -161,12 +151,15 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
     });
 
     it("reports broken ref errors", async () => {
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./missing.codoc#data.x"\n',
       );
 
-      const ws = await service.openWorkspace(tmpDir);
       const diag = await service.build(ws.id);
 
       expect(diag.ok).toBe(false);
@@ -180,37 +173,26 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
 
   describe("resolve", () => {
     it("resolves a static source node", async () => {
-      await writeFile(join(tmpDir, "a.codoc"), "data:\n  x: 42\n");
-
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
       const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(ws.id, "a.codoc", "data:\n  x: 42\n");
       await service.build(ws.id);
 
       const value = await service.resolve(ws.id, "a.codoc#data.x");
       expect(value).toBe(42);
     });
 
-    it("resolves a file source node", async () => {
-      await writeFile(join(tmpDir, "data.json"), JSON.stringify({ count: 7 }));
-      await writeFile(
-        join(tmpDir, "a.codoc"),
-        'data:\n  info:\n    $source: file\n    path: "./data.json"\n',
-      );
-
-      const ws = await service.openWorkspace(tmpDir);
-      await service.build(ws.id);
-
-      const value = await service.resolve(ws.id, "a.codoc#data.info");
-      expect(value).toEqual({ count: 7 });
-    });
-
     it("resolves a ref node (A refs B)", async () => {
-      await writeFile(join(tmpDir, "b.codoc"), "data:\n  val: hello\n");
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(ws.id, "b.codoc", "data:\n  val: hello\n");
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./b.codoc#data.val"\n',
       );
-
-      const ws = await service.openWorkspace(tmpDir);
       await service.build(ws.id);
 
       const value = await service.resolve(ws.id, "a.codoc#data.val");
@@ -218,17 +200,20 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
     });
 
     it("resolves a chain A→B→C", async () => {
-      await writeFile(join(tmpDir, "c.codoc"), "data:\n  val: 99\n");
-      await writeFile(
-        join(tmpDir, "b.codoc"),
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(ws.id, "c.codoc", "data:\n  val: 99\n");
+      await service.createCodoc(
+        ws.id,
+        "b.codoc",
         'data:\n  val:\n    $ref: "./c.codoc#data.val"\n',
       );
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./b.codoc#data.val"\n',
       );
-
-      const ws = await service.openWorkspace(tmpDir);
       await service.build(ws.id);
 
       const value = await service.resolve(ws.id, "a.codoc#data.val");
@@ -241,51 +226,45 @@ describeDb("WorkspaceService (PostgreSQL)", () => {
   // -----------------------------------------------------------------------
 
   describe("CRUD", () => {
-    it("createCodoc writes file and triggers build", async () => {
+    it("createCodoc persists to DB and triggers build", async () => {
       await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
       const ws = await service.openWorkspace(tmpDir);
 
       await service.createCodoc(ws.id, "new.codoc", "data:\n  x: 1\n");
 
-      // File exists on disk
-      const content = await readFile(join(tmpDir, "new.codoc"), "utf-8");
-      expect(content).toContain("x: 1");
-
-      // Queryable via getCodoc
       const info = await service.getCodoc(ws.id, "new.codoc");
       expect(info).toBeDefined();
       expect(info!.ast).toBeDefined();
     });
 
-    it("updateCodoc rewrites file and rebuilds", async () => {
-      await writeFile(join(tmpDir, "a.codoc"), "data:\n  x: 1\n");
+    it("updateCodoc updates DB and rebuilds", async () => {
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
       const ws = await service.openWorkspace(tmpDir);
 
+      await service.createCodoc(ws.id, "a.codoc", "data:\n  x: 1\n");
       await service.updateCodoc(ws.id, "a.codoc", "data:\n  x: 999\n");
-
-      const content = await readFile(join(tmpDir, "a.codoc"), "utf-8");
-      expect(content).toContain("x: 999");
 
       const info = await service.getCodoc(ws.id, "a.codoc");
       expect(info?.ast).toBeDefined();
     });
 
-    it("deleteCodoc removes file and detects broken refs", async () => {
-      await writeFile(join(tmpDir, "b.codoc"), "data:\n  val: 1\n");
-      await writeFile(
-        join(tmpDir, "a.codoc"),
+    it("deleteCodoc removes from DB and detects broken refs", async () => {
+      await writeFile(join(tmpDir, "cobook.yaml"), "name: ws\n");
+      const ws = await service.openWorkspace(tmpDir);
+
+      await service.createCodoc(ws.id, "b.codoc", "data:\n  val: 1\n");
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
         'data:\n  val:\n    $ref: "./b.codoc#data.val"\n',
       );
-      const ws = await service.openWorkspace(tmpDir);
       await service.build(ws.id);
 
       await service.deleteCodoc(ws.id, "b.codoc");
 
-      // b.codoc should be gone
       const info = await service.getCodoc(ws.id, "b.codoc");
       expect(info).toBeUndefined();
 
-      // Rebuild should detect broken ref from a → b
       const diag = await service.build(ws.id);
       expect(diag.errors.some((e) => e.kind === "broken-ref")).toBe(true);
     });

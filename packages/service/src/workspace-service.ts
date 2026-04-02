@@ -1,5 +1,5 @@
-import { readFile, writeFile, unlink, readdir, stat } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   parseCodoc,
@@ -76,25 +76,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     let ws = await workspaceRepo.findByPath(absDir);
     if (!ws) {
       ws = await workspaceRepo.create({ name, rootPath: absDir });
-    }
-
-    // Scan for .codoc files
-    const codocPaths = await scanCodocFiles(absDir);
-
-    for (const relPath of codocPaths) {
-      const absPath = resolve(absDir, relPath);
-      const content = await readFile(absPath, "utf-8");
-      let ast: CodocAST | null = null;
-      try {
-        ast = parseCodoc(content);
-      } catch {
-        // Store content even if parse fails; build will report the error
-      }
-      await codocRepo.upsert(ws.id, relPath, {
-        content,
-        ast: ast ?? undefined,
-        nodeState: "idle",
-      });
     }
 
     return ws;
@@ -194,9 +175,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   // -----------------------------------------------------------------------
 
   async function resolveNode(workspaceId: string, nodeId: string): Promise<unknown> {
-    const ws = await workspaceRepo.findById(workspaceId);
-    if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
-
     let dag = dagCache.get(workspaceId);
     if (!dag) {
       const result = await build(workspaceId);
@@ -246,7 +224,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
         case "source": {
           const source = toSource(field);
-          value = await executeSource(source, ws.rootPath);
+          value = await executeSource(source);
           break;
         }
       }
@@ -274,13 +252,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     path: string,
     content: string,
   ): Promise<void> {
-    const ws = await workspaceRepo.findById(workspaceId);
-    if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
-
-    // Write file to workspace directory
-    const absPath = resolve(ws.rootPath, path);
-    await writeFile(absPath, content, "utf-8");
-
     // Parse and persist
     let ast: CodocAST | undefined;
     try {
@@ -303,13 +274,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     path: string,
     newContent: string,
   ): Promise<void> {
-    const ws = await workspaceRepo.findById(workspaceId);
-    if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
-
-    // Write file
-    const absPath = resolve(ws.rootPath, path);
-    await writeFile(absPath, newContent, "utf-8");
-
     // Parse and persist
     let ast: CodocAST | undefined;
     try {
@@ -328,18 +292,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   }
 
   async function deleteCodocEntry(workspaceId: string, path: string): Promise<void> {
-    const ws = await workspaceRepo.findById(workspaceId);
-    if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
-
-    // Delete file
-    const absPath = resolve(ws.rootPath, path);
-    try {
-      await unlink(absPath);
-    } catch {
-      // File may already be gone
-    }
-
-    // Remove from DB
     await codocRepo.delete(workspaceId, path);
 
     // Rebuild to update DAG and detect broken refs
@@ -381,28 +333,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function scanCodocFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  const entries = await readdir(dir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const fullPath = resolve(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const nested = await scanCodocFiles(fullPath);
-      results.push(...nested);
-    } else if (entry.name.endsWith(".codoc")) {
-      results.push(relative(dir, fullPath));
-    }
-  }
-
-  return results;
-}
-
 function toSource(field: { source: string; params: Record<string, unknown> }): Source {
-  if (field.source === "file") {
-    return { type: "file", path: String(field.params["path"] ?? "") };
-  }
-  // Default: treat as static with params as value
   return { type: "static", value: field.params };
 }

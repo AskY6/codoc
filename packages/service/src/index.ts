@@ -29,7 +29,7 @@ export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service
 
 // Source executor
 export { executeSource } from "./source-executor.js";
-export type { Source, StaticSource, FileSource } from "./source-executor.js";
+export type { Source, StaticSource } from "./source-executor.js";
 
 // Chat service
 export { createChatService } from "./chat-service.js";
