@@ -89,7 +89,9 @@ function RenderNode({ node: rawNode, data }: Props) {
   switch (node.type) {
     case "text": {
       const content = (bound as string) ?? node.props?.content ?? "";
-      return <p className="text-sm text-foreground">{String(content)}</p>;
+      const str = String(content);
+      if (!str) return null;
+      return <p className="text-sm text-muted-foreground">{str}</p>;
     }
 
     case "markdown": {
@@ -142,7 +144,7 @@ function RenderNode({ node: rawNode, data }: Props) {
 
     case "stack":
       return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {node.children?.map((child, i) => (
             <RenderNode key={i} node={child} data={data} />
           ))}
@@ -188,12 +190,12 @@ function RenderNode({ node: rawNode, data }: Props) {
 
     case "timeline":
       return (
-        <div className="relative pl-6 space-y-4">
-          <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-border" />
+        <div className="relative pl-6 space-y-3">
+          <div className="absolute left-2 top-0 bottom-0 w-px bg-border" />
           {node.children?.map((child, i) => (
             <div key={i} className="relative">
-              <div className="absolute -left-4 top-1 h-3 w-3 rounded-full border-2 border-primary bg-background" />
-              <div className="rounded-lg border border-border bg-card p-3">
+              <div className="absolute -left-4 top-2.5 h-2 w-2 rounded-full bg-foreground/20" />
+              <div className="rounded-lg border border-border bg-card px-4 py-3">
                 <RenderNode node={child} data={data} />
               </div>
             </div>
@@ -212,7 +214,7 @@ function RenderNode({ node: rawNode, data }: Props) {
               </h3>
             </div>
           )}
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-2">
             {node.children?.map((child, i) => (
               <RenderNode key={i} node={child} data={data} />
             ))}
