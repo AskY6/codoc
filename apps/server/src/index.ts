@@ -75,7 +75,7 @@ app.route("/api/workspace", workspaceRoutes(service, workspaceRepo));
 app.route("/api/workspace", codocRoutes(service, codocRepo));
 app.route("/api/workspace", buildRoutes(service));
 app.route("/api/workspace", graphRoutes(codocRepo, edgeRepo));
-app.route("/api/chat", chatRoutes(chatService, service, agents));
+app.route("/api/chat", chatRoutes(chatService, service, agents, agentSessionRepo));
 
 // ---------------------------------------------------------------------------
 // Start

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { ChatService, WorkspaceService } from "@cobook/service";
+import type { ChatService, WorkspaceService, AgentSessionRepository } from "@cobook/service";
 import type { Agent, AgentMessage } from "@cobook/agent";
 
 export type AgentRegistry = Map<string, Agent>;
@@ -38,6 +38,7 @@ export function chatRoutes(
   chatService: ChatService,
   workspaceService: WorkspaceService,
   agents: AgentRegistry,
+  sessionRepo: AgentSessionRepository,
 ) {
   const app = new Hono();
 
@@ -191,6 +192,7 @@ export function chatRoutes(
         for await (const event of agent.run(agentMessages, {
           workspaceId: body.workspaceId,
           service: workspaceService,
+          sessionRepo,
         })) {
           switch (event.kind) {
             case "text-delta":

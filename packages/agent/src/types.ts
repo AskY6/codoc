@@ -1,4 +1,4 @@
-import type { WorkspaceService } from "@cobook/service";
+import type { WorkspaceService, AgentSessionRepository } from "@cobook/service";
 
 // ---------------------------------------------------------------------------
 // Chat events — yielded by agent.run() as an async iterable
@@ -18,6 +18,7 @@ export type ChatEvent =
 export interface AgentContext {
   workspaceId: string;
   service: WorkspaceService;
+  sessionRepo?: AgentSessionRepository;
 }
 
 // ---------------------------------------------------------------------------
