@@ -83,7 +83,7 @@ export function WorkspaceListPage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Workspaces</h1>
+        <h1 className="text-2xl font-medium">Workspaces</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger render={<Button />}>
             <Plus className="h-4 w-4 mr-2" />

@@ -47,7 +47,7 @@ export function CanvasPanel({ codocDetail, selectedPath, loading }: Props) {
         {/* Header */}
         <div className="mb-6">
           {codocDetail.ast?.meta?.title && (
-            <h1 className="text-xl font-semibold text-foreground mb-1">
+            <h1 className="text-xl font-medium text-foreground mb-1">
               {codocDetail.ast.meta.title}
             </h1>
           )}

@@ -115,7 +115,7 @@ export function ChatPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Separator orientation="vertical" className="h-5" />
-          <h1 className="font-semibold text-sm">
+          <h1 className="font-medium text-sm">
             {thread?.title ?? "Untitled chat"}
           </h1>
         </div>

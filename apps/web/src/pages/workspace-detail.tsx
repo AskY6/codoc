@@ -85,7 +85,7 @@ export function WorkspaceDetailPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <Separator orientation="vertical" className="h-5" />
-            <h1 className="text-xl font-semibold">{workspace?.name}</h1>
+            <h1 className="text-xl font-medium">{workspace?.name}</h1>
           </div>
           <Button size="sm" onClick={handleNewThread}>
             <Plus className="h-4 w-4 mr-1.5" />
@@ -115,7 +115,7 @@ export function WorkspaceDetailPage() {
           {/* Chat List */}
           <section>
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                 Chats
               </h2>
             </div>
@@ -164,7 +164,7 @@ export function WorkspaceDetailPage() {
           <section>
             <Tabs defaultValue="list">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                   Codocs
                 </h2>
                 <TabsList>
