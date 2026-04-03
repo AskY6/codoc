@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, type KeyboardEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ResizableHandle,
@@ -16,8 +16,10 @@ import {
   listAgents,
   setThreadCodocs,
   setThreadAgents,
+  updateThread,
 } from "@/api/chat.js";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import type { ChatPanelHandle } from "@/components/chat/chat-panel";
 import { CanvasPanel } from "@/components/canvas/canvas-panel";
 import { AgentSelector } from "@/components/agent-selector";
 import { CodocSubsetSelector } from "@/components/codoc-subset-selector";
@@ -28,6 +30,7 @@ import type {
   CodocDetail,
   ChatThread,
   AgentInfo,
+  ViewAction,
 } from "@/types.js";
 
 export function ChatPage() {
@@ -46,6 +49,9 @@ export function ChatPage() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [codocDetail, setCodocDetail] = useState<CodocDetail | null>(null);
   const [codocLoading, setCodocLoading] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const chatRef = useRef<ChatPanelHandle>(null);
 
   useEffect(() => {
     if (!workspaceId || !threadId) return;
@@ -95,11 +101,45 @@ export function ChatPage() {
       await setThreadCodocs(threadId, codocIds);
       // Auto-view first codoc when canvas is empty
       if (!selectedPath && codocIds.length > 0) {
-        setSelectedPath(codocIds[0]!);
+        const first = codocs.find((c) => c.id === codocIds[0]);
+        if (first) setSelectedPath(first.path);
       }
     },
-    [threadId, selectedPath],
+    [threadId, selectedPath, codocs],
   );
+
+  const handleTitleClick = useCallback(() => {
+    setTitleDraft(thread?.title ?? "");
+    setEditingTitle(true);
+  }, [thread?.title]);
+
+  const handleTitleSave = useCallback(async () => {
+    setEditingTitle(false);
+    if (!threadId) return;
+    const trimmed = titleDraft.trim();
+    if (trimmed !== (thread?.title ?? "")) {
+      const updated = await updateThread(threadId, trimmed ? { title: trimmed } : {});
+      setThread(updated);
+    }
+  }, [threadId, titleDraft, thread?.title]);
+
+  const handleTitleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") handleTitleSave();
+      if (e.key === "Escape") setEditingTitle(false);
+    },
+    [handleTitleSave],
+  );
+
+  const handleTitleUpdate = useCallback((title: string) => {
+    setThread((prev) => prev ? { ...prev, title } : prev);
+  }, []);
+
+  const handleViewAction = useCallback((action: ViewAction) => {
+    if (action.type === "chat") {
+      chatRef.current?.send(action.prompt);
+    }
+  }, []);
 
   if (!workspaceId || !threadId) return null;
 
@@ -117,9 +157,23 @@ export function ChatPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Separator orientation="vertical" className="h-5" />
-          <h1 className="font-medium text-sm">
-            {thread?.title ?? "Untitled chat"}
-          </h1>
+          {editingTitle ? (
+            <input
+              className="font-medium text-sm bg-transparent border-b border-foreground/30 outline-none px-0.5"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={handleTitleSave}
+              onKeyDown={handleTitleKeyDown}
+              autoFocus
+            />
+          ) : (
+            <button
+              className="font-medium text-sm hover:text-foreground/70 transition-colors cursor-text"
+              onClick={handleTitleClick}
+            >
+              {thread?.title ?? "Untitled chat"}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <AgentSelector
@@ -139,10 +193,12 @@ export function ChatPage() {
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel defaultSize={55} minSize={30}>
           <ChatPanel
+            ref={chatRef}
             workspaceId={workspaceId}
             threadId={threadId}
             selectedPath={selectedPath}
             onClearContext={handleClearContext}
+            onTitleUpdate={handleTitleUpdate}
           />
         </ResizablePanel>
 
@@ -154,6 +210,7 @@ export function ChatPage() {
             codocDetail={codocDetail}
             selectedPath={selectedPath}
             onSelectPath={setSelectedPath}
+            onAction={handleViewAction}
             loading={codocLoading}
           />
         </ResizablePanel>

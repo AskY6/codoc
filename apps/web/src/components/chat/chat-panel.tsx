@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import { getThread, sendMessage } from "@/api/chat.js";
 import {
   Conversation,
@@ -23,11 +23,16 @@ import { Badge } from "@/components/ui/badge";
 import { Bot, CopyIcon, MessageSquare, X } from "lucide-react";
 import type { ChatMessage } from "@/types.js";
 
+export interface ChatPanelHandle {
+  send: (text: string) => void;
+}
+
 interface Props {
   workspaceId: string;
   threadId: string;
   selectedPath: string | null;
   onClearContext?: () => void;
+  onTitleUpdate?: (title: string) => void;
 }
 
 interface ToolCall {
@@ -42,7 +47,10 @@ interface StreamingState {
   agentId: string | null;
 }
 
-export function ChatPanel({ workspaceId, threadId, selectedPath, onClearContext }: Props) {
+export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
+  { workspaceId, threadId, selectedPath, onClearContext, onTitleUpdate },
+  ref,
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
   const [sending, setSending] = useState(false);
@@ -137,6 +145,11 @@ export function ChatPanel({ workspaceId, threadId, selectedPath, onClearContext 
               setSending(false);
               break;
             }
+            case "title-update":
+              if (onTitleUpdate && d.title) {
+                onTitleUpdate(d.title as string);
+              }
+              break;
             case "error":
               setStreaming(null);
               setSending(false);
@@ -154,6 +167,8 @@ export function ChatPanel({ workspaceId, threadId, selectedPath, onClearContext 
     setStreaming(null);
     setSending(false);
   }, []);
+
+  useImperativeHandle(ref, () => ({ send: handleSend }), [handleSend]);
 
   const chatStatus = sending
     ? streaming?.text
@@ -252,4 +267,4 @@ export function ChatPanel({ workspaceId, threadId, selectedPath, onClearContext 
       </div>
     </div>
   );
-}
+});

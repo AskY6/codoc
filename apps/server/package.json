@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@cobook/agent": "workspace:*",
     "@cobook/service": "workspace:*",
     "@hono/node-server": "^1.13.0",

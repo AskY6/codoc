@@ -17,6 +17,7 @@ export interface ChatService {
   getThread(threadId: string): Promise<{ thread: ChatThread; messages: ChatMessage[] } | undefined>;
   listThreads(workspaceId: string): Promise<ChatThread[]>;
   updateThread(threadId: string, data: { title?: string }): Promise<ChatThread>;
+  deleteThread(threadId: string): Promise<void>;
   addMessage(threadId: string, msg: { role: string; content: string; agentId?: string }): Promise<ChatMessage>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
   setThreadCodocs(threadId: string, codocIds: string[]): Promise<void>;
@@ -55,6 +56,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     async updateThread(threadId, data) {
       return chatRepo.updateThread(threadId, data);
+    },
+
+    async deleteThread(threadId) {
+      return chatRepo.deleteThread(threadId);
     },
 
     async addMessage(threadId, msg) {

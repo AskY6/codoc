@@ -105,6 +105,7 @@ export interface ChatRepository {
   getThread(threadId: string): Promise<ChatThread | undefined>;
   listThreads(workspaceId: string): Promise<ChatThread[]>;
   updateThread(threadId: string, data: { title?: string }): Promise<ChatThread>;
+  deleteThread(threadId: string): Promise<void>;
   addMessage(
     threadId: string,
     msg: { role: string; content: string; agentId?: string },

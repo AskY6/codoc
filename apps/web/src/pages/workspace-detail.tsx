@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { getWorkspace, getWorkspaceStatus } from "@/api/workspace.js";
-import { listCodocs } from "@/api/codoc.js";
+import { listCodocs, getCodoc } from "@/api/codoc.js";
 import { getGraph } from "@/api/graph.js";
-import { listThreads, createThread } from "@/api/chat.js";
+import { listThreads, createThread, setThreadCodocs, deleteThread } from "@/api/chat.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,18 +11,28 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/status-badge";
+import { CodocViewer } from "@/components/codoc-viewer";
 import {
   ArrowLeft,
   Plus,
   MessageSquare,
   FileText,
   FolderOpen,
+  Eye,
+  Trash2,
 } from "lucide-react";
 import type {
   Workspace,
   WorkspaceStatus,
   CodocListItem,
+  CodocDetail,
   ChatThread,
   GraphData,
 } from "@/types.js";
@@ -39,6 +49,13 @@ export function WorkspaceDetailPage() {
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // View dialog state
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [viewCodoc, setViewCodoc] = useState<CodocDetail | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
   useEffect(() => {
     if (!workspaceId) return;
     Promise.all([
@@ -54,6 +71,39 @@ export function WorkspaceDetailPage() {
     if (!workspaceId) return;
     const thread = await createThread(workspaceId);
     navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
+  }
+
+  async function handleNewChatWithCodoc(codocId: string) {
+    if (!workspaceId) return;
+    const thread = await createThread(workspaceId);
+    await setThreadCodocs(thread.id, [codocId]);
+    navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
+  }
+
+  function handleDeleteThread(e: React.MouseEvent, threadId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirmDeleteId === threadId) {
+      deleteThread(threadId).then(() => {
+        setThreads((prev) => prev.filter((t) => t.id !== threadId));
+      });
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(threadId);
+    }
+  }
+
+  async function handleViewCodoc(codocPath: string) {
+    if (!workspaceId) return;
+    setViewDialogOpen(true);
+    setViewLoading(true);
+    setViewCodoc(null);
+    try {
+      const detail = await getCodoc(workspaceId, codocPath);
+      setViewCodoc(detail);
+    } finally {
+      setViewLoading(false);
+    }
   }
 
   if (!workspaceId) return null;
@@ -136,7 +186,7 @@ export function WorkspaceDetailPage() {
                       key={t.id}
                       to={`/workspace/${workspaceId}/chat/${t.id}`}
                     >
-                      <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                      <Card className="group hover:shadow-md transition-shadow cursor-pointer">
                         <CardHeader className="py-3 px-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 min-w-0">
@@ -149,6 +199,27 @@ export function WorkspaceDetailPage() {
                               <span className="text-xs text-muted-foreground">
                                 {new Date(t.updatedAt).toLocaleDateString()}
                               </span>
+                              {confirmDeleteId === t.id ? (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-6 text-xs px-2"
+                                  onClick={(e) => handleDeleteThread(e, t.id)}
+                                  onBlur={() => setConfirmDeleteId(null)}
+                                >
+                                  Delete?
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => handleDeleteThread(e, t.id)}
+                                  title="Delete chat"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </CardHeader>
@@ -186,10 +257,28 @@ export function WorkspaceDetailPage() {
                         {codocs.map((c) => (
                           <div
                             key={c.path}
-                            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
+                            className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
                           >
                             <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="truncate flex-1">{c.path}</span>
+                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => handleViewCodoc(c.path)}
+                                title="View"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => handleNewChatWithCodoc(c.id)}
+                                title="New chat"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                             <StatusBadge state={c.nodeState} />
                           </div>
                         ))}
@@ -214,6 +303,24 @@ export function WorkspaceDetailPage() {
           </section>
         </div>
       </div>
+
+      {/* View Codoc Dialog */}
+      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewCodoc?.ast?.meta?.title ?? viewCodoc?.path ?? "Codoc"}</DialogTitle>
+          </DialogHeader>
+          {viewLoading ? (
+            <div className="space-y-4 py-4">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-72" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          ) : viewCodoc ? (
+            <CodocViewer codoc={viewCodoc} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

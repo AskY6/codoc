@@ -31,6 +31,10 @@ export function updateThread(
   });
 }
 
+export function deleteThread(threadId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/chat/thread/${threadId}`, { method: "DELETE" });
+}
+
 export function setThreadCodocs(
   threadId: string,
   codocIds: string[],

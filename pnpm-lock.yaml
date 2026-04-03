@@ -45,6 +45,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.82.0
+        version: 0.82.0(zod@3.25.76)
       '@cobook/agent':
         specifier: workspace:*
         version: link:../../packages/agent

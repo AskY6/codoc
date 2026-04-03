@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import Anthropic from "@anthropic-ai/sdk";
 import type { ChatService, WorkspaceService, AgentSessionRepository } from "@cobook/service";
 import type { Agent, AgentMessage } from "@cobook/agent";
 
@@ -32,6 +33,29 @@ function resolveAgent(
     if (agent) return { agentId: targetAgentId, agent };
   }
   return { agentId: defaultAgentId, agent: agents.get(defaultAgentId)! };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-generate a short title from the first user+assistant exchange.
+// Fire-and-forget — failures are silently ignored.
+// ---------------------------------------------------------------------------
+
+const titleClient = new Anthropic();
+
+async function generateTitle(userMsg: string, assistantMsg: string): Promise<string> {
+  const res = await titleClient.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 40,
+    messages: [
+      {
+        role: "user",
+        content: `Generate a very short title (max 6 words, no quotes) for this conversation:\n\nUser: ${userMsg}\n\nAssistant: ${assistantMsg.slice(0, 300)}`,
+      },
+    ],
+  });
+  const block = res.content[0];
+  if (block?.type === "text") return block.text.trim();
+  return "";
 }
 
 export function chatRoutes(
@@ -95,6 +119,17 @@ export function chatRoutes(
     try {
       const thread = await chatService.updateThread(threadId, body);
       return c.json(thread);
+    } catch (err) {
+      return c.json({ error: String(err) }, 500);
+    }
+  });
+
+  // DELETE /api/chat/thread/:id — delete a thread
+  app.delete("/thread/:id", async (c) => {
+    const threadId = c.req.param("id");
+    try {
+      await chatService.deleteThread(threadId);
+      return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: String(err) }, 500);
     }
@@ -178,6 +213,10 @@ export function chatRoutes(
     // Resolve which agent handles this message
     const { agentId, agent } = resolveAgent(agents, defaultAgentId, targetAgentId);
 
+    // Check if this thread needs an auto-generated title
+    const threadData = await chatService.getThread(threadId);
+    const needsTitle = threadData != null && threadData.thread.title == null;
+
     // Load history
     const history = await chatService.getMessages(threadId);
     const agentMessages: AgentMessage[] = history.map((m) => ({
@@ -187,6 +226,7 @@ export function chatRoutes(
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
+      let titlePromise: Promise<void> | undefined;
 
       try {
         for await (const event of agent.run(agentMessages, {
@@ -209,6 +249,17 @@ export function chatRoutes(
               // Persist assistant message with agent attribution
               await chatService.addMessage(threadId, { role: "assistant", content: event.fullText, agentId });
               await stream.writeSSE({ event: "done", data: JSON.stringify({ fullText: event.fullText, agentId }) });
+              // Auto-generate title from first exchange
+              if (needsTitle) {
+                titlePromise = generateTitle(content, event.fullText)
+                  .then(async (title) => {
+                    if (title) {
+                      await chatService.updateThread(threadId, { title });
+                      await stream.writeSSE({ event: "title-update", data: JSON.stringify({ title }) });
+                    }
+                  })
+                  .catch(() => {});
+              }
               break;
             case "error":
               await stream.writeSSE({ event: "error", data: JSON.stringify({ message: event.message, agentId }) });
@@ -221,6 +272,8 @@ export function chatRoutes(
         }
         await stream.writeSSE({ event: "error", data: JSON.stringify({ message: String(err), agentId }) });
       }
+      // Wait for title generation before closing the stream
+      if (titlePromise) await titlePromise;
     });
   });
 

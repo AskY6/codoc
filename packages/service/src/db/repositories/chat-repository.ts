@@ -37,6 +37,10 @@ export function createChatRepository(db: Database): ChatRepository {
       return row as ChatThread;
     },
 
+    async deleteThread(threadId) {
+      await db.delete(chatThreads).where(eq(chatThreads.id, threadId));
+    },
+
     async addMessage(threadId, msg) {
       const [row] = await db
         .insert(chatMessages)
