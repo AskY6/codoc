@@ -17,7 +17,7 @@ import {
   createWorkspaceService,
   createChatService,
 } from "@cobook/service";
-import { createBaseAgent } from "@cobook/agent";
+import { createBaseAgent, createRssAgent } from "@cobook/agent";
 import { workspaceRoutes } from "./routes/workspace-routes.js";
 import { codocRoutes } from "./routes/codoc-routes.js";
 import { buildRoutes } from "./routes/build-routes.js";
@@ -53,11 +53,13 @@ const llmBaseURL = process.env["LLM_BASE_URL"];
 const llmApiKey = process.env["LLM_API_KEY"];
 const llmModel = process.env["LLM_MODEL"];
 const agents: AgentRegistry = new Map();
-agents.set("base", createBaseAgent({
+const llmConfig = {
   ...(llmBaseURL && { baseURL: llmBaseURL }),
   ...(llmApiKey && { apiKey: llmApiKey }),
   ...(llmModel && { model: llmModel }),
-}));
+};
+agents.set("base", createBaseAgent(llmConfig));
+agents.set("rss", createRssAgent(llmConfig));
 
 // ---------------------------------------------------------------------------
 // Hono app

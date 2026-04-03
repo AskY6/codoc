@@ -17,6 +17,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
     "@cobook/service": "workspace:*",
+    "rss-parser": "^3.13.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {

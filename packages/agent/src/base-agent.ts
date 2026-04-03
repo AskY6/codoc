@@ -6,7 +6,7 @@ import type { Agent, AgentContext, AgentMessage, ChatEvent, LLMConfig } from "./
 // System prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are the Cobook assistant — a helpful AI that operates within a Cobook workspace.
+const DEFAULT_SYSTEM_PROMPT = `You are the Cobook assistant — a helpful AI that operates within a Cobook workspace.
 
 A Cobook workspace contains .codoc files (YAML-based documents with meta, data, and view sections) that form a dependency graph (DAG). You can:
 
@@ -19,17 +19,40 @@ A Cobook workspace contains .codoc files (YAML-based documents with meta, data, 
 When the user asks about their workspace, use the tools to get accurate information rather than guessing. Be concise and helpful. When creating or updating codocs, generate valid YAML content that follows the codoc format.`;
 
 // ---------------------------------------------------------------------------
+// Tool executor type — allows agents to provide custom executors
+// ---------------------------------------------------------------------------
+
+export type ToolExecutor = (
+  name: string,
+  input: Record<string, unknown>,
+  ctx: AgentContext,
+) => Promise<unknown>;
+
+// ---------------------------------------------------------------------------
+// Agent config — extends LLM config with agent-specific options
+// ---------------------------------------------------------------------------
+
+export interface AgentConfig extends LLMConfig {
+  systemPrompt?: string;
+  tools?: Anthropic.Tool[];
+  toolExecutor?: ToolExecutor;
+}
+
+// ---------------------------------------------------------------------------
 // Base agent factory
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
-export function createBaseAgent(config?: LLMConfig): Agent {
+export function createBaseAgent(config?: AgentConfig): Agent {
   const client = new Anthropic({
     ...(config?.baseURL && { baseURL: config.baseURL }),
     ...(config?.apiKey && { apiKey: config.apiKey }),
   });
   const model = config?.model ?? DEFAULT_MODEL;
+  const systemPrompt = config?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+  const tools = config?.tools ?? toolDefinitions;
+  const runTool = config?.toolExecutor ?? executeTool;
 
   return {
     async *run(
@@ -46,45 +69,28 @@ export function createBaseAgent(config?: LLMConfig): Agent {
 
       // Tool-call loop: keep calling the LLM until it produces a final text response
       while (toolCallCount < MAX_TOOL_CALLS) {
-        let fullText = "";
-        const toolUseBlocks: Array<{
-          id: string;
-          name: string;
-          input: Record<string, unknown>;
-        }> = [];
-
         try {
-          const stream = client.messages.stream({
+          const response = await client.messages.create({
             model,
             max_tokens: 4096,
-            system: SYSTEM_PROMPT,
-            tools: toolDefinitions,
+            system: systemPrompt,
+            tools,
             messages: anthropicMessages,
           });
 
-          for await (const event of stream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
-              fullText += event.delta.text;
-              yield { kind: "text-delta", text: event.delta.text };
-            }
+          // Extract text and tool_use blocks from response
+          let fullText = "";
+          const toolUseBlocks: Array<{
+            id: string;
+            name: string;
+            input: Record<string, unknown>;
+          }> = [];
 
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "input_json_delta"
-            ) {
-              // Accumulate tool input JSON — handled at message_stop
-            }
-          }
-
-          // Get the final message to check for tool use
-          const finalMessage = await stream.finalMessage();
-
-          // Collect tool_use blocks
-          for (const block of finalMessage.content) {
-            if (block.type === "tool_use") {
+          for (const block of response.content) {
+            if (block.type === "text") {
+              fullText += block.text;
+              yield { kind: "text-delta", text: block.text };
+            } else if (block.type === "tool_use") {
               toolUseBlocks.push({
                 id: block.id,
                 name: block.name,
@@ -102,7 +108,7 @@ export function createBaseAgent(config?: LLMConfig): Agent {
           // Execute tool calls and build tool results
           anthropicMessages.push({
             role: "assistant",
-            content: finalMessage.content,
+            content: response.content,
           });
 
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -113,7 +119,7 @@ export function createBaseAgent(config?: LLMConfig): Agent {
 
             let result: unknown;
             try {
-              result = await executeTool(tool.name, tool.input, ctx);
+              result = await runTool(tool.name, tool.input, ctx);
             } catch (err) {
               result = { error: String(err) };
             }
@@ -132,9 +138,6 @@ export function createBaseAgent(config?: LLMConfig): Agent {
             role: "user",
             content: toolResults,
           });
-
-          // Reset fullText for next iteration
-          fullText = "";
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           yield { kind: "error", message };
