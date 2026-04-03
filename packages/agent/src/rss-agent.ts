@@ -228,7 +228,7 @@ async function executeRssTool(
 // ---------------------------------------------------------------------------
 
 const CODOC_TOOLS = toolDefinitions.filter((t) =>
-  t.name === "createCodoc" || t.name === "updateCodoc",
+  t.name === "listCodocs" || t.name === "getCodoc" || t.name === "createCodoc" || t.name === "updateCodoc",
 );
 
 const RSS_SYSTEM_PROMPT = `You are an RSS reading assistant within a Cobook workspace.
@@ -252,13 +252,123 @@ Users can subscribe to feeds for quick access. Use manageRssFeeds to add/remove/
 - Summarise the full article — highlight key insights, arguments, and takeaways.
 - The user may discuss, ask follow-up questions, or request deeper analysis.
 
-### Saving
-- When the user says "save" or "沉淀", use createCodoc to persist the summary as a .codoc file.
+### Saving to codoc (RSS reading panel)
+When the user says "save" / "沉淀" / "保存", persist the feed as a **structured codoc with a view** so it renders as an RSS reading panel in the canvas.
+
+#### Single feed codoc
+Use createCodoc with path \`rss/<alias-or-slug>.codoc\`. The YAML **must** follow this structure:
+
+\`\`\`yaml
+meta:
+  title: "<feed title>"
+  tags: [rss]
+  description: "<feed URL>"
+
+data:
+  feedTitle: "<feed title>"
+  feedUrl: "<feed URL>"
+  lastFetchedAt: "<ISO timestamp>"
+  articles:
+    - title: "<article title>"
+      link: "<article URL>"
+      pubDate: "<date>"
+      summary: "<one-line summary>"
+      isNew: true
+
+view:
+  type: stack
+  children:
+    - type: section
+      props:
+        title: null
+      children:
+        - type: text
+          bind: data.feedTitle
+        - type: text
+          bind: data.lastFetchedAt
+    - type: timeline
+      repeat:
+        bind: data.articles
+        as: item
+      template:
+        type: stack
+        children:
+          - type: text
+            props:
+              content: "{{item.pubDate}}"
+          - type: markdown
+            props:
+              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+\`\`\`
+
+Key rules:
+- \`meta.description\` stores the feed URL (used to match subscriptions to codocs).
+- \`data.articles\` is an array; the view uses \`repeat\` to render each item — never hardcode articles into the view children.
+- Always set \`lastFetchedAt\` to the current time.
+
+#### Refreshing a feed codoc
+When the user says "刷新" / "refresh":
+1. Use listCodocs to find existing \`rss/*.codoc\` files.
+2. Match the target feed by \`meta.description\` (feed URL) or path.
+3. Call fetchRssFeed to get fresh data.
+4. Call updateCodoc with the updated \`data\` section (same view structure, new articles + timestamp).
+   The view uses repeat/template so it does NOT need to change when articles change.
+
+#### RSS Dashboard (multi-feed aggregation)
+When the user has multiple feed codocs and asks for a dashboard or overview:
+- Create/update \`rss/dashboard.codoc\` that uses \`$ref\` to pull articles from each feed codoc:
+
+\`\`\`yaml
+meta:
+  title: "RSS Dashboard"
+  tags: [rss, dashboard]
+
+data:
+  feed1:
+    $ref: "rss/tech.codoc#data.articles"
+  feed2:
+    $ref: "rss/design.codoc#data.articles"
+
+view:
+  type: tabs
+  children:
+    - type: timeline
+      props:
+        label: "Tech"
+      repeat:
+        bind: data.feed1
+        as: item
+      template:
+        type: stack
+        children:
+          - type: text
+            props:
+              content: "{{item.pubDate}}"
+          - type: markdown
+            props:
+              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+    - type: timeline
+      props:
+        label: "Design"
+      repeat:
+        bind: data.feed2
+        as: item
+      template:
+        type: stack
+        children:
+          - type: text
+            props:
+              content: "{{item.pubDate}}"
+          - type: markdown
+            props:
+              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+\`\`\`
 
 ## Guidelines
 - Be concise. Bullet points over paragraphs.
 - Summarise in the same language as the source content, unless the user asks otherwise.
-- When creating a codoc, use valid YAML with meta (title, tags) and data sections.`;
+- When creating a codoc, use valid YAML with meta (title, tags) and data sections.
+- Always use the \`repeat\` + \`template\` view pattern for article lists. Never expand articles into static view children.`;
 
 export function createRssAgent(config?: LLMConfig): Agent {
   return createBaseAgent({
