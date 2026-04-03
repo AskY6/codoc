@@ -189,14 +189,18 @@ export function chatRoutes(
 
   // GET /api/chat/agents — list available agents
   app.get("/agents", (c) => {
-    const list = [...agents.keys()].map((id) => ({ id }));
+    const list = [...agents.entries()].map(([id, agent]) => ({
+      id,
+      name: agent.name,
+      description: agent.description,
+    }));
     return c.json(list);
   });
 
   // POST /api/chat/thread/:id/message — send message, stream response via SSE
   app.post("/thread/:id/message", async (c) => {
     const threadId = c.req.param("id");
-    const body = await c.req.json<{ content: string; workspaceId: string }>();
+    const body = await c.req.json<{ content: string; workspaceId: string; targetAgentId?: string }>();
     if (!body.content) {
       return c.json({ error: "content is required" }, 400);
     }
@@ -204,14 +208,16 @@ export function chatRoutes(
       return c.json({ error: "workspaceId is required" }, 400);
     }
 
-    // Parse @mention from message start
-    const { targetAgentId, content } = parseAtMention(body.content);
+    // Resolve target agent: explicit field takes priority, then @mention parsing
+    const parsed = parseAtMention(body.content);
+    const effectiveTargetId = body.targetAgentId ?? parsed.targetAgentId;
+    const content = parsed.content;
 
     // Persist user message (with original content including @mention)
     await chatService.addMessage(threadId, { role: "user", content: body.content });
 
     // Resolve which agent handles this message
-    const { agentId, agent } = resolveAgent(agents, defaultAgentId, targetAgentId);
+    const { agentId, agent } = resolveAgent(agents, defaultAgentId, effectiveTargetId);
 
     // Check if this thread needs an auto-generated title
     const threadData = await chatService.getThread(threadId);

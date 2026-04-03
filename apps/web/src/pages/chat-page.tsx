@@ -196,6 +196,7 @@ export function ChatPage() {
             ref={chatRef}
             workspaceId={workspaceId}
             threadId={threadId}
+            agents={agents}
             selectedPath={selectedPath}
             onClearContext={handleClearContext}
             onTitleUpdate={handleTitleUpdate}

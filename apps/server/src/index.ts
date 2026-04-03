@@ -58,7 +58,11 @@ const llmConfig = {
   ...(llmApiKey && { apiKey: llmApiKey }),
   ...(llmModel && { model: llmModel }),
 };
-agents.set("base", createBaseAgent(llmConfig));
+agents.set("base", createBaseAgent({
+  ...llmConfig,
+  name: "Cobook Assistant",
+  description: "General workspace assistant — manage codocs, answer questions, and build knowledge",
+}));
 agents.set("rss", createRssAgent(llmConfig));
 
 // ---------------------------------------------------------------------------

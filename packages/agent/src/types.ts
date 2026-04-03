@@ -37,6 +37,8 @@ export interface LLMConfig {
 }
 
 export interface Agent {
+  name: string;
+  description: string;
   run(
     messages: AgentMessage[],
     ctx: AgentContext,

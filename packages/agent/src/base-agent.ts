@@ -33,6 +33,8 @@ export type ToolExecutor = (
 // ---------------------------------------------------------------------------
 
 export interface AgentConfig extends LLMConfig {
+  name?: string;
+  description?: string;
   systemPrompt?: string;
   tools?: Anthropic.Tool[];
   toolExecutor?: ToolExecutor;
@@ -55,6 +57,8 @@ export function createBaseAgent(config?: AgentConfig): Agent {
   const runTool = config?.toolExecutor ?? executeTool;
 
   return {
+    name: config?.name ?? "Assistant",
+    description: config?.description ?? "General-purpose assistant",
     async *run(
       messages: AgentMessage[],
       ctx: AgentContext,

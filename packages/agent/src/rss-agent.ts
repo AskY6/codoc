@@ -382,6 +382,8 @@ view:
 export function createRssAgent(config?: LLMConfig): Agent {
   return createBaseAgent({
     ...config,
+    name: "RSS Reader",
+    description: "Subscribe to RSS feeds, read articles, and save summaries to codocs",
     systemPrompt: RSS_SYSTEM_PROMPT,
     tools: [...rssToolDefinitions, ...CODOC_TOOLS],
     toolExecutor: executeRssTool,

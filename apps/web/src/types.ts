@@ -111,6 +111,8 @@ export interface ThreadAgent {
 
 export interface AgentInfo {
   id: string;
+  name: string;
+  description: string;
 }
 
 export interface ChatMessage {

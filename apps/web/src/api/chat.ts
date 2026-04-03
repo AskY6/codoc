@@ -72,6 +72,11 @@ export function sendMessage(
   workspaceId: string,
   content: string,
   onEvent: (eventType: string, data: unknown) => void,
+  targetAgentId?: string,
 ): AbortController {
-  return apiSSE(`/chat/thread/${threadId}/message`, { content, workspaceId }, onEvent);
+  return apiSSE(
+    `/chat/thread/${threadId}/message`,
+    { content, workspaceId, ...(targetAgentId && { targetAgentId }) },
+    onEvent,
+  );
 }
