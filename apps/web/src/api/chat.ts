@@ -1,13 +1,13 @@
 import { apiFetch, apiSSE } from "./client.js";
-import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo } from "../types.js";
+import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo, WorkspaceAgent } from "../types.js";
 
 export function createThread(
   workspaceId: string,
-  title?: string,
+  options?: { title?: string; agentIds?: string[]; codocIds?: string[] },
 ): Promise<ChatThread> {
   return apiFetch("/chat/thread", {
     method: "POST",
-    body: JSON.stringify({ workspaceId, title }),
+    body: JSON.stringify({ workspaceId, ...options }),
   });
 }
 
@@ -65,6 +65,20 @@ export function getThreadAgents(threadId: string): Promise<ThreadAgent[]> {
 
 export function listAgents(): Promise<AgentInfo[]> {
   return apiFetch("/chat/agents");
+}
+
+export function getWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]> {
+  return apiFetch(`/chat/workspace/${workspaceId}/agents`);
+}
+
+export function setWorkspaceAgents(
+  workspaceId: string,
+  agentIds: string[],
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/chat/workspace/${workspaceId}/agents`, {
+    method: "PUT",
+    body: JSON.stringify({ agentIds }),
+  });
 }
 
 export function sendMessage(

@@ -115,6 +115,13 @@ export interface AgentInfo {
   description: string;
 }
 
+export interface WorkspaceAgent {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   threadId: string;

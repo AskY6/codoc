@@ -100,6 +100,13 @@ export interface ThreadAgent {
   createdAt: Date;
 }
 
+export interface WorkspaceAgent {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  createdAt: Date;
+}
+
 export interface ChatRepository {
   createThread(workspaceId: string, title?: string): Promise<ChatThread>;
   getThread(threadId: string): Promise<ChatThread | undefined>;
@@ -115,6 +122,8 @@ export interface ChatRepository {
   getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;
   setThreadAgents(threadId: string, agentIds: string[]): Promise<void>;
   getThreadAgents(threadId: string): Promise<ThreadAgent[]>;
+  setWorkspaceAgents(workspaceId: string, agentIds: string[]): Promise<void>;
+  getWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]>;
 }
 
 export interface AgentSessionRepository {

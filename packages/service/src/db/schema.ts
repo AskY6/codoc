@@ -117,6 +117,23 @@ export const threadCodocs = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// workspace_agents (default agent set for a workspace)
+// ---------------------------------------------------------------------------
+
+export const workspaceAgents = pgTable(
+  "workspace_agents",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("workspace_agents_ws_agent_idx").on(t.workspaceId, t.agentId)],
+);
+
+// ---------------------------------------------------------------------------
 // thread_agents (which agents participate in a chat thread)
 // ---------------------------------------------------------------------------
 

@@ -3,7 +3,14 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { getWorkspace, getWorkspaceStatus } from "@/api/workspace.js";
 import { listCodocs, getCodoc } from "@/api/codoc.js";
 import { getGraph } from "@/api/graph.js";
-import { listThreads, createThread, setThreadCodocs, deleteThread } from "@/api/chat.js";
+import {
+  listThreads,
+  createThread,
+  deleteThread,
+  listAgents,
+  getWorkspaceAgents,
+  setWorkspaceAgents,
+} from "@/api/chat.js";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +28,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { CodocViewer } from "@/components/codoc-viewer";
 import {
   ArrowLeft,
+  Bot,
   Plus,
   MessageSquare,
   FileText,
@@ -35,6 +43,7 @@ import type {
   CodocDetail,
   ChatThread,
   GraphData,
+  AgentInfo,
 } from "@/types.js";
 import { GraphView } from "@/components/graph-view";
 
@@ -47,6 +56,8 @@ export function WorkspaceDetailPage() {
   const [codocs, setCodocs] = useState<CodocListItem[]>([]);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [graph, setGraph] = useState<GraphData | null>(null);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [wsAgentIds, setWsAgentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -56,6 +67,11 @@ export function WorkspaceDetailPage() {
   const [viewCodoc, setViewCodoc] = useState<CodocDetail | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
 
+  // New chat dialog state
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [newChatAgentIds, setNewChatAgentIds] = useState<string[]>([]);
+  const [newChatCodocIds, setNewChatCodocIds] = useState<string[]>([]);
+
   useEffect(() => {
     if (!workspaceId) return;
     Promise.all([
@@ -64,20 +80,35 @@ export function WorkspaceDetailPage() {
       listCodocs(workspaceId).then(setCodocs),
       listThreads(workspaceId).then(setThreads),
       getGraph(workspaceId).then(setGraph),
+      listAgents().then(setAgents),
+      getWorkspaceAgents(workspaceId).then((wa) => setWsAgentIds(wa.map((a) => a.agentId))),
     ]).finally(() => setLoading(false));
   }, [workspaceId]);
 
-  async function handleNewThread() {
+  function openNewChatDialog(preselectedCodocId?: string) {
+    // Pre-fill with workspace defaults (or all if no defaults)
+    setNewChatAgentIds(wsAgentIds.length > 0 ? [...wsAgentIds] : agents.map((a) => a.id));
+    setNewChatCodocIds(preselectedCodocId ? [preselectedCodocId] : []);
+    setNewChatOpen(true);
+  }
+
+  async function handleCreateThread() {
     if (!workspaceId) return;
-    const thread = await createThread(workspaceId);
+    const thread = await createThread(workspaceId, {
+      agentIds: newChatAgentIds,
+      codocIds: newChatCodocIds,
+    });
+    setNewChatOpen(false);
     navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
   }
 
-  async function handleNewChatWithCodoc(codocId: string) {
+  async function handleToggleWsAgent(agentId: string) {
     if (!workspaceId) return;
-    const thread = await createThread(workspaceId);
-    await setThreadCodocs(thread.id, [codocId]);
-    navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
+    const next = wsAgentIds.includes(agentId)
+      ? wsAgentIds.filter((id) => id !== agentId)
+      : [...wsAgentIds, agentId];
+    setWsAgentIds(next);
+    await setWorkspaceAgents(workspaceId, next);
   }
 
   function handleDeleteThread(e: React.MouseEvent, threadId: string) {
@@ -137,7 +168,7 @@ export function WorkspaceDetailPage() {
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-xl font-medium">{workspace?.name}</h1>
           </div>
-          <Button size="sm" onClick={handleNewThread}>
+          <Button size="sm" onClick={() => openNewChatDialog()}>
             <Plus className="h-4 w-4 mr-1.5" />
             New chat
           </Button>
@@ -173,7 +204,7 @@ export function WorkspaceDetailPage() {
               <Card className="flex flex-col items-center justify-center py-10 gap-3">
                 <MessageSquare className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">No chats yet</p>
-                <Button size="sm" variant="outline" onClick={handleNewThread}>
+                <Button size="sm" variant="outline" onClick={() => openNewChatDialog()}>
                   <Plus className="h-4 w-4 mr-1.5" />
                   Start a chat
                 </Button>
@@ -273,7 +304,7 @@ export function WorkspaceDetailPage() {
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                onClick={() => handleNewChatWithCodoc(c.id)}
+                                onClick={() => openNewChatDialog(c.id)}
                                 title="New chat"
                               >
                                 <MessageSquare className="h-3.5 w-3.5" />
@@ -302,7 +333,133 @@ export function WorkspaceDetailPage() {
             </Tabs>
           </section>
         </div>
+
+        {/* Agents */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Agents
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {wsAgentIds.length > 0
+                ? `${wsAgentIds.length} enabled as default`
+                : "All enabled by default"}
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {agents.map((a) => {
+              const enabled = wsAgentIds.length === 0 || wsAgentIds.includes(a.id);
+              return (
+                <Card
+                  key={a.id}
+                  className={`cursor-pointer transition-colors ${
+                    enabled ? "" : "opacity-50"
+                  }`}
+                  onClick={() => handleToggleWsAgent(a.id)}
+                >
+                  <CardHeader className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="text-sm">{a.name}</CardTitle>
+                        <p className="text-xs text-muted-foreground truncate">{a.description}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        readOnly
+                        className="h-3.5 w-3.5 shrink-0"
+                      />
+                    </div>
+                  </CardHeader>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
       </div>
+
+      {/* New Chat Dialog */}
+      <Dialog open={newChatOpen} onOpenChange={setNewChatOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New chat</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Agent selection */}
+            <div>
+              <h3 className="text-sm font-medium mb-2">Agents</h3>
+              <div className="space-y-1">
+                {agents.map((a) => {
+                  const checked = newChatAgentIds.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() =>
+                        setNewChatAgentIds(
+                          checked
+                            ? newChatAgentIds.filter((id) => id !== a.id)
+                            : [...newChatAgentIds, a.id],
+                        )
+                      }
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                        checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5 shrink-0" />
+                      <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm">{a.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{a.description}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Codoc selection */}
+            {codocs.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium mb-2">Codocs</h3>
+                <ScrollArea className="max-h-40">
+                  <div className="space-y-1">
+                    {codocs.map((c) => {
+                      const checked = newChatCodocIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() =>
+                            setNewChatCodocIds(
+                              checked
+                                ? newChatCodocIds.filter((id) => id !== c.id)
+                                : [...newChatCodocIds, c.id],
+                            )
+                          }
+                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                            checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5 shrink-0" />
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="text-sm truncate flex-1">{c.path}</span>
+                          <StatusBadge state={c.nodeState} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={handleCreateThread} disabled={newChatAgentIds.length === 0}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Create
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* View Codoc Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>

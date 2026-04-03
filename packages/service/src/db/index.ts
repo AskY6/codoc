@@ -17,6 +17,7 @@ export type {
   ChatMessage,
   ThreadCodoc,
   ThreadAgent,
+  WorkspaceAgent,
   AgentSession,
   WorkspaceRepository,
   CodocRepository,
