@@ -19,10 +19,9 @@ import {
 } from "@/api/chat.js";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { CanvasPanel } from "@/components/canvas/canvas-panel";
-import { CodocBrowser } from "@/components/codoc-browser";
 import { AgentSelector } from "@/components/agent-selector";
 import { CodocSubsetSelector } from "@/components/codoc-subset-selector";
-import { ArrowLeft, FolderOpen } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type {
   Workspace,
   CodocListItem,
@@ -47,7 +46,6 @@ export function ChatPage() {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [codocDetail, setCodocDetail] = useState<CodocDetail | null>(null);
   const [codocLoading, setCodocLoading] = useState(false);
-  const [browserOpen, setBrowserOpen] = useState(false);
 
   useEffect(() => {
     if (!workspaceId || !threadId) return;
@@ -95,8 +93,12 @@ export function ChatPage() {
       if (!threadId) return;
       setSelectedCodocIds(codocIds);
       await setThreadCodocs(threadId, codocIds);
+      // Auto-view first codoc when canvas is empty
+      if (!selectedPath && codocIds.length > 0) {
+        setSelectedPath(codocIds[0]!);
+      }
     },
-    [threadId],
+    [threadId, selectedPath],
   );
 
   if (!workspaceId || !threadId) return null;
@@ -130,14 +132,6 @@ export function ChatPage() {
             selectedIds={selectedCodocIds}
             onChange={handleCodocsChange}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setBrowserOpen(true)}
-          >
-            <FolderOpen className="h-4 w-4 mr-1.5" />
-            View codoc
-          </Button>
         </div>
       </header>
 
@@ -156,21 +150,14 @@ export function ChatPage() {
 
         <ResizablePanel defaultSize={45} minSize={25}>
           <CanvasPanel
+            codocs={codocs}
             codocDetail={codocDetail}
             selectedPath={selectedPath}
+            onSelectPath={setSelectedPath}
             loading={codocLoading}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-
-      {/* Codoc browser Sheet */}
-      <CodocBrowser
-        open={browserOpen}
-        onOpenChange={setBrowserOpen}
-        codocs={codocs}
-        selectedPath={selectedPath}
-        onSelect={setSelectedPath}
-      />
     </div>
   );
 }

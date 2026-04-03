@@ -1,32 +1,15 @@
-import { useState, useMemo } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/status-badge";
-import { Search, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import type { CodocListItem } from "@/types.js";
 
-interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  codocs: CodocListItem[];
-  selectedPath: string | null;
-  onSelect: (path: string) => void;
-}
-
-interface TreeNode {
+export interface TreeNode {
   name: string;
   path?: string;
   state?: string;
   children: Map<string, TreeNode>;
 }
 
-function buildTree(codocs: CodocListItem[]): TreeNode {
+export function buildTree(codocs: CodocListItem[]): TreeNode {
   const root: TreeNode = { name: "", children: new Map() };
   for (const c of codocs) {
     const parts = c.path.split("/");
@@ -46,7 +29,7 @@ function buildTree(codocs: CodocListItem[]): TreeNode {
   return root;
 }
 
-function TreeItem({
+export function TreeItem({
   node,
   depth,
   selectedPath,
@@ -99,61 +82,5 @@ function TreeItem({
         />
       ))}
     </div>
-  );
-}
-
-export function CodocBrowser({
-  open,
-  onOpenChange,
-  codocs,
-  selectedPath,
-  onSelect,
-}: Props) {
-  const [filter, setFilter] = useState("");
-
-  const filtered = useMemo(() => {
-    if (!filter.trim()) return codocs;
-    const q = filter.toLowerCase();
-    return codocs.filter((c) => c.path.toLowerCase().includes(q));
-  }, [codocs, filter]);
-
-  const tree = buildTree(filtered);
-
-  function handleSelect(path: string) {
-    onSelect(path);
-    onOpenChange(false);
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-80 sm:w-96 p-0">
-        <SheetHeader className="px-4 pt-4 pb-2">
-          <SheetTitle className="text-base">Codocs</SheetTitle>
-          <div className="relative mt-2">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Filter codocs..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-        </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-120px)] px-2 pb-4">
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground px-4 py-8 text-center">
-              {codocs.length === 0 ? "No codocs in workspace" : "No matching codocs"}
-            </p>
-          ) : (
-            <TreeItem
-              node={tree}
-              depth={0}
-              selectedPath={selectedPath}
-              onSelect={handleSelect}
-            />
-          )}
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
   );
 }
