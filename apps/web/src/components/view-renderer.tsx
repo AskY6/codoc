@@ -21,7 +21,69 @@ function resolve(
   return val;
 }
 
-function RenderNode({ node, data }: Props) {
+/**
+ * Interpolate `{{var.path}}` placeholders in a string with values from `scope`.
+ */
+function interpolate(template: string, scope: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_match, path: string) => {
+    const parts = path.split(".");
+    let val: unknown = scope;
+    for (const p of parts) {
+      if (val == null || typeof val !== "object") return "";
+      val = (val as Record<string, unknown>)[p];
+    }
+    return val == null ? "" : String(val);
+  });
+}
+
+/**
+ * Deep-clone a ViewNode, replacing all `{{var.xxx}}` in string props/bind values.
+ */
+function instantiateTemplate(
+  template: ViewNode,
+  scope: Record<string, unknown>,
+): ViewNode {
+  const node: ViewNode = { type: template.type };
+  if (template.props) {
+    const props: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(template.props)) {
+      props[k] = typeof v === "string" ? interpolate(v, scope) : v;
+    }
+    node.props = props;
+  }
+  if (template.bind) {
+    node.bind = interpolate(template.bind, scope);
+  }
+  if (template.children) {
+    node.children = template.children.map((c) => instantiateTemplate(c, scope));
+  }
+  if (template.repeat) node.repeat = template.repeat;
+  if (template.template) node.template = instantiateTemplate(template.template, scope);
+  return node;
+}
+
+/**
+ * If a node has `repeat` + `template`, expand into concrete children from the bound array.
+ */
+function expandRepeat(
+  node: ViewNode,
+  data: Record<string, unknown> | null | undefined,
+): ViewNode {
+  if (!node.repeat || !node.template) return node;
+  const arr = resolve(node.repeat.bind, data);
+  if (!Array.isArray(arr)) return node;
+  const varName = node.repeat.as;
+  const expanded: ViewNode[] = arr.map((item) => {
+    const scope: Record<string, unknown> = { [varName]: item as unknown };
+    return instantiateTemplate(node.template!, scope);
+  });
+  // Return node without repeat/template, with expanded children appended
+  const { repeat: _r, template: _t, ...rest } = node;
+  return { ...rest, children: [...(node.children ?? []), ...expanded] };
+}
+
+function RenderNode({ node: rawNode, data }: Props) {
+  const node = expandRepeat(rawNode, data);
   const bound = resolve(node.bind, data);
 
   switch (node.type) {
@@ -145,7 +207,7 @@ function RenderNode({ node, data }: Props) {
         <div className="rounded-lg border border-border bg-card">
           {title && (
             <div className="border-b border-border px-4 py-2">
-              <h3 className="text-sm font-semibold text-foreground">
+              <h3 className="text-sm font-medium text-foreground">
                 {title}
               </h3>
             </div>

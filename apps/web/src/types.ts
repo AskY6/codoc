@@ -48,6 +48,11 @@ export interface ViewNode {
   props?: Record<string, unknown>;
   children?: ViewNode[];
   bind?: string; // data field binding
+  repeat?: {
+    bind: string; // data path to an array (e.g. "data.articles")
+    as: string; // loop variable name (e.g. "item")
+  };
+  template?: ViewNode; // child template rendered per array element when repeat is set
 }
 
 // ---- Graph ----
