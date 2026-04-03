@@ -126,16 +126,31 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const edgeData = dag.edges.map((e) => ({ fromNodeId: e.from, toNodeId: e.to }));
     await edgeRepo.replaceAll(workspaceId, edgeData);
 
-    // 6. Update node states
+    // 6. Update node states + resolve static fields eagerly
     const cycleNodes = new Set(cycles.flat());
     const brokenRefNodes = new Set(refResult.errors.map((e) => e.from));
 
+    // Group nodes by codoc path — compute state and static resolved values per codoc
+    const codocUpdates = new Map<string, { state: string; resolved: Record<string, unknown> }>();
     for (const [nodeId, node] of dag.nodes) {
-      let state = "ready";
-      if (cycleNodes.has(nodeId)) state = "error";
-      if (brokenRefNodes.has(nodeId)) state = "error";
+      let entry = codocUpdates.get(node.codocPath);
+      if (!entry) {
+        entry = { state: "ready", resolved: {} };
+        codocUpdates.set(node.codocPath, entry);
+      }
+      if (cycleNodes.has(nodeId) || brokenRefNodes.has(nodeId)) {
+        entry.state = "error";
+      }
+      if (node.field.kind === "static") {
+        entry.resolved[nodeId] = node.field.value;
+      }
+    }
 
-      await codocRepo.upsert(workspaceId, node.codocPath, { nodeState: state });
+    for (const [codocPath, update] of codocUpdates) {
+      await codocRepo.upsert(workspaceId, codocPath, {
+        nodeState: update.state,
+        resolvedValue: update.resolved,
+      });
     }
 
     return {
@@ -208,11 +223,14 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
       resolved.set(id, value);
 
-      // Persist resolved value
+      // Persist resolved value — merge with existing to avoid wiping sibling fields
+      const existing = await codocRepo.findByPath(workspaceId, node.codocPath);
+      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
+      const current = Object.fromEntries(
+        [...resolved.entries()].filter(([k]) => dag!.nodes.get(k)?.codocPath === node.codocPath),
+      );
       await codocRepo.upsert(workspaceId, node.codocPath, {
-        resolvedValue: Object.fromEntries(
-          [...resolved.entries()].filter(([k]) => dag!.nodes.get(k)?.codocPath === node.codocPath),
-        ),
+        resolvedValue: { ...prev, ...current },
         nodeState: "ready",
       });
     }
