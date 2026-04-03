@@ -26,13 +26,11 @@ export function CodocSubsetSelector({ codocs, selectedIds, onChange }: Props) {
     return codocs.filter((c) => c.path.toLowerCase().includes(q));
   }, [codocs, filter]);
 
-  // For now, use path as pseudo-id since CodocListItem doesn't expose id.
-  // The parent must map between paths and codoc IDs.
-  function toggle(path: string) {
-    if (selectedIds.includes(path)) {
-      onChange(selectedIds.filter((id) => id !== path));
+  function toggle(id: string) {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((sid) => sid !== id));
     } else {
-      onChange([...selectedIds, path]);
+      onChange([...selectedIds, id]);
     }
   }
 
@@ -71,11 +69,11 @@ export function CodocSubsetSelector({ codocs, selectedIds, onChange }: Props) {
               </p>
             ) : (
               filtered.map((c) => {
-                const checked = selectedIds.includes(c.path);
+                const checked = selectedIds.includes(c.id);
                 return (
                   <button
-                    key={c.path}
-                    onClick={() => toggle(c.path)}
+                    key={c.id}
+                    onClick={() => toggle(c.id)}
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left transition-colors ${
                       checked
                         ? "bg-primary/10 text-primary"

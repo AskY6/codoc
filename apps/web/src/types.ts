@@ -15,6 +15,7 @@ export interface WorkspaceStatus {
 // ---- Codoc ----
 
 export interface CodocListItem {
+  id: string;
   path: string;
   nodeState: string;
 }
@@ -43,11 +44,17 @@ export type DataField =
 
 // ---- View ----
 
+export interface ViewAction {
+  type: "chat";
+  prompt: string; // supports {{var.path}} interpolation
+}
+
 export interface ViewNode {
   type: string; // "stack" | "grid" | "tabs" | "timeline" | "section" | "text" | "markdown" | "table"
   props?: Record<string, unknown>;
   children?: ViewNode[];
   bind?: string; // data field binding
+  action?: ViewAction; // interactive action triggered on click
   repeat?: {
     bind: string; // data path to an array (e.g. "data.articles")
     as: string; // loop variable name (e.g. "item")

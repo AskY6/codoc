@@ -13,6 +13,7 @@ export function codocRoutes(
     const list = await codocRepo.listByWorkspace(c.req.param("id"));
     return c.json(
       list.map((r) => ({
+        id: r.id,
         path: r.path,
         nodeState: r.nodeState,
       })),

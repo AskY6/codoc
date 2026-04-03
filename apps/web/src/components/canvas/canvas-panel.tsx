@@ -6,17 +6,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ViewRenderer } from "@/components/view-renderer";
+import { CodocViewer } from "@/components/codoc-viewer";
 import { buildTree, TreeItem } from "@/components/codoc-browser";
-import { normalizeResolvedData } from "@/lib/codoc-utils";
 import { ChevronDown, FileText, List } from "lucide-react";
-import type { CodocDetail, CodocListItem, ViewNode } from "@/types.js";
+import type { CodocDetail, CodocListItem, ViewAction } from "@/types.js";
 
 interface Props {
   codocs: CodocListItem[];
   codocDetail: CodocDetail | null;
   selectedPath: string | null;
   onSelectPath: (path: string | null) => void;
+  onAction?: ((action: ViewAction) => void) | undefined;
   loading?: boolean;
 }
 
@@ -25,6 +25,7 @@ export function CanvasPanel({
   codocDetail,
   selectedPath,
   onSelectPath,
+  onAction,
   loading,
 }: Props) {
   const tree = useMemo(() => buildTree(codocs), [codocs]);
@@ -78,11 +79,6 @@ export function CanvasPanel({
     );
   }
 
-  const normalizedData = normalizeResolvedData(
-    codocDetail.resolvedData,
-    codocDetail.path,
-  );
-
   // -- Viewing a codoc: top switcher + content --
   return (
     <div className="h-full flex flex-col bg-background">
@@ -127,32 +123,7 @@ export function CanvasPanel({
       {/* Codoc content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-6">
-          {/* Header */}
-          <div className="mb-6">
-            {codocDetail.ast?.meta?.title && (
-              <h1 className="text-xl font-medium text-foreground mb-1">
-                {codocDetail.ast.meta.title}
-              </h1>
-            )}
-            {codocDetail.ast?.meta?.description && (
-              <p className="text-sm text-muted-foreground">
-                {codocDetail.ast.meta.description}
-              </p>
-            )}
-          </div>
-
-          {/* View content */}
-          {codocDetail.ast?.view ? (
-            <ViewRenderer
-              node={codocDetail.ast.view as ViewNode}
-              data={normalizedData}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
-              <FileText className="h-6 w-6" />
-              <p className="text-sm">No view defined for this codoc</p>
-            </div>
-          )}
+          <CodocViewer codoc={codocDetail} onAction={onAction} />
         </div>
       </div>
     </div>

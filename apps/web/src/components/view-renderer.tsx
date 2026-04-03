@@ -1,10 +1,11 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ViewNode } from "@/types.js";
+import type { ViewAction, ViewNode } from "@/types.js";
 
 interface Props {
   node: ViewNode;
   data?: Record<string, unknown> | null | undefined;
+  onAction?: ((action: ViewAction) => void) | undefined;
 }
 
 function resolve(
@@ -54,6 +55,12 @@ function instantiateTemplate(
   if (template.bind) {
     node.bind = interpolate(template.bind, scope);
   }
+  if (template.action) {
+    node.action = {
+      ...template.action,
+      prompt: interpolate(template.action.prompt, scope),
+    };
+  }
   if (template.children) {
     node.children = template.children.map((c) => instantiateTemplate(c, scope));
   }
@@ -82,7 +89,31 @@ function expandRepeat(
   return { ...rest, children: [...(node.children ?? []), ...expanded] };
 }
 
-function RenderNode({ node: rawNode, data }: Props) {
+/**
+ * Wrap content in a clickable container if the node has an action.
+ */
+function ActionWrapper({
+  action,
+  onAction,
+  children,
+}: {
+  action?: ViewAction | undefined;
+  onAction?: ((action: ViewAction) => void) | undefined;
+  children: React.ReactNode;
+}) {
+  if (!action || !onAction) return children;
+  return (
+    <button
+      type="button"
+      onClick={() => onAction(action)}
+      className="w-full text-left cursor-pointer rounded-md ring-primary/30 transition-shadow hover:ring-2 focus-visible:outline-none focus-visible:ring-2"
+    >
+      {children}
+    </button>
+  );
+}
+
+function RenderNode({ node: rawNode, data, onAction }: Props) {
   const node = expandRepeat(rawNode, data);
   const bound = resolve(node.bind, data);
 
@@ -146,7 +177,9 @@ function RenderNode({ node: rawNode, data }: Props) {
       return (
         <div className="flex flex-col gap-3">
           {node.children?.map((child, i) => (
-            <RenderNode key={i} node={child} data={data} />
+            <ActionWrapper key={i} action={child.action} onAction={onAction}>
+              <RenderNode node={child} data={data} onAction={onAction} />
+            </ActionWrapper>
           ))}
         </div>
       );
@@ -161,7 +194,9 @@ function RenderNode({ node: rawNode, data }: Props) {
           }}
         >
           {node.children?.map((child, i) => (
-            <RenderNode key={i} node={child} data={data} />
+            <ActionWrapper key={i} action={child.action} onAction={onAction}>
+              <RenderNode key={i} node={child} data={data} onAction={onAction} />
+            </ActionWrapper>
           ))}
         </div>
       );
@@ -180,7 +215,7 @@ function RenderNode({ node: rawNode, data }: Props) {
                 {(child.props?.label as string) ?? child.type ?? `Tab ${i + 1}`}
               </summary>
               <div className="p-4">
-                <RenderNode node={child} data={data} />
+                <RenderNode node={child} data={data} onAction={onAction} />
               </div>
             </details>
           ))}
@@ -195,9 +230,11 @@ function RenderNode({ node: rawNode, data }: Props) {
           {node.children?.map((child, i) => (
             <div key={i} className="relative">
               <div className="absolute -left-4 top-2.5 h-2 w-2 rounded-full bg-foreground/20" />
-              <div className="rounded-lg border border-border bg-card px-4 py-3">
-                <RenderNode node={child} data={data} />
-              </div>
+              <ActionWrapper action={child.action} onAction={onAction}>
+                <div className="rounded-lg border border-border bg-card px-4 py-3">
+                  <RenderNode node={child} data={data} onAction={onAction} />
+                </div>
+              </ActionWrapper>
             </div>
           ))}
         </div>
@@ -216,7 +253,7 @@ function RenderNode({ node: rawNode, data }: Props) {
           )}
           <div className="p-4 space-y-2">
             {node.children?.map((child, i) => (
-              <RenderNode key={i} node={child} data={data} />
+              <RenderNode key={i} node={child} data={data} onAction={onAction} />
             ))}
           </div>
         </div>
@@ -232,6 +269,6 @@ function RenderNode({ node: rawNode, data }: Props) {
   }
 }
 
-export function ViewRenderer({ node, data }: Props) {
-  return <RenderNode node={node} data={data} />;
+export function ViewRenderer({ node, data, onAction }: Props) {
+  return <RenderNode node={node} data={data} onAction={onAction} />;
 }

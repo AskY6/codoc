@@ -292,6 +292,9 @@ view:
         as: item
       template:
         type: stack
+        action:
+          type: chat
+          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
         children:
           - type: text
             props:
@@ -340,6 +343,9 @@ view:
         as: item
       template:
         type: stack
+        action:
+          type: chat
+          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
         children:
           - type: text
             props:
@@ -355,6 +361,9 @@ view:
         as: item
       template:
         type: stack
+        action:
+          type: chat
+          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
         children:
           - type: text
             props:
