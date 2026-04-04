@@ -207,7 +207,7 @@ export function ChatPage() {
 
         <ResizablePanel defaultSize={45} minSize={25}>
           <CanvasPanel
-            codocs={codocs}
+            codocs={codocs.filter((c) => selectedCodocIds.includes(c.id))}
             codocDetail={codocDetail}
             selectedPath={selectedPath}
             onSelectPath={setSelectedPath}

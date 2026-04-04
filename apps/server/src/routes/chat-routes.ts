@@ -19,20 +19,64 @@ function parseAtMention(raw: string): { targetAgentId: string | undefined; conte
 }
 
 // ---------------------------------------------------------------------------
-// Resolve which agent should handle a message.
-// This is the router extension point — currently falls back to default agent.
-// Future: replace with router agent logic that analyses chatContext.
+// Route a message to the best-matching agent from the thread's agent list.
+// Priority: explicit @mention > single-agent shortcut > LLM classification.
 // ---------------------------------------------------------------------------
-function resolveAgent(
+
+async function routeToAgent(
+  client: Anthropic,
+  model: string,
   agents: AgentRegistry,
-  defaultAgentId: string,
+  threadAgentIds: string[],
   targetAgentId: string | undefined,
-): { agentId: string; agent: Agent } {
+  userMessage: string,
+): Promise<{ agentId: string; agent: Agent }> {
+  // 1. Explicit @mention or targetAgentId — honour it if valid
   if (targetAgentId) {
     const agent = agents.get(targetAgentId);
     if (agent) return { agentId: targetAgentId, agent };
   }
-  return { agentId: defaultAgentId, agent: agents.get(defaultAgentId)! };
+
+  // Scope to thread agents (fall back to all agents if thread has none)
+  const scopedIds = threadAgentIds.length > 0
+    ? threadAgentIds.filter((id) => agents.has(id))
+    : [...agents.keys()];
+
+  // 2. Single agent in scope — no routing needed
+  if (scopedIds.length <= 1) {
+    const id = scopedIds[0] ?? agents.keys().next().value!;
+    return { agentId: id, agent: agents.get(id)! };
+  }
+
+  // 3. LLM-based routing — ask haiku to pick the best agent
+  try {
+    const agentList = scopedIds.map((id) => {
+      const a = agents.get(id)!;
+      return `- ${id}: ${a.name} — ${a.description}`;
+    }).join("\n");
+
+    const res = await client.messages.create({
+      model,
+      max_tokens: 20,
+      messages: [
+        {
+          role: "user",
+          content: `Which agent should handle this user message? Reply with ONLY the agent id, nothing else.\n\nAgents:\n${agentList}\n\nUser message: ${userMessage.slice(0, 500)}`,
+        },
+      ],
+    });
+    const block = res.content[0];
+    const chosen = block?.type === "text" ? block.text.trim() : "";
+    if (chosen && agents.has(chosen) && scopedIds.includes(chosen)) {
+      return { agentId: chosen, agent: agents.get(chosen)! };
+    }
+  } catch {
+    // Routing failure — fall through to default
+  }
+
+  // 4. Fallback — first thread agent
+  const fallbackId = scopedIds[0]!;
+  return { agentId: fallbackId, agent: agents.get(fallbackId)! };
 }
 
 // ---------------------------------------------------------------------------
@@ -40,11 +84,9 @@ function resolveAgent(
 // Fire-and-forget — failures are silently ignored.
 // ---------------------------------------------------------------------------
 
-const titleClient = new Anthropic();
-
-async function generateTitle(userMsg: string, assistantMsg: string): Promise<string> {
-  const res = await titleClient.messages.create({
-    model: "claude-haiku-4-5-20251001",
+async function generateTitle(client: Anthropic, model: string, userMsg: string, assistantMsg: string): Promise<string> {
+  const res = await client.messages.create({
+    model,
     max_tokens: 40,
     messages: [
       {
@@ -58,15 +100,26 @@ async function generateTitle(userMsg: string, assistantMsg: string): Promise<str
   return "";
 }
 
+export interface LightLLMConfig {
+  baseURL?: string;
+  apiKey?: string;
+  model?: string;
+}
+
 export function chatRoutes(
   chatService: ChatService,
   workspaceService: WorkspaceService,
   agents: AgentRegistry,
   sessionRepo: AgentSessionRepository,
+  llmConfig?: LightLLMConfig,
 ) {
   const app = new Hono();
+  const llmClient = new Anthropic({
+    ...(llmConfig?.baseURL && { baseURL: llmConfig.baseURL }),
+    ...(llmConfig?.apiKey && { apiKey: llmConfig.apiKey }),
+  });
+  const lightModel = llmConfig?.model ?? "claude-haiku-4-5-20251001";
 
-  const defaultAgentId = agents.keys().next().value!;
 
   // POST /api/chat/thread — create a new thread
   app.post("/thread", async (c) => {
@@ -260,8 +313,10 @@ export function chatRoutes(
     // Persist user message (with original content including @mention)
     await chatService.addMessage(threadId, { role: "user", content: body.content });
 
-    // Resolve which agent handles this message
-    const { agentId, agent } = resolveAgent(agents, defaultAgentId, effectiveTargetId);
+    // Query thread agents and route to the best-matching one
+    const threadAgentRows = await chatService.getThreadAgents(threadId);
+    const threadAgentIds = threadAgentRows.map((ta) => ta.agentId);
+    const { agentId, agent } = await routeToAgent(llmClient, lightModel, agents, threadAgentIds, effectiveTargetId, content);
 
     // Check if this thread needs an auto-generated title
     const threadData = await chatService.getThread(threadId);
@@ -301,7 +356,7 @@ export function chatRoutes(
               await stream.writeSSE({ event: "done", data: JSON.stringify({ fullText: event.fullText, agentId }) });
               // Auto-generate title from first exchange
               if (needsTitle) {
-                titlePromise = generateTitle(content, event.fullText)
+                titlePromise = generateTitle(llmClient, lightModel, content, event.fullText)
                   .then(async (title) => {
                     if (title) {
                       await chatService.updateThread(threadId, { title });
