@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { getWorkspace, getWorkspaceStatus } from "@/api/workspace.js";
-import { listCodocs, getCodoc } from "@/api/codoc.js";
+import { listCodocs, getCodoc, deleteCodoc } from "@/api/codoc.js";
 import { getGraph } from "@/api/graph.js";
 import {
   listThreads,
@@ -61,6 +61,7 @@ export function WorkspaceDetailPage() {
   const [loading, setLoading] = useState(true);
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteCodocPath, setConfirmDeleteCodocPath] = useState<string | null>(null);
 
   // View dialog state
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -121,6 +122,20 @@ export function WorkspaceDetailPage() {
       setConfirmDeleteId(null);
     } else {
       setConfirmDeleteId(threadId);
+    }
+  }
+
+  function handleDeleteCodoc(e: React.MouseEvent, codocPath: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!workspaceId) return;
+    if (confirmDeleteCodocPath === codocPath) {
+      deleteCodoc(workspaceId, codocPath).then(() => {
+        setCodocs((prev) => prev.filter((c) => c.path !== codocPath));
+      });
+      setConfirmDeleteCodocPath(null);
+    } else {
+      setConfirmDeleteCodocPath(codocPath);
     }
   }
 
@@ -292,23 +307,46 @@ export function WorkspaceDetailPage() {
                           >
                             <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="truncate flex-1">{c.path}</span>
-                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() => handleViewCodoc(c.path)}
-                                title="View"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() => openNewChatDialog(c.id)}
-                                title="New chat"
-                              >
-                                <MessageSquare className="h-3.5 w-3.5" />
-                              </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => handleViewCodoc(c.path)}
+                                  title="View"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => openNewChatDialog(c.id)}
+                                  title="New chat"
+                                >
+                                  <MessageSquare className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                              {confirmDeleteCodocPath === c.path ? (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-6 text-xs px-2"
+                                  onClick={(e) => handleDeleteCodoc(e, c.path)}
+                                  onBlur={() => setConfirmDeleteCodocPath(null)}
+                                >
+                                  Delete?
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => handleDeleteCodoc(e, c.path)}
+                                  title="Delete codoc"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                </Button>
+                              )}
                             </div>
                             <StatusBadge state={c.nodeState} />
                           </div>
