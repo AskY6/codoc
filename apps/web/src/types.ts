@@ -44,6 +44,10 @@ export type DataField =
 
 // ---- View ----
 
+export interface ViewActionContext {
+  sourceCodocPath?: string; // codoc that owns the view where the action was triggered
+}
+
 export interface ViewAction {
   type: "chat";
   prompt: string; // supports {{var.path}} interpolation

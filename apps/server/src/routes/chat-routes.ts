@@ -7,6 +7,25 @@ import type { Agent, AgentMessage } from "@cobook/agent";
 export type AgentRegistry = Map<string, Agent>;
 
 // ---------------------------------------------------------------------------
+// Raw action context sent by the UI. Describes where a message originated
+// (e.g. which codoc's view the user clicked on) so the enhancer can turn it
+// into richer routing signals.
+// ---------------------------------------------------------------------------
+interface ViewActionContext {
+  sourceCodocPath?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Structured input to the router. `content` is the user's message; optional
+// `contextSummary` is a short natural-language description of the trigger
+// context, produced by enhanceIntent().
+// ---------------------------------------------------------------------------
+interface RoutingIntent {
+  content: string;
+  contextSummary?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Parse @agent-id at the start of a message.
 // Returns { targetAgentId, content } where content has the @mention stripped.
 // ---------------------------------------------------------------------------
@@ -16,6 +35,43 @@ function parseAtMention(raw: string): { targetAgentId: string | undefined; conte
     return { targetAgentId: match[1], content: raw.slice(match[0].length) };
   }
   return { targetAgentId: undefined, content: raw };
+}
+
+// ---------------------------------------------------------------------------
+// enhanceIntent — bridge between chat service and router.
+//
+// Takes raw message content plus optional action context, resolves context
+// signals (e.g. looks up the source codoc's meta), and produces a
+// RoutingIntent the router can reason over. Keeps routing logic decoupled
+// from both UI and the router itself.
+// ---------------------------------------------------------------------------
+async function enhanceIntent(
+  content: string,
+  context: ViewActionContext | undefined,
+  workspaceService: WorkspaceService,
+  workspaceId: string,
+): Promise<RoutingIntent> {
+  if (!context?.sourceCodocPath) {
+    return { content };
+  }
+
+  const signals: string[] = [`source codoc: ${context.sourceCodocPath}`];
+  try {
+    const codoc = await workspaceService.getCodoc(workspaceId, context.sourceCodocPath);
+    const meta = codoc?.ast?.meta as Record<string, unknown> | undefined;
+    if (meta) {
+      if (typeof meta["title"] === "string") signals.push(`codoc title: ${meta["title"]}`);
+      if (typeof meta["description"] === "string") signals.push(`codoc description: ${meta["description"]}`);
+      const tags = meta["tags"];
+      if (Array.isArray(tags) && tags.length > 0) {
+        signals.push(`codoc tags: ${tags.map(String).join(", ")}`);
+      }
+    }
+  } catch {
+    // Missing codoc or lookup failure — degrade gracefully to path-only signal
+  }
+
+  return { content, contextSummary: signals.join("; ") };
 }
 
 // ---------------------------------------------------------------------------
@@ -29,7 +85,7 @@ async function routeToAgent(
   agents: AgentRegistry,
   threadAgentIds: string[],
   targetAgentId: string | undefined,
-  userMessage: string,
+  intent: RoutingIntent,
 ): Promise<{ agentId: string; agent: Agent }> {
   // 1. Explicit @mention or targetAgentId — honour it if valid
   if (targetAgentId) {
@@ -55,13 +111,17 @@ async function routeToAgent(
       return `- ${id}: ${a.name} — ${a.description}`;
     }).join("\n");
 
+    const contextBlock = intent.contextSummary
+      ? `\n\nTrigger context (strong hint about intent):\n${intent.contextSummary}`
+      : "";
+
     const res = await client.messages.create({
       model,
       max_tokens: 20,
       messages: [
         {
           role: "user",
-          content: `Which agent should handle this user message? Reply with ONLY the agent id, nothing else.\n\nAgents:\n${agentList}\n\nUser message: ${userMessage.slice(0, 500)}`,
+          content: `Which agent should handle this user message? Reply with ONLY the agent id, nothing else. When trigger context is provided, weight it heavily — it usually points directly at the right agent.\n\nAgents:\n${agentList}\n\nUser message: ${intent.content.slice(0, 500)}${contextBlock}`,
         },
       ],
     });
@@ -297,7 +357,12 @@ export function chatRoutes(
   // POST /api/chat/thread/:id/message — send message, stream response via SSE
   app.post("/thread/:id/message", async (c) => {
     const threadId = c.req.param("id");
-    const body = await c.req.json<{ content: string; workspaceId: string; targetAgentId?: string }>();
+    const body = await c.req.json<{
+      content: string;
+      workspaceId: string;
+      targetAgentId?: string;
+      context?: ViewActionContext;
+    }>();
     if (!body.content) {
       return c.json({ error: "content is required" }, 400);
     }
@@ -313,10 +378,14 @@ export function chatRoutes(
     // Persist user message (with original content including @mention)
     await chatService.addMessage(threadId, { role: "user", content: body.content });
 
+    // Enhance the raw action into a structured routing intent (adds codoc
+    // meta signals when the message originated from a view action).
+    const intent = await enhanceIntent(content, body.context, workspaceService, body.workspaceId);
+
     // Query thread agents and route to the best-matching one
     const threadAgentRows = await chatService.getThreadAgents(threadId);
     const threadAgentIds = threadAgentRows.map((ta) => ta.agentId);
-    const { agentId, agent } = await routeToAgent(llmClient, lightModel, agents, threadAgentIds, effectiveTargetId, content);
+    const { agentId, agent } = await routeToAgent(llmClient, lightModel, agents, threadAgentIds, effectiveTargetId, intent);
 
     // Check if this thread needs an auto-generated title
     const threadData = await chatService.getThread(threadId);

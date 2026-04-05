@@ -135,11 +135,16 @@ export function ChatPage() {
     setThread((prev) => prev ? { ...prev, title } : prev);
   }, []);
 
-  const handleViewAction = useCallback((action: ViewAction) => {
-    if (action.type === "chat") {
-      chatRef.current?.send(action.prompt);
-    }
-  }, []);
+  const handleViewAction = useCallback(
+    (action: ViewAction) => {
+      if (action.type === "chat") {
+        chatRef.current?.send(action.prompt, {
+          ...(selectedPath && { context: { sourceCodocPath: selectedPath } }),
+        });
+      }
+    },
+    [selectedPath],
+  );
 
   if (!workspaceId || !threadId) return null;
 

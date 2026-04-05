@@ -1,5 +1,5 @@
 import { apiFetch, apiSSE } from "./client.js";
-import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo, WorkspaceAgent } from "../types.js";
+import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo, WorkspaceAgent, ViewActionContext } from "../types.js";
 
 export function createThread(
   workspaceId: string,
@@ -81,16 +81,27 @@ export function setWorkspaceAgents(
   });
 }
 
+export interface SendMessageOptions {
+  targetAgentId?: string;
+  context?: ViewActionContext;
+}
+
 export function sendMessage(
   threadId: string,
   workspaceId: string,
   content: string,
   onEvent: (eventType: string, data: unknown) => void,
-  targetAgentId?: string,
+  options?: SendMessageOptions,
 ): AbortController {
+  const { targetAgentId, context } = options ?? {};
   return apiSSE(
     `/chat/thread/${threadId}/message`,
-    { content, workspaceId, ...(targetAgentId && { targetAgentId }) },
+    {
+      content,
+      workspaceId,
+      ...(targetAgentId && { targetAgentId }),
+      ...(context && { context }),
+    },
     onEvent,
   );
 }

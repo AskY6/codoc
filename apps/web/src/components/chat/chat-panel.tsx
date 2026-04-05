@@ -26,10 +26,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { AtSign, Bot, CopyIcon, MessageSquare, X } from "lucide-react";
-import type { AgentInfo, ChatMessage } from "@/types.js";
+import type { AgentInfo, ChatMessage, ViewActionContext } from "@/types.js";
+
+export interface ChatPanelSendOptions {
+  targetAgentId?: string;
+  context?: ViewActionContext;
+}
 
 export interface ChatPanelHandle {
-  send: (text: string) => void;
+  send: (text: string, options?: ChatPanelSendOptions) => void;
 }
 
 interface Props {
@@ -71,7 +76,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
   }, [threadId]);
 
   const handleSend = useCallback(
-    (text: string) => {
+    (text: string, options?: ChatPanelSendOptions) => {
       if (!text.trim() || sending) return;
 
       const userMsg: ChatMessage = {
@@ -86,7 +91,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       setSending(true);
       setStreaming({ text: "", toolCalls: [], agentId: null });
 
-      const sentTargetAgentId = targetAgentId ?? undefined;
+      const sentTargetAgentId = options?.targetAgentId ?? targetAgentId ?? undefined;
       setTargetAgentId(null);
 
       const ctrl = sendMessage(
@@ -167,7 +172,10 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
               break;
           }
         },
-        sentTargetAgentId,
+        {
+          ...(sentTargetAgentId && { targetAgentId: sentTargetAgentId }),
+          ...(options?.context && { context: options.context }),
+        },
       );
       abortRef.current = ctrl;
     },
