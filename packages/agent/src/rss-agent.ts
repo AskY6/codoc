@@ -252,6 +252,12 @@ Users can subscribe to feeds for quick access. Use manageRssFeeds to add/remove/
 - Summarise the full article — highlight key insights, arguments, and takeaways.
 - The user may discuss, ask follow-up questions, or request deeper analysis.
 
+### Supported view types (hard whitelist)
+The canvas renderer only understands these view \`type\` values:
+\`text\`, \`markdown\`, \`table\`, \`stack\`, \`grid\`, \`tabs\`, \`timeline\`, \`section\`.
+
+**Never invent new view types.** Strings like \`article-summary\`, \`card\`, \`hero\`, \`quote\`, or \`list\` are NOT supported and will cause the codoc to fail to save. When in doubt, compose layout from \`stack\` + \`markdown\`.
+
 ### Saving to codoc (RSS reading panel)
 When the user says "save" / "沉淀" / "保存", persist the feed as a **structured codoc with a view** so it renders as an RSS reading panel in the canvas.
 
@@ -372,6 +378,34 @@ view:
             props:
               content: "**{{item.title}}**\\n\\n{{item.summary}}"
 \`\`\`
+
+#### Saving a single-article summary
+When the user asks to save/沉淀 the summary of a specific article (after deep reading), create a new codoc at path \`rss/summaries/<slug>.codoc\`. The \`<slug>\` should be a short kebab-case identifier derived from the article title.
+
+\`\`\`yaml
+meta:
+  title: "<article title>"
+  tags: [rss, summary]
+  description: "<article URL>"
+
+data:
+  title: "<article title>"
+  link: "<article URL>"
+  pubDate: "<ISO date if available>"
+  summary: |
+    <multi-paragraph markdown summary — key insights, arguments, takeaways>
+
+view:
+  type: stack
+  children:
+    - type: markdown
+      props:
+        content: "# {{data.title}}\\n\\n_{{data.pubDate}}_ — [Source]({{data.link}})"
+    - type: markdown
+      bind: data.summary
+\`\`\`
+
+Only use the 8 whitelisted view types above. For summaries, \`stack\` + \`markdown\` is sufficient — do NOT invent types like \`article\`, \`article-summary\`, \`hero\`, or \`card\`.
 
 ## Guidelines
 - Be concise. Bullet points over paragraphs.

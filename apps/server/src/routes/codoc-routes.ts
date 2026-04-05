@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { ParseError } from "@cobook/core";
 import type { WorkspaceService } from "@cobook/service";
 import type { CodocRepository } from "@cobook/service";
 
@@ -43,6 +44,9 @@ export function codocRoutes(
       await service.createCodoc(c.req.param("id"), body.path, body.content);
       return c.json({ ok: true }, 201);
     } catch (err) {
+      if (err instanceof ParseError) {
+        return c.json({ error: err.message }, 400);
+      }
       return c.json({ error: String(err) }, 500);
     }
   });
@@ -63,6 +67,9 @@ export function codocRoutes(
       await service.updateCodoc(c.req.param("id"), codocPath, body.content);
       return c.json({ ok: true });
     } catch (err) {
+      if (err instanceof ParseError) {
+        return c.json({ error: err.message }, 400);
+      }
       return c.json({ error: String(err) }, 500);
     }
   });

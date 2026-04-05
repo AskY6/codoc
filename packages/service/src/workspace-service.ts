@@ -247,13 +247,10 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     path: string,
     content: string,
   ): Promise<void> {
-    // Parse and persist
-    let ast: CodocAST | undefined;
-    try {
-      ast = parseCodoc(content);
-    } catch {
-      // Will be flagged during build
-    }
+    // Parse first — reject invalid YAML/structure up front so agents and
+    // HTTP clients get a structured error instead of a persisted-but-broken
+    // codoc. parseCodoc throws ParseError with a useful message on failure.
+    const ast = parseCodoc(content);
     await codocRepo.upsert(workspaceId, path, {
       content,
       ast,
@@ -269,13 +266,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     path: string,
     newContent: string,
   ): Promise<void> {
-    // Parse and persist
-    let ast: CodocAST | undefined;
-    try {
-      ast = parseCodoc(newContent);
-    } catch {
-      // Will be flagged during build
-    }
+    // Parse first — same rationale as createCodocEntry.
+    const ast = parseCodoc(newContent);
     await codocRepo.upsert(workspaceId, path, {
       content: newContent,
       ast,
