@@ -113,8 +113,28 @@ function ActionWrapper({
   );
 }
 
+/**
+ * Interpolate `{{data.xxx}}` in all string props of a node using resolved data.
+ */
+function interpolateProps(
+  node: ViewNode,
+  data: Record<string, unknown> | null | undefined,
+): ViewNode {
+  if (!data || !node.props) return node;
+  const hasTemplate = Object.values(node.props).some(
+    (v) => typeof v === "string" && /\{\{/.test(v),
+  );
+  if (!hasTemplate) return node;
+  const scope = { data } as Record<string, unknown>;
+  const props: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node.props)) {
+    props[k] = typeof v === "string" ? interpolate(v, scope) : v;
+  }
+  return { ...node, props };
+}
+
 function RenderNode({ node: rawNode, data, onAction }: Props) {
-  const node = expandRepeat(rawNode, data);
+  const node = interpolateProps(expandRepeat(rawNode, data), data);
   const bound = resolve(node.bind, data);
 
   switch (node.type) {

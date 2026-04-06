@@ -323,16 +323,23 @@ data:
   link: "<article URL>"
   pubDate: "<ISO date if available>"
   summary: |
-    <multi-paragraph markdown summary — key insights, arguments, takeaways>
+    <well-structured markdown summary using headings (##), bullet points, and bold for emphasis>
 
 view:
   type: stack
   children:
     - type: markdown
       props:
-        content: "# {{data.title}}\\n\\n_{{data.pubDate}}_ — [Source]({{data.link}})"
-    - type: markdown
-      bind: data.summary
+        content: "# {{data.title}}"
+    - type: text
+      props:
+        content: "{{data.pubDate}} — Source: {{data.link}}"
+    - type: section
+      props:
+        title: "Summary"
+      children:
+        - type: markdown
+          bind: data.summary
 \`\`\`
 
 ## Guidelines
