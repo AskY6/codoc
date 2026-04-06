@@ -9,7 +9,7 @@ export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "listCodocs",
     description:
-      "List all codoc files in the current workspace with their paths and states (idle/ready/dirty/error).",
+      "List all codoc files in the current workspace. Returns path, nodeState, and meta (title, description, tags) for each codoc.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -79,6 +79,21 @@ export const toolDefinitions: Anthropic.Tool[] = [
       required: ["path", "content"],
     },
   },
+  {
+    name: "deleteCodoc",
+    description:
+      "Delete a codoc file from the workspace. Triggers rebuild to update the DAG.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        path: {
+          type: "string",
+          description: "Relative path of the codoc to delete",
+        },
+      },
+      required: ["path"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -94,10 +109,7 @@ export async function executeTool(
 ): Promise<unknown> {
   switch (name) {
     case "listCodocs": {
-      const status = await ctx.service.getStatus(ctx.workspaceId);
-      // Return a simple list by building from status + individual lookups
-      // For efficiency, we use the build result's codoc list
-      return { codocCount: status.codocCount, states: status.states };
+      return await ctx.service.listCodocs(ctx.workspaceId);
     }
 
     case "getCodoc": {
@@ -122,6 +134,12 @@ export async function executeTool(
       const path = String(input["path"]);
       const content = String(input["content"]);
       await ctx.service.updateCodoc(ctx.workspaceId, path, content);
+      return { ok: true, path };
+    }
+
+    case "deleteCodoc": {
+      const path = String(input["path"]);
+      await ctx.service.deleteCodoc(ctx.workspaceId, path);
       return { ok: true, path };
     }
 

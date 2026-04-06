@@ -5,35 +5,14 @@ import { toolDefinitions, executeTool } from "./tools.js";
 import type { Agent, AgentContext, LLMConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// RSS domain state — stored in agent_sessions.state, never exposed to platform
-// ---------------------------------------------------------------------------
-
-interface RssFeed {
-  url: string;
-  title: string;
-  alias?: string | undefined;
-  addedAt: string;
-  lastSeenAt?: string | undefined;
-}
-
-interface RssState {
-  feeds: RssFeed[];
-}
-
-function getRssState(state: Record<string, unknown>): RssState {
-  const rss = state["rss"] as RssState | undefined;
-  return rss ?? { feeds: [] };
-}
-
-// ---------------------------------------------------------------------------
-// RSS tool definitions (self-contained, not exported to platform)
+// RSS-specific tool definitions
 // ---------------------------------------------------------------------------
 
 const rssToolDefinitions: Anthropic.Tool[] = [
   {
     name: "fetchRssFeed",
     description:
-      "Fetch and parse an RSS or Atom feed URL. Returns the feed title and a list of recent entries with title, link, published date, and summary/content.",
+      "Fetch and parse an RSS or Atom feed URL. Returns the feed title and a list of recent entries. If lastFetchedAt is provided, items are marked as new or seen based on that timestamp.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -41,32 +20,13 @@ const rssToolDefinitions: Anthropic.Tool[] = [
           type: "string",
           description: "The RSS or Atom feed URL to fetch",
         },
+        lastFetchedAt: {
+          type: "string",
+          description:
+            "ISO timestamp from the existing feed codoc's data.lastFetchedAt. Items published after this are marked isNew. Omit on first fetch.",
+        },
       },
       required: ["url"],
-    },
-  },
-  {
-    name: "manageRssFeeds",
-    description:
-      "Manage the user's RSS feed subscriptions. Supports add, remove, and list actions. Subscriptions persist across sessions.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        action: {
-          type: "string",
-          enum: ["add", "remove", "list"],
-          description: "The action to perform",
-        },
-        url: {
-          type: "string",
-          description: "Feed URL (required for add/remove)",
-        },
-        alias: {
-          type: "string",
-          description: "Short alias for the feed (optional, for add)",
-        },
-      },
-      required: ["action"],
     },
   },
   {
@@ -113,22 +73,18 @@ async function executeRssTool(
 ): Promise<unknown> {
   if (name === "fetchRssFeed") {
     const url = String(input["url"]);
-    const feed = await rssParser.parseURL(url);
+    const lastFetchedAt = input["lastFetchedAt"]
+      ? String(input["lastFetchedAt"])
+      : undefined;
 
-    // Determine lastSeenAt watermark from saved state
-    let lastSeenAt: string | undefined;
-    if (ctx.sessionRepo) {
-      const session = await ctx.sessionRepo.findByWorkspace(ctx.workspaceId);
-      if (session) {
-        const rss = getRssState(session.state);
-        const saved = rss.feeds.find((f) => f.url === url);
-        lastSeenAt = saved?.lastSeenAt;
-      }
-    }
+    const feed = await rssParser.parseURL(url);
 
     const items = feed.items.map((item) => {
       const pubDate = item.pubDate ?? item.isoDate;
-      const isNew = !lastSeenAt || !pubDate ? true : new Date(pubDate) > new Date(lastSeenAt);
+      const isNew =
+        !lastFetchedAt || !pubDate
+          ? true
+          : new Date(pubDate) > new Date(lastFetchedAt);
       return {
         title: item.title,
         link: item.link,
@@ -137,18 +93,6 @@ async function executeRssTool(
         isNew,
       };
     });
-
-    // Update lastSeenAt watermark
-    if (ctx.sessionRepo) {
-      const session = await ctx.sessionRepo.findByWorkspace(ctx.workspaceId);
-      const state = session?.state ?? {};
-      const rss = getRssState(state);
-      const idx = rss.feeds.findIndex((f) => f.url === url);
-      if (idx >= 0) {
-        rss.feeds[idx]!.lastSeenAt = new Date().toISOString();
-        await ctx.sessionRepo.upsert(ctx.workspaceId, null, { state: { ...state, rss } });
-      }
-    }
 
     const newCount = items.filter((i) => i.isNew).length;
     const seenCount = items.length - newCount;
@@ -161,48 +105,6 @@ async function executeRssTool(
       newCount,
       seenCount,
     };
-  }
-
-  if (name === "manageRssFeeds") {
-    if (!ctx.sessionRepo) return { error: "Session storage not available" };
-    const action = String(input["action"]);
-    const session = await ctx.sessionRepo.findByWorkspace(ctx.workspaceId);
-    const state = session?.state ?? {};
-    const rss = getRssState(state);
-
-    if (action === "list") {
-      return { feeds: rss.feeds };
-    }
-
-    if (action === "add") {
-      const url = String(input["url"]);
-      if (rss.feeds.some((f) => f.url === url)) {
-        return { error: "Feed already subscribed", url };
-      }
-      // Fetch feed title for display
-      let title = url;
-      try {
-        const feed = await rssParser.parseURL(url);
-        title = feed.title ?? url;
-      } catch { /* use URL as fallback title */ }
-      const alias = input["alias"] ? String(input["alias"]) : undefined;
-      rss.feeds.push({ url, title, alias, addedAt: new Date().toISOString() });
-      await ctx.sessionRepo.upsert(ctx.workspaceId, null, { state: { ...state, rss } });
-      return { ok: true, feed: rss.feeds[rss.feeds.length - 1] };
-    }
-
-    if (action === "remove") {
-      const url = String(input["url"]);
-      const before = rss.feeds.length;
-      rss.feeds = rss.feeds.filter((f) => f.url !== url && f.alias !== url);
-      if (rss.feeds.length === before) {
-        return { error: "Feed not found", url };
-      }
-      await ctx.sessionRepo.upsert(ctx.workspaceId, null, { state: { ...state, rss } });
-      return { ok: true, remaining: rss.feeds.length };
-    }
-
-    return { error: `Unknown action: ${action}` };
   }
 
   if (name === "fetchWebPage") {
@@ -224,33 +126,69 @@ async function executeRssTool(
 }
 
 // ---------------------------------------------------------------------------
-// RSS agent — reads RSS feeds, summarises entries, saves to codoc
+// Codoc tools exposed to RSS agent (all platform tools)
 // ---------------------------------------------------------------------------
 
-const CODOC_TOOLS = toolDefinitions.filter((t) =>
-  t.name === "listCodocs" || t.name === "getCodoc" || t.name === "createCodoc" || t.name === "updateCodoc",
+const CODOC_TOOLS = toolDefinitions.filter(
+  (t) =>
+    t.name === "listCodocs" ||
+    t.name === "getCodoc" ||
+    t.name === "createCodoc" ||
+    t.name === "updateCodoc" ||
+    t.name === "deleteCodoc",
 );
+
+// ---------------------------------------------------------------------------
+// System prompt — codoc IS the subscription
+// ---------------------------------------------------------------------------
 
 const RSS_SYSTEM_PROMPT = `You are an RSS reading assistant within a Cobook workspace.
 
+## Core principle
+
+**A codoc IS a subscription.** There is no separate subscription list. Every RSS feed the user follows is a codoc at \`rss/<slug>.codoc\` with \`tags: [rss]\`. The codoc stores feed metadata, articles, and the reading panel view.
+
 ## Capabilities
 
-### Feed subscriptions
-Users can subscribe to feeds for quick access. Use manageRssFeeds to add/remove/list subscriptions.
-- When the user says "订阅" / "subscribe" + URL (optionally with alias), add it.
-- When the user says "列出订阅" / "list feeds", list all subscriptions.
-- When the user says just "@rss" with no URL, fetch all subscribed feeds.
-- When the user gives an alias or keyword, match it against subscriptions.
+### Subscribe to a feed
+When the user says "订阅" / "subscribe" + URL:
+1. Call listCodocs to check if a codoc with the same feed URL already exists (match by \`meta.description\`).
+   - If found, tell the user they're already subscribed and offer to refresh.
+2. Call fetchRssFeed with the URL (no lastFetchedAt on first fetch — all items are new).
+3. Call createCodoc to persist as \`rss/<slug>.codoc\` using the feed codoc template below.
 
-### Reading feeds
-- Call fetchRssFeed with a URL. Items are marked as new (isNew: true) or seen based on last viewing time.
-- Present new items first. If there are seen items, add a line: "另有 N 篇已读" / "N previously read".
-- Present entries as a concise numbered list: title + date + one-line summary.
+### List subscriptions
+When the user says "列出订阅" / "list feeds":
+- Call listCodocs and filter results where \`meta.tags\` includes "rss" and path starts with \`rss/\`.
+- Present: title, feed URL (from meta.description), path.
+
+### Read a feed / check for updates
+When the user says "有什么新的" / "what's new" / just "@rss":
+1. Call listCodocs to find all \`rss/*.codoc\` with tag "rss".
+2. For each feed (or the one the user specified):
+   a. Call getCodoc to read the existing codoc and extract \`data.lastFetchedAt\`.
+   b. Call fetchRssFeed with the URL and lastFetchedAt from the codoc.
+3. Present new items first as a concise numbered list: title + date + one-line summary.
+   If there are seen items, add a line: "另有 N 篇已读" / "N previously read".
+4. Call updateCodoc to persist the fresh articles and new lastFetchedAt timestamp.
 
 ### Deep reading
 - When the user picks an entry, call fetchWebPage with the article link to get the full text.
 - Summarise the full article — highlight key insights, arguments, and takeaways.
 - The user may discuss, ask follow-up questions, or request deeper analysis.
+
+### Unsubscribe
+When the user says "取消订阅" / "unsubscribe":
+- Call listCodocs to find the matching feed codoc.
+- Call deleteCodoc to remove it. This is a hard delete.
+
+### Refresh a feed
+When the user says "刷新" / "refresh":
+1. Call listCodocs to find \`rss/*.codoc\` files.
+2. Match the target feed by \`meta.description\` (feed URL) or path.
+3. Call getCodoc to read existing \`data.lastFetchedAt\`.
+4. Call fetchRssFeed with the URL and lastFetchedAt.
+5. Call updateCodoc with the updated data section (same view structure, new articles + timestamp).
 
 ### Supported view types (hard whitelist)
 The canvas renderer only understands these view \`type\` values:
@@ -258,11 +196,9 @@ The canvas renderer only understands these view \`type\` values:
 
 **Never invent new view types.** Strings like \`article-summary\`, \`card\`, \`hero\`, \`quote\`, or \`list\` are NOT supported and will cause the codoc to fail to save. When in doubt, compose layout from \`stack\` + \`markdown\`.
 
-### Saving to codoc (RSS reading panel)
-When the user says "save" / "沉淀" / "保存", persist the feed as a **structured codoc with a view** so it renders as an RSS reading panel in the canvas.
+## Feed codoc template
 
-#### Single feed codoc
-Use createCodoc with path \`rss/<alias-or-slug>.codoc\`. The YAML **must** follow this structure:
+Every feed codoc MUST follow this structure:
 
 \`\`\`yaml
 meta:
@@ -279,7 +215,6 @@ data:
       link: "<article URL>"
       pubDate: "<date>"
       summary: "<one-line summary>"
-      isNew: true
 
 view:
   type: stack
@@ -311,19 +246,13 @@ view:
 \`\`\`
 
 Key rules:
-- \`meta.description\` stores the feed URL (used to match subscriptions to codocs).
-- \`data.articles\` is an array; the view uses \`repeat\` to render each item — never hardcode articles into the view children.
-- Always set \`lastFetchedAt\` to the current time.
+- \`meta.description\` stores the feed URL — this is how you match subscriptions to codocs.
+- \`data.articles\` is an array; the view uses \`repeat\` to render each item — never hardcode articles into view children.
+- Always set \`lastFetchedAt\` to the current time when creating or refreshing.
+- When refreshing, only update the \`data\` section. The \`view\` and \`meta\` stay the same.
 
-#### Refreshing a feed codoc
-When the user says "刷新" / "refresh":
-1. Use listCodocs to find existing \`rss/*.codoc\` files.
-2. Match the target feed by \`meta.description\` (feed URL) or path.
-3. Call fetchRssFeed to get fresh data.
-4. Call updateCodoc with the updated \`data\` section (same view structure, new articles + timestamp).
-   The view uses repeat/template so it does NOT need to change when articles change.
+## RSS Dashboard (multi-feed aggregation)
 
-#### RSS Dashboard (multi-feed aggregation)
 When the user has multiple feed codocs and asks for a dashboard or overview:
 - Create/update \`rss/dashboard.codoc\` that uses \`$ref\` to pull articles from each feed codoc:
 
@@ -379,8 +308,9 @@ view:
               content: "**{{item.title}}**\\n\\n{{item.summary}}"
 \`\`\`
 
-#### Saving a single-article summary
-When the user asks to save/沉淀 the summary of a specific article (after deep reading), create a new codoc at path \`rss/summaries/<slug>.codoc\`. The \`<slug>\` should be a short kebab-case identifier derived from the article title.
+## Saving a single-article summary
+
+When the user asks to save/沉淀 the summary of a specific article (after deep reading), create a new codoc at path \`rss/summaries/<slug>.codoc\`:
 
 \`\`\`yaml
 meta:
@@ -405,19 +335,19 @@ view:
       bind: data.summary
 \`\`\`
 
-Only use the 8 whitelisted view types above. For summaries, \`stack\` + \`markdown\` is sufficient — do NOT invent types like \`article\`, \`article-summary\`, \`hero\`, or \`card\`.
-
 ## Guidelines
 - Be concise. Bullet points over paragraphs.
 - Summarise in the same language as the source content, unless the user asks otherwise.
 - When creating a codoc, use valid YAML with meta (title, tags) and data sections.
-- Always use the \`repeat\` + \`template\` view pattern for article lists. Never expand articles into static view children.`;
+- Always use the \`repeat\` + \`template\` view pattern for article lists. Never expand articles into static view children.
+- Only use the 8 whitelisted view types. Do NOT invent types like \`article\`, \`article-summary\`, \`hero\`, or \`card\`.`;
 
 export function createRssAgent(config?: LLMConfig): Agent {
   return createBaseAgent({
     ...config,
     name: "RSS Reader",
-    description: "Subscribe to RSS feeds, read articles, and save summaries to codocs",
+    description:
+      "Subscribe to RSS feeds, read articles, and save summaries to codocs",
     systemPrompt: RSS_SYSTEM_PROMPT,
     tools: [...rssToolDefinitions, ...CODOC_TOOLS],
     toolExecutor: executeRssTool,

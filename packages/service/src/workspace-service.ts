@@ -19,6 +19,7 @@ import { executeSource, type Source } from "./source-executor.js";
 import type {
   BuildDiagnostics,
   CodocInfo,
+  CodocListItem,
   DiagnosticError,
   WorkspaceStatus,
 } from "./types.js";
@@ -36,6 +37,7 @@ export interface WorkspaceServiceDeps {
 export interface WorkspaceService {
   createWorkspace(name: string): Promise<Workspace>;
   getStatus(workspaceId: string): Promise<WorkspaceStatus>;
+  listCodocs(workspaceId: string): Promise<CodocListItem[]>;
   build(workspaceId: string): Promise<BuildDiagnostics>;
   resolve(workspaceId: string, nodeId: string): Promise<unknown>;
   createCodoc(workspaceId: string, path: string, content: string): Promise<void>;
@@ -69,6 +71,23 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       states[c.nodeState] = (states[c.nodeState] ?? 0) + 1;
     }
     return { codocCount: all.length, states };
+  }
+
+  // -----------------------------------------------------------------------
+  // listCodocs
+  // -----------------------------------------------------------------------
+
+  async function listCodocs(workspaceId: string): Promise<CodocListItem[]> {
+    const all = await codocRepo.listByWorkspace(workspaceId);
+    return all.map((c) => {
+      const ast = c.ast as CodocAST | null;
+      const meta = ast?.meta as Record<string, unknown> | undefined;
+      const item: CodocListItem = { path: c.path, nodeState: c.nodeState, meta: {} };
+      if (typeof meta?.["title"] === "string") item.meta.title = meta["title"];
+      if (typeof meta?.["description"] === "string") item.meta.description = meta["description"];
+      if (Array.isArray(meta?.["tags"])) item.meta.tags = meta["tags"] as string[];
+      return item;
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -307,6 +326,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   return {
     createWorkspace,
     getStatus,
+    listCodocs,
     build,
     resolve: resolveNode,
     createCodoc: createCodocEntry,

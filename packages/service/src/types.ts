@@ -40,6 +40,20 @@ export interface CodocInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Codoc list item (returned by listCodocs — lightweight, no resolvedData)
+// ---------------------------------------------------------------------------
+
+export interface CodocListItem {
+  path: string;
+  nodeState: string;
+  meta: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Source execution
 // ---------------------------------------------------------------------------
 
