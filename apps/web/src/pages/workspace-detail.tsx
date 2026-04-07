@@ -227,61 +227,45 @@ export function WorkspaceDetailPage() {
             </Badge>
           </div>
           {threads.length === 0 ? (
-            <div className="flex items-center gap-4 py-6">
-              <div className="rounded-full bg-muted p-3">
-                <MessageSquare className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">No chats yet</p>
-                <Button size="sm" variant="link" className="h-auto p-0 text-sm" onClick={() => openNewChatDialog()}>
-                  Start your first chat
-                </Button>
-              </div>
+            <div className="flex items-center gap-3 py-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No chats yet</p>
+              <Button size="sm" variant="link" className="h-auto p-0 text-sm" onClick={() => openNewChatDialog()}>
+                Start your first chat
+              </Button>
             </div>
           ) : (
-            <div className="flex gap-3 overflow-x-auto pb-1">
+            <div className="flex flex-col gap-0.5">
               {threads.map((t) => (
                 <Link
                   key={t.id}
                   to={`/workspace/${workspaceId}/chat/${t.id}`}
-                  className="shrink-0"
+                  className="group flex items-center gap-2 py-1 px-2 -mx-2 rounded-md text-sm hover:bg-muted transition-colors"
                 >
-                  <Card className="group w-56 hover:shadow-md transition-shadow cursor-pointer">
-                    <CardHeader className="py-3 px-4">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <CardTitle className="text-sm truncate">
-                          {t.title ?? "Untitled"}
-                        </CardTitle>
-                      </div>
-                      <div className="flex items-center justify-between mt-1.5">
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(t.updatedAt).toLocaleDateString()}
-                        </span>
-                        {confirmDeleteId === t.id ? (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="h-5 text-xs px-1.5"
-                            onClick={(e) => handleDeleteThread(e, t.id)}
-                            onBlur={() => setConfirmDeleteId(null)}
-                          >
-                            Delete?
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5"
-                            onClick={(e) => handleDeleteThread(e, t.id)}
-                            title="Delete chat"
-                          >
-                            <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                  </Card>
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{t.title ?? "Untitled"}</span>
+                  <span className="text-xs text-muted-foreground ml-auto shrink-0">{new Date(t.updatedAt).toLocaleDateString()}</span>
+                  {confirmDeleteId === t.id ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-5 text-xs px-1.5 shrink-0"
+                      onClick={(e) => handleDeleteThread(e, t.id)}
+                      onBlur={() => setConfirmDeleteId(null)}
+                    >
+                      Delete?
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 shrink-0"
+                      onClick={(e) => handleDeleteThread(e, t.id)}
+                      title="Delete chat"
+                    >
+                      <Trash2 className="h-3 w-3 hover:text-destructive" />
+                    </Button>
+                  )}
                 </Link>
               ))}
             </div>

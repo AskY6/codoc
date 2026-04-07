@@ -411,6 +411,85 @@ function formatDateShort(d: Date): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+/**
+ * Auto-render data fields when a view node has no explicit children.
+ */
+function AutoDataView({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            {key.replace(/_/g, " ")}
+          </h4>
+          <AutoDataValue value={value} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AutoDataValue({ value }: { value: unknown }) {
+  if (value == null) return null;
+
+  if (Array.isArray(value)) {
+    return (
+      <ul className="list-disc list-inside space-y-1 text-sm text-foreground">
+        {value.map((item, i) => (
+          <li key={i}>{String(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return (
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {Object.entries(obj).map(([k, v]) => {
+          const str = String(v ?? "");
+          const isUrl = str.startsWith("http");
+          return (
+            <span key={k} className="text-muted-foreground">
+              {k}:{" "}
+              {isUrl ? (
+                <a
+                  href={str}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-foreground underline underline-offset-2 hover:text-primary"
+                >
+                  {str}
+                </a>
+              ) : (
+                <span className="text-foreground">{str}</span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const str = String(value);
+  if (str.startsWith("http")) {
+    return (
+      <a
+        href={str}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sm text-foreground underline underline-offset-2 hover:text-primary"
+      >
+        {str}
+      </a>
+    );
+  }
+  return <p className="text-sm text-foreground">{str}</p>;
+}
+
 function RenderNode({ node: rawNode, data, onAction }: Props) {
   const node = interpolateProps(expandRepeat(rawNode, data), data);
   const bound = resolve(node.bind, data);
@@ -564,6 +643,7 @@ function RenderNode({ node: rawNode, data, onAction }: Props) {
 
     case "section": {
       const title = (node.props?.title as string) ?? "";
+      const hasChildren = node.children && node.children.length > 0;
       return (
         <div className="rounded-lg border border-border/60">
           {title && (
@@ -574,9 +654,11 @@ function RenderNode({ node: rawNode, data, onAction }: Props) {
             </div>
           )}
           <div className="px-4 py-3 space-y-3">
-            {node.children?.map((child, i) => (
-              <RenderNode key={i} node={child} data={data} onAction={onAction} />
-            ))}
+            {hasChildren
+              ? node.children!.map((child, i) => (
+                  <RenderNode key={i} node={child} data={data} onAction={onAction} />
+                ))
+              : data && <AutoDataView data={data} />}
           </div>
         </div>
       );
