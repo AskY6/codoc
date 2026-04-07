@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { getWorkspace, getWorkspaceStatus } from "@/api/workspace.js";
 import { listCodocs, getCodoc, deleteCodoc } from "@/api/codoc.js";
@@ -25,8 +25,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/status-badge";
 import { CodocViewer } from "@/components/codoc-viewer";
+import { buildTree, TreeItem } from "@/components/codoc-browser";
 import {
   ArrowLeft,
   Bot,
@@ -34,7 +36,7 @@ import {
   MessageSquare,
   FileText,
   FolderOpen,
-  Eye,
+  Search,
   Trash2,
 } from "lucide-react";
 import type {
@@ -60,6 +62,9 @@ export function WorkspaceDetailPage() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [wsAgentIds, setWsAgentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [filterState, setFilterState] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteCodocPath, setConfirmDeleteCodocPath] = useState<string | null>(null);
@@ -140,6 +145,10 @@ export function WorkspaceDetailPage() {
     }
   }
 
+  function handleNavigateCodoc(codocPath: string) {
+    navigate(`/workspace/${workspaceId}/codoc/${codocPath}`);
+  }
+
   async function handleViewCodoc(codocPath: string) {
     if (!workspaceId) return;
     setViewDialogOpen(true);
@@ -152,6 +161,21 @@ export function WorkspaceDetailPage() {
       setViewLoading(false);
     }
   }
+
+  const filteredCodocs = useMemo(() => {
+    let result = codocs;
+    if (filterState) {
+      result = result.filter((c) => c.nodeState === filterState);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (c) => c.path.toLowerCase().includes(q) || (c.meta.title?.toLowerCase().includes(q) ?? false),
+      );
+    }
+    return result;
+  }, [codocs, filterState, searchQuery]);
+  const tree = useMemo(() => buildTree(filteredCodocs), [filteredCodocs]);
 
   if (!workspaceId) return null;
 
@@ -274,7 +298,14 @@ export function WorkspaceDetailPage() {
                 </h2>
                 {status?.states &&
                   Object.entries(status.states).map(([state, count]) => (
-                    <Badge key={state} variant="outline" className="text-xs">
+                    <Badge
+                      key={state}
+                      variant="outline"
+                      className={`text-xs cursor-pointer transition-colors ${
+                        filterState === state ? "bg-primary/10 border-primary text-primary" : ""
+                      }`}
+                      onClick={() => setFilterState(filterState === state ? null : state)}
+                    >
                       {state}: {count}
                     </Badge>
                   ))}
@@ -285,6 +316,18 @@ export function WorkspaceDetailPage() {
               </TabsList>
             </div>
 
+            {codocs.length > 8 && (
+              <div className="relative mb-3">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search codocs…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            )}
+
             <TabsContent value="list">
               {codocs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -294,40 +337,37 @@ export function WorkspaceDetailPage() {
                   <p className="text-sm text-muted-foreground">No codocs yet</p>
                 </div>
               ) : (
-                <Card>
-                  <div className="divide-y divide-border/60">
-                    {codocs.map((c) => (
-                      <div
-                        key={c.path}
-                        className="group flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
-                      >
-                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate flex-1 text-foreground">{c.path}</span>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => handleViewCodoc(c.path)}
-                              title="View"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => openNewChatDialog(c.id)}
-                              title="New chat"
-                            >
-                              <MessageSquare className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                          {confirmDeleteCodocPath === c.path ? (
+                <Card className="py-1">
+                  <TreeItem
+                    node={tree}
+                    depth={0}
+                    selectedPath={null}
+                    onSelect={handleNavigateCodoc}
+                    renderActions={(path) => {
+                      const codoc = codocs.find((c) => c.path === path);
+                      if (!codoc) return null;
+                      return (
+                        <span className="flex items-center gap-1 opacity-0 group-hover/leaf:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openNewChatDialog(codoc.id);
+                            }}
+                            title="New chat"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                          </Button>
+                          {confirmDeleteCodocPath === path ? (
                             <Button
                               variant="destructive"
                               size="sm"
                               className="h-6 text-xs px-2"
-                              onClick={(e) => handleDeleteCodoc(e, c.path)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCodoc(e, path);
+                              }}
                               onBlur={() => setConfirmDeleteCodocPath(null)}
                             >
                               Delete?
@@ -336,18 +376,19 @@ export function WorkspaceDetailPage() {
                             <Button
                               variant="ghost"
                               size="icon-sm"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => handleDeleteCodoc(e, c.path)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCodoc(e, path);
+                              }}
                               title="Delete codoc"
                             >
                               <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
                             </Button>
                           )}
-                          <StatusBadge state={c.nodeState} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        </span>
+                      );
+                    }}
+                  />
                 </Card>
               )}
             </TabsContent>
@@ -355,7 +396,7 @@ export function WorkspaceDetailPage() {
             <TabsContent value="graph">
               <Card className="overflow-hidden">
                 {graph && graph.nodes.length > 0 ? (
-                  <GraphView graph={graph} />
+                  <GraphView graph={graph} onNodeClick={handleViewCodoc} />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <p className="text-sm text-muted-foreground">No graph data</p>

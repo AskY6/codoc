@@ -3,6 +3,7 @@ import type { GraphData } from "@/types.js";
 
 interface Props {
   graph: GraphData;
+  onNodeClick?: (path: string) => void;
 }
 
 interface LayoutNode {
@@ -97,7 +98,7 @@ const STATE_COLORS: Record<string, string> = {
   computing: "#3b82f6",
 };
 
-export function GraphView({ graph }: Props) {
+export function GraphView({ graph, onNodeClick }: Props) {
   const { nodes, width, height } = useMemo(() => layout(graph), [graph]);
   const posMap = new Map(nodes.map((n) => [n.path, n]));
 
@@ -144,7 +145,11 @@ export function GraphView({ graph }: Props) {
       </defs>
       {/* Nodes */}
       {nodes.map((n) => (
-        <g key={n.path}>
+        <g
+          key={n.path}
+          className={onNodeClick ? "cursor-pointer" : undefined}
+          onClick={onNodeClick ? () => onNodeClick(n.path) : undefined}
+        >
           <rect
             x={n.x}
             y={n.y}
@@ -154,13 +159,14 @@ export function GraphView({ graph }: Props) {
             fill="var(--color-card)"
             stroke={STATE_COLORS[n.state] ?? STATE_COLORS.idle}
             strokeWidth={2}
+            className={onNodeClick ? "hover:opacity-80 transition-opacity" : undefined}
           />
           <text
             x={n.x + NODE_W / 2}
             y={n.y + NODE_H / 2}
             textAnchor="middle"
             dominantBaseline="central"
-            className="text-[10px] fill-foreground"
+            className="text-[10px] fill-foreground pointer-events-none"
           >
             {n.path.length > 18 ? `...${n.path.slice(-15)}` : n.path}
           </text>

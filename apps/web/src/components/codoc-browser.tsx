@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { FileText } from "lucide-react";
 import type { CodocListItem } from "@/types.js";
@@ -36,11 +37,13 @@ export function TreeItem({
   depth,
   selectedPath,
   onSelect,
+  renderActions,
 }: {
   node: TreeNode;
   depth: number;
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  renderActions?: ((path: string) => ReactNode) | undefined;
 }) {
   const isLeaf = !!node.path;
   const isSelected = node.path === selectedPath;
@@ -50,7 +53,7 @@ export function TreeItem({
     return (
       <button
         onClick={() => onSelect(node.path!)}
-        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left transition-colors ${
+        className={`group/leaf flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left transition-colors ${
           isSelected
             ? "bg-primary/10 text-primary font-medium"
             : "text-foreground hover:bg-muted"
@@ -59,6 +62,7 @@ export function TreeItem({
       >
         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate flex-1">{node.title ?? node.name}</span>
+        {renderActions && node.path && renderActions(node.path)}
         {node.state && <StatusBadge state={node.state} />}
       </button>
     );
@@ -81,6 +85,7 @@ export function TreeItem({
           depth={node.name ? depth + 1 : depth}
           selectedPath={selectedPath}
           onSelect={onSelect}
+          renderActions={renderActions}
         />
       ))}
     </div>
