@@ -209,8 +209,8 @@ export function ChatPage() {
             workspaceId={workspaceId}
             threadId={threadId}
             agents={agents}
+            codocs={codocs}
             selectedPath={selectedPath}
-            onClearContext={handleClearContext}
             onTitleUpdate={handleTitleUpdate}
           />
         </ResizablePanel>
