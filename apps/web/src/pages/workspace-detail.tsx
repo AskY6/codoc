@@ -191,200 +191,193 @@ export function WorkspaceDetailPage() {
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
-        {/* Workspace Info */}
-        <section className="flex items-center gap-4">
-          <Badge variant="secondary">
-            {status?.codocCount ?? 0} codocs
-          </Badge>
-          <Badge variant="secondary">
-            {threads.length} chats
-          </Badge>
-          {status?.states &&
-            Object.entries(status.states).map(([state, count]) => (
-              <Badge key={state} variant="outline">
-                {state}: {count}
-              </Badge>
-            ))}
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+        {/* Recent Chats — horizontal scrollable cards */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Recent chats
+            </h2>
+            <Badge variant="secondary" className="text-xs">
+              {threads.length}
+            </Badge>
+          </div>
+          {threads.length === 0 ? (
+            <div className="flex items-center gap-4 py-6">
+              <div className="rounded-full bg-muted p-3">
+                <MessageSquare className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">No chats yet</p>
+                <Button size="sm" variant="link" className="h-auto p-0 text-sm" onClick={() => openNewChatDialog()}>
+                  Start your first chat
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {threads.map((t) => (
+                <Link
+                  key={t.id}
+                  to={`/workspace/${workspaceId}/chat/${t.id}`}
+                  className="shrink-0"
+                >
+                  <Card className="group w-56 hover:shadow-md transition-shadow cursor-pointer">
+                    <CardHeader className="py-3 px-4">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <CardTitle className="text-sm truncate">
+                          {t.title ?? "Untitled"}
+                        </CardTitle>
+                      </div>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(t.updatedAt).toLocaleDateString()}
+                        </span>
+                        {confirmDeleteId === t.id ? (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-5 text-xs px-1.5"
+                            onClick={(e) => handleDeleteThread(e, t.id)}
+                            onBlur={() => setConfirmDeleteId(null)}
+                          >
+                            Delete?
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5"
+                            onClick={(e) => handleDeleteThread(e, t.id)}
+                            title="Delete chat"
+                          >
+                            <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Chat List */}
-          <section>
+        {/* Codocs — full width with tabs */}
+        <section>
+          <Tabs defaultValue="list">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                Chats
-              </h2>
-            </div>
-            {threads.length === 0 ? (
-              <Card className="flex flex-col items-center justify-center py-10 gap-3">
-                <MessageSquare className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No chats yet</p>
-                <Button size="sm" variant="outline" onClick={() => openNewChatDialog()}>
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Start a chat
-                </Button>
-              </Card>
-            ) : (
-              <ScrollArea className="max-h-80">
-                <div className="space-y-2">
-                  {threads.map((t) => (
-                    <Link
-                      key={t.id}
-                      to={`/workspace/${workspaceId}/chat/${t.id}`}
-                    >
-                      <Card className="group hover:shadow-md transition-shadow cursor-pointer">
-                        <CardHeader className="py-3 px-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <CardTitle className="text-sm truncate">
-                                {t.title ?? "Untitled"}
-                              </CardTitle>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(t.updatedAt).toLocaleDateString()}
-                              </span>
-                              {confirmDeleteId === t.id ? (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  className="h-6 text-xs px-2"
-                                  onClick={(e) => handleDeleteThread(e, t.id)}
-                                  onBlur={() => setConfirmDeleteId(null)}
-                                >
-                                  Delete?
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => handleDeleteThread(e, t.id)}
-                                  title="Delete chat"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </ScrollArea>
-            )}
-          </section>
-
-          {/* Codoc List / Graph */}
-          <section>
-            <Tabs defaultValue="list">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
                 <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                   Codocs
                 </h2>
-                <TabsList>
-                  <TabsTrigger value="list">List</TabsTrigger>
-                  <TabsTrigger value="graph">Graph</TabsTrigger>
-                </TabsList>
+                {status?.states &&
+                  Object.entries(status.states).map(([state, count]) => (
+                    <Badge key={state} variant="outline" className="text-xs">
+                      {state}: {count}
+                    </Badge>
+                  ))}
               </div>
+              <TabsList>
+                <TabsTrigger value="list">List</TabsTrigger>
+                <TabsTrigger value="graph">Graph</TabsTrigger>
+              </TabsList>
+            </div>
 
-              <TabsContent value="list">
-                {codocs.length === 0 ? (
-                  <Card className="flex flex-col items-center justify-center py-10 gap-3">
-                    <FolderOpen className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No codocs yet</p>
-                  </Card>
-                ) : (
-                  <Card>
-                    <ScrollArea className="max-h-80">
-                      <div className="p-2">
-                        {codocs.map((c) => (
-                          <div
-                            key={c.path}
-                            className="group flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted transition-colors"
-                          >
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate flex-1">{c.path}</span>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => handleViewCodoc(c.path)}
-                                  title="View"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => openNewChatDialog(c.id)}
-                                  title="New chat"
-                                >
-                                  <MessageSquare className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                              {confirmDeleteCodocPath === c.path ? (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  className="h-6 text-xs px-2"
-                                  onClick={(e) => handleDeleteCodoc(e, c.path)}
-                                  onBlur={() => setConfirmDeleteCodocPath(null)}
-                                >
-                                  Delete?
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => handleDeleteCodoc(e, c.path)}
-                                  title="Delete codoc"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                                </Button>
-                              )}
-                            </div>
-                            <StatusBadge state={c.nodeState} />
+            <TabsContent value="list">
+              {codocs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <div className="rounded-full bg-muted p-4">
+                    <FolderOpen className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">No codocs yet</p>
+                </div>
+              ) : (
+                <Card>
+                  <div className="divide-y divide-border/60">
+                    {codocs.map((c) => (
+                      <div
+                        key={c.path}
+                        className="group flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                      >
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate flex-1 text-foreground">{c.path}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => handleViewCodoc(c.path)}
+                              title="View"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openNewChatDialog(c.id)}
+                              title="New chat"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
-                        ))}
+                          {confirmDeleteCodocPath === c.path ? (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-6 text-xs px-2"
+                              onClick={(e) => handleDeleteCodoc(e, c.path)}
+                              onBlur={() => setConfirmDeleteCodocPath(null)}
+                            >
+                              Delete?
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => handleDeleteCodoc(e, c.path)}
+                              title="Delete codoc"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                          )}
+                          <StatusBadge state={c.nodeState} />
+                        </div>
                       </div>
-                    </ScrollArea>
-                  </Card>
-                )}
-              </TabsContent>
-
-              <TabsContent value="graph">
-                <Card className="overflow-hidden">
-                  {graph && graph.nodes.length > 0 ? (
-                    <GraphView graph={graph} />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-10 gap-3">
-                      <p className="text-sm text-muted-foreground">No graph data</p>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </Card>
-              </TabsContent>
-            </Tabs>
-          </section>
-        </div>
+              )}
+            </TabsContent>
 
-        {/* Agents */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
+            <TabsContent value="graph">
+              <Card className="overflow-hidden">
+                {graph && graph.nodes.length > 0 ? (
+                  <GraphView graph={graph} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <p className="text-sm text-muted-foreground">No graph data</p>
+                  </div>
+                )}
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </section>
+
+        {/* Agents — collapsible */}
+        <details className="group">
+          <summary className="flex items-center justify-between cursor-pointer list-none mb-3">
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Agents
             </h2>
             <span className="text-xs text-muted-foreground">
               {wsAgentIds.length > 0
-                ? `${wsAgentIds.length} enabled as default`
-                : "All enabled by default"}
+                ? `${wsAgentIds.length} enabled`
+                : "All enabled"}
             </span>
-          </div>
+          </summary>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {agents.map((a) => {
               const enabled = wsAgentIds.length === 0 || wsAgentIds.includes(a.id);
@@ -410,7 +403,7 @@ export function WorkspaceDetailPage() {
               );
             })}
           </div>
-        </section>
+        </details>
       </div>
 
       {/* New Chat Dialog */}

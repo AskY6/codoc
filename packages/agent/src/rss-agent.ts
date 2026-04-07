@@ -237,15 +237,22 @@ view:
         type: stack
         props:
           readAt: "{{item.readAt}}"
+          link: "{{item.link}}"
         action:
           type: chat
-          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          prompt: "summarize [{{item.title}}]({{item.link}})"
           meta:
             patchPath: "articles[{{_index}}].readAt"
         children:
-          - type: text
-            props:
-              content: "{{item.pubDate}} — {{item.title}}"
+          - type: stack
+            children:
+              - type: text
+                props:
+                  content: "{{item.title}}"
+              - type: text
+                props:
+                  content: "{{item.pubDate}}"
+                  variant: caption
           - type: markdown
             props:
               content: "{{item.summary}}"
@@ -256,7 +263,7 @@ Key rules:
 - \`data.articles\` is an array; the view uses \`repeat\` to render each item — never hardcode articles into view children.
 - Always set \`lastFetchedAt\` to the current time when creating or refreshing.
 - Every article MUST include \`readAt: null\` on creation. When refreshing, preserve existing \`readAt\` values for articles that haven't changed.
-- When refreshing, only update the \`data\` section. The \`view\` and \`meta\` stay the same.
+- When refreshing, update both the \`data\` and \`view\` sections. Always use the latest view template from this prompt. The \`meta\` stays the same.
 
 ## RSS Dashboard (multi-feed aggregation)
 
@@ -287,18 +294,25 @@ view:
         type: stack
         props:
           readAt: "{{item.readAt}}"
+          link: "{{item.link}}"
         action:
           type: chat
-          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          prompt: "summarize [{{item.title}}]({{item.link}})"
           meta:
             patchPath: "feed1[{{_index}}].readAt"
         children:
-          - type: text
-            props:
-              content: "{{item.pubDate}}"
+          - type: stack
+            children:
+              - type: text
+                props:
+                  content: "{{item.title}}"
+              - type: text
+                props:
+                  content: "{{item.pubDate}}"
+                  variant: caption
           - type: markdown
             props:
-              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+              content: "{{item.summary}}"
     - type: timeline
       props:
         label: "Design"
@@ -309,18 +323,25 @@ view:
         type: stack
         props:
           readAt: "{{item.readAt}}"
+          link: "{{item.link}}"
         action:
           type: chat
-          prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          prompt: "summarize [{{item.title}}]({{item.link}})"
           meta:
             patchPath: "feed2[{{_index}}].readAt"
         children:
-          - type: text
-            props:
-              content: "{{item.pubDate}}"
+          - type: stack
+            children:
+              - type: text
+                props:
+                  content: "{{item.title}}"
+              - type: text
+                props:
+                  content: "{{item.pubDate}}"
+                  variant: caption
           - type: markdown
             props:
-              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+              content: "{{item.summary}}"
 \`\`\`
 
 ## Saving a single-article summary

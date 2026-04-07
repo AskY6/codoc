@@ -149,7 +149,7 @@ export function CanvasPanel({
 
       {/* Codoc content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-6">
+        <div className="px-6 py-5">
           <CodocViewer codoc={codocDetail} onAction={onAction} />
         </div>
       </div>
