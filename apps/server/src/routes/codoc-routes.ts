@@ -68,8 +68,11 @@ export function codocRoutes(
     }
   });
 
-  // PATCH /api/workspace/:id/codoc/*/data — patch a single data field
-  app.patch("/:id/codoc/*/data", async (c) => {
+  // PATCH /api/workspace/:id/codoc/* — patch a single data field
+  // URL ends with /data suffix (e.g. /codoc/rss/feed.codoc/data)
+  // Note: Hono wildcard * only works at end of pattern, so we use /*
+  // and strip the /data suffix in the handler.
+  app.patch("/:id/codoc/*", async (c) => {
     const fullPath = extractCodocPath(c.req.path, c.req.param("id"));
     const codocPath = fullPath.endsWith("/data") ? fullPath.slice(0, -5) : fullPath;
     if (!codocPath) return c.json({ error: "path is required" }, 400);
