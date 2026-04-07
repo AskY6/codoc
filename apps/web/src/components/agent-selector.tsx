@@ -4,6 +4,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Bot } from "lucide-react";
 import type { AgentInfo } from "@/types.js";
 
@@ -50,12 +51,7 @@ export function AgentSelector({ agents, selectedIds, onChange }: Props) {
                   : "text-foreground hover:bg-muted"
               }`}
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                readOnly
-                className="h-3.5 w-3.5 shrink-0"
-              />
+              <Checkbox checked={checked} readOnly className="size-3.5" />
               <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground mt-0.5" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate">{a.name}</div>

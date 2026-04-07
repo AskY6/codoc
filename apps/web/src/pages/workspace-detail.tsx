@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/status-badge";
 import { CodocViewer } from "@/components/codoc-viewer";
 import {
@@ -402,12 +403,7 @@ export function WorkspaceDetailPage() {
                         <CardTitle className="text-sm">{a.name}</CardTitle>
                         <p className="text-xs text-muted-foreground truncate">{a.description}</p>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        readOnly
-                        className="h-3.5 w-3.5 shrink-0"
-                      />
+                      <Checkbox checked={enabled} readOnly className="size-3.5" />
                     </div>
                   </CardHeader>
                 </Card>
@@ -444,7 +440,7 @@ export function WorkspaceDetailPage() {
                         checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                       }`}
                     >
-                      <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5 shrink-0" />
+                      <Checkbox checked={checked} readOnly className="size-3.5" />
                       <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm">{a.name}</div>
@@ -478,7 +474,7 @@ export function WorkspaceDetailPage() {
                             checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                           }`}
                         >
-                          <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5 shrink-0" />
+                          <Checkbox checked={checked} readOnly className="size-3.5" />
                           <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                           <span className="text-sm truncate flex-1">{c.path}</span>
                           <StatusBadge state={c.nodeState} />

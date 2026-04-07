@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/status-badge";
 import { FileText, Search, Layers } from "lucide-react";
 import type { CodocListItem } from "@/types.js";
@@ -80,12 +81,7 @@ export function CodocSubsetSelector({ codocs, selectedIds, onChange }: Props) {
                         : "text-foreground hover:bg-muted"
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      readOnly
-                      className="h-3.5 w-3.5 shrink-0"
-                    />
+                    <Checkbox checked={checked} readOnly className="size-3.5" />
                     <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate flex-1">{c.path}</span>
                     <StatusBadge state={c.nodeState} />
