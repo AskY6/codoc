@@ -18,6 +18,11 @@ export interface CodocListItem {
   id: string;
   path: string;
   nodeState: string;
+  meta: {
+    title?: string;
+    description?: string;
+    tags?: string[];
+  };
 }
 
 export interface CodocDetail {
@@ -51,6 +56,7 @@ export interface ViewActionContext {
 export interface ViewAction {
   type: "chat";
   prompt: string; // supports {{var.path}} interpolation
+  meta?: Record<string, unknown>; // pass-through context (e.g. patchPath for mark-as-read)
 }
 
 export interface ViewNode {

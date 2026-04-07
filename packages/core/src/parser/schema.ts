@@ -28,6 +28,7 @@ export type ViewType = (typeof VIEW_TYPES)[number];
 export const CodocMetaRawSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   schema: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -69,6 +70,7 @@ export const CodocRawSchema = z
 export interface CodocMeta {
   title?: string;
   description?: string;
+  tags?: string[];
   schema?: Record<string, { type: string }>;
 }
 

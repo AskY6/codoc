@@ -14,8 +14,10 @@
     "@cobook/agent": "workspace:*",
     "@cobook/service": "workspace:*",
     "@hono/node-server": "^1.13.0",
+    "@cobook/core": "workspace:*",
     "dotenv": "^17.4.0",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

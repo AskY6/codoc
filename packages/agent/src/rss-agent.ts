@@ -210,11 +210,13 @@ data:
   feedTitle: "<feed title>"
   feedUrl: "<feed URL>"
   lastFetchedAt: "<ISO timestamp>"
+  refreshIntervalMinutes: 60
   articles:
     - title: "<article title>"
       link: "<article URL>"
       pubDate: "<date>"
       summary: "<one-line summary>"
+      readAt: null
 
 view:
   type: stack
@@ -233,22 +235,27 @@ view:
         as: item
       template:
         type: stack
+        props:
+          readAt: "{{item.readAt}}"
         action:
           type: chat
           prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          meta:
+            patchPath: "articles[{{_index}}].readAt"
         children:
           - type: text
             props:
-              content: "{{item.pubDate}}"
+              content: "{{item.pubDate}} — {{item.title}}"
           - type: markdown
             props:
-              content: "**{{item.title}}**\\n\\n{{item.summary}}"
+              content: "{{item.summary}}"
 \`\`\`
 
 Key rules:
 - \`meta.description\` stores the feed URL — this is how you match subscriptions to codocs.
 - \`data.articles\` is an array; the view uses \`repeat\` to render each item — never hardcode articles into view children.
 - Always set \`lastFetchedAt\` to the current time when creating or refreshing.
+- Every article MUST include \`readAt: null\` on creation. When refreshing, preserve existing \`readAt\` values for articles that haven't changed.
 - When refreshing, only update the \`data\` section. The \`view\` and \`meta\` stay the same.
 
 ## RSS Dashboard (multi-feed aggregation)
@@ -278,9 +285,13 @@ view:
         as: item
       template:
         type: stack
+        props:
+          readAt: "{{item.readAt}}"
         action:
           type: chat
           prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          meta:
+            patchPath: "feed1[{{_index}}].readAt"
         children:
           - type: text
             props:
@@ -296,9 +307,13 @@ view:
         as: item
       template:
         type: stack
+        props:
+          readAt: "{{item.readAt}}"
         action:
           type: chat
           prompt: "Summarize this article: {{item.title}} ({{item.link}})"
+          meta:
+            patchPath: "feed2[{{_index}}].readAt"
         children:
           - type: text
             props:

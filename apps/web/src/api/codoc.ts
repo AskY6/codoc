@@ -34,6 +34,18 @@ export function updateCodoc(
   });
 }
 
+export function patchCodocData(
+  workspaceId: string,
+  path: string,
+  dataPath: string,
+  value: unknown,
+): Promise<{ ok: true }> {
+  return apiFetch(`/workspace/${workspaceId}/codoc/${path}/data`, {
+    method: "PATCH",
+    body: JSON.stringify({ path: dataPath, value }),
+  });
+}
+
 export function deleteCodoc(
   workspaceId: string,
   path: string,

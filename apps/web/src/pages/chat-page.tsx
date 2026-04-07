@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getWorkspace } from "@/api/workspace.js";
-import { listCodocs, getCodoc } from "@/api/codoc.js";
+import { listCodocs, getCodoc, patchCodocData } from "@/api/codoc.js";
 import {
   getThread,
   getThreadCodocs,
@@ -141,9 +141,16 @@ export function ChatPage() {
         chatRef.current?.send(action.prompt, {
           ...(selectedPath && { context: { sourceCodocPath: selectedPath } }),
         });
+        // Side effect: mark article as read if patchPath is present
+        const patchPath = action.meta?.patchPath;
+        if (typeof patchPath === "string" && selectedPath && workspaceId) {
+          patchCodocData(workspaceId, selectedPath, patchPath, new Date().toISOString())
+            .then(() => getCodoc(workspaceId, selectedPath))
+            .then(setCodocDetail);
+        }
       }
     },
-    [selectedPath],
+    [selectedPath, workspaceId],
   );
 
   if (!workspaceId || !threadId) return null;
@@ -212,6 +219,8 @@ export function ChatPage() {
 
         <ResizablePanel defaultSize={45} minSize={25}>
           <CanvasPanel
+            workspaceId={workspaceId}
+            allCodocs={codocs}
             codocs={codocs.filter((c) => selectedCodocIds.includes(c.id))}
             codocDetail={codocDetail}
             selectedPath={selectedPath}

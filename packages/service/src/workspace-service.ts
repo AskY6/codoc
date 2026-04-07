@@ -1,5 +1,6 @@
 import {
   parseCodoc,
+  stringifyYaml,
   buildDAG,
   topoSort,
   detectCycles,
@@ -44,6 +45,7 @@ export interface WorkspaceService {
   updateCodoc(workspaceId: string, path: string, newContent: string): Promise<void>;
   deleteCodoc(workspaceId: string, path: string): Promise<void>;
   getCodoc(workspaceId: string, path: string): Promise<CodocInfo | undefined>;
+  patchCodocData(workspaceId: string, path: string, dataPath: string, value: unknown): Promise<void>;
 }
 
 export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceService {
@@ -82,7 +84,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     return all.map((c) => {
       const ast = c.ast as CodocAST | null;
       const meta = ast?.meta as Record<string, unknown> | undefined;
-      const item: CodocListItem = { path: c.path, nodeState: c.nodeState, meta: {} };
+      const item: CodocListItem = { id: c.id, path: c.path, nodeState: c.nodeState, meta: {} };
       if (typeof meta?.["title"] === "string") item.meta.title = meta["title"];
       if (typeof meta?.["description"] === "string") item.meta.description = meta["description"];
       if (Array.isArray(meta?.["tags"])) item.meta.tags = meta["tags"] as string[];
@@ -320,6 +322,52 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   }
 
   // -----------------------------------------------------------------------
+  // patchCodocData — modify a single data field without rewriting full YAML
+  // -----------------------------------------------------------------------
+
+  async function patchCodocDataEntry(
+    workspaceId: string,
+    path: string,
+    dataPath: string,
+    value: unknown,
+  ): Promise<void> {
+    const row = await codocRepo.findByPath(workspaceId, path);
+    if (!row) throw new Error(`Codoc not found: ${path}`);
+
+    const parsed = parseCodoc(row.content);
+    // Navigate to the target field in the raw data section
+    // dataPath examples: "articles[2].readAt", "lastFetchedAt"
+    const rawData: Record<string, unknown> = {};
+    if (parsed.data) {
+      for (const [k, field] of Object.entries(parsed.data)) {
+        switch (field.kind) {
+          case "static":
+            rawData[k] = field.value;
+            break;
+          case "ref":
+            rawData[k] = { $ref: field.$ref };
+            break;
+          case "source": {
+            rawData[k] = { $source: field.source, ...field.params };
+            break;
+          }
+        }
+      }
+    }
+
+    setNestedValue(rawData, dataPath, value);
+
+    // Rebuild full YAML document
+    const doc: Record<string, unknown> = {};
+    if (parsed.meta) doc["meta"] = parsed.meta;
+    doc["data"] = rawData;
+    if (parsed.view) doc["view"] = parsed.view;
+
+    const newContent = stringifyYaml(doc);
+    await updateCodocEntry(workspaceId, path, newContent);
+  }
+
+  // -----------------------------------------------------------------------
   // Return
   // -----------------------------------------------------------------------
 
@@ -333,6 +381,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     updateCodoc: updateCodocEntry,
     deleteCodoc: deleteCodocEntry,
     getCodoc: getCodocEntry,
+    patchCodocData: patchCodocDataEntry,
   };
 }
 
@@ -342,4 +391,42 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
 function toSource(field: { source: string; params: Record<string, unknown> }): Source {
   return { type: "static", value: field.params };
+}
+
+/**
+ * Set a value at a nested path like "articles[2].readAt".
+ * Supports dot notation and bracket indexing.
+ */
+const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+  // Parse path into segments: "articles[2].readAt" → ["articles", 2, "readAt"]
+  const segments: (string | number)[] = [];
+  for (const part of path.split(".")) {
+    const match = /^(\w+)\[(\d+)\]$/.exec(part);
+    if (match) {
+      segments.push(match[1]!, Number(match[2]!));
+    } else {
+      segments.push(part);
+    }
+  }
+
+  if (segments.some((s) => typeof s === "string" && FORBIDDEN_SEGMENTS.has(s))) {
+    throw new Error(`Forbidden path segment in "${path}"`);
+  }
+
+  let current: unknown = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    if (current == null || typeof current !== "object") {
+      throw new Error(`Cannot traverse path "${path}": missing parent at segment "${seg}"`);
+    }
+    current = (current as Record<string | number, unknown>)[seg];
+  }
+
+  const last = segments[segments.length - 1]!;
+  if (current == null || typeof current !== "object") {
+    throw new Error(`Cannot set value at path "${path}": parent is not an object`);
+  }
+  (current as Record<string | number, unknown>)[last] = value;
 }

@@ -1,5 +1,5 @@
 // Parser
-export { parseCodoc } from "./parser/codoc-parser.js";
+export { parseCodoc, parseYaml, stringifyYaml } from "./parser/codoc-parser.js";
 export type {
   CodocAST,
   CodocMeta,

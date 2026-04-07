@@ -44,6 +44,7 @@ export interface CodocInfo {
 // ---------------------------------------------------------------------------
 
 export interface CodocListItem {
+  id: string;
   path: string;
   nodeState: string;
   meta: {

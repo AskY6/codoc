@@ -8,10 +8,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CodocViewer } from "@/components/codoc-viewer";
 import { buildTree, TreeItem } from "@/components/codoc-browser";
+import { RssFeedList } from "@/components/rss-feed-list";
 import { ChevronDown, FileText, List } from "lucide-react";
 import type { CodocDetail, CodocListItem, ViewAction } from "@/types.js";
 
 interface Props {
+  workspaceId: string;
+  allCodocs: CodocListItem[];
   codocs: CodocListItem[];
   codocDetail: CodocDetail | null;
   selectedPath: string | null;
@@ -21,6 +24,8 @@ interface Props {
 }
 
 export function CanvasPanel({
+  workspaceId,
+  allCodocs,
   codocs,
   codocDetail,
   selectedPath,
@@ -34,7 +39,15 @@ export function CanvasPanel({
   if (!selectedPath) {
     return (
       <div className="h-full overflow-y-auto bg-background">
-        <div className="px-4 pt-5 pb-2">
+        <div className="pt-5">
+          <RssFeedList
+            workspaceId={workspaceId}
+            codocs={allCodocs}
+            selectedPath={selectedPath}
+            onSelectPath={onSelectPath}
+          />
+        </div>
+        <div className="px-4 pb-2">
           <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
             Codocs
           </h2>

@@ -1,4 +1,6 @@
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+
+export { parseYaml, stringifyYaml };
 import { ZodError } from "zod";
 import { ParseError } from "../errors.js";
 import type { z } from "zod";
@@ -84,6 +86,7 @@ function normaliseMeta(raw: z.infer<typeof CodocMetaRawSchema>): CodocMeta {
   const meta: CodocMeta = {};
   if (raw.title !== undefined) meta.title = raw.title;
   if (raw.description !== undefined) meta.description = raw.description;
+  if (raw.tags !== undefined) meta.tags = raw.tags;
 
   if (raw.schema) {
     const schema: Record<string, { type: string }> = {};

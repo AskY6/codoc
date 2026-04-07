@@ -51,6 +51,9 @@ importers:
       '@cobook/agent':
         specifier: workspace:*
         version: link:../../packages/agent
+      '@cobook/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@cobook/service':
         specifier: workspace:*
         version: link:../../packages/service
@@ -63,6 +66,9 @@ importers:
       hono:
         specifier: ^4.6.0
         version: 4.12.9
+      rss-parser:
+        specifier: ^3.13.0
+        version: 3.13.0
     devDependencies:
       tsup:
         specifier: ^8.0.0

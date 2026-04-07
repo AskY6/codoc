@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback, type KeyboardEvent } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ViewAction, ViewNode } from "@/types.js";
@@ -60,6 +61,13 @@ function instantiateTemplate(
       ...template.action,
       prompt: interpolate(template.action.prompt, scope),
     };
+    if (template.action.meta) {
+      const meta: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(template.action.meta)) {
+        meta[k] = typeof v === "string" ? interpolate(v, scope) : v;
+      }
+      node.action.meta = meta;
+    }
   }
   if (template.children) {
     node.children = template.children.map((c) => instantiateTemplate(c, scope));
@@ -80,8 +88,8 @@ function expandRepeat(
   const arr = resolve(node.repeat.bind, data);
   if (!Array.isArray(arr)) return node;
   const varName = node.repeat.as;
-  const expanded: ViewNode[] = arr.map((item) => {
-    const scope: Record<string, unknown> = { [varName]: item as unknown };
+  const expanded: ViewNode[] = arr.map((item, index) => {
+    const scope: Record<string, unknown> = { [varName]: item as unknown, _index: index };
     return instantiateTemplate(node.template!, scope);
   });
   // Return node without repeat/template, with expanded children appended
@@ -131,6 +139,122 @@ function interpolateProps(
     props[k] = typeof v === "string" ? interpolate(v, scope) : v;
   }
   return { ...node, props };
+}
+
+/**
+ * Timeline with collapsible items and keyboard navigation.
+ * j/k = move focus, Enter = toggle expand, m = mark as read (fires action).
+ * Each child's first sub-child is always visible; the rest collapse.
+ */
+function TimelineView({ node, data, onAction }: Props) {
+  const children = node.children ?? [];
+  const [expandedSet, setExpandedSet] = useState<Set<number>>(() => new Set());
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const toggle = useCallback((i: number) => {
+    setExpandedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (children.length === 0) return;
+      switch (e.key) {
+        case "j":
+        case "ArrowDown": {
+          e.preventDefault();
+          const next = Math.min(focusedIndex + 1, children.length - 1);
+          setFocusedIndex(next);
+          itemRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
+          break;
+        }
+        case "k":
+        case "ArrowUp": {
+          e.preventDefault();
+          const prev = Math.max(focusedIndex - 1, 0);
+          setFocusedIndex(prev);
+          itemRefs.current.get(prev)?.scrollIntoView({ block: "nearest" });
+          break;
+        }
+        case "Enter": {
+          e.preventDefault();
+          toggle(focusedIndex);
+          break;
+        }
+        case "m": {
+          e.preventDefault();
+          const child = children[focusedIndex];
+          if (child?.action && onAction) onAction(child.action);
+          break;
+        }
+      }
+    },
+    [children, focusedIndex, toggle, onAction],
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative pl-6 space-y-1 outline-none"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="absolute left-2 top-0 bottom-0 w-px bg-border" />
+      {children.map((child, i) => {
+        const isRead = Boolean(child.props?.readAt);
+        const isExpanded = expandedSet.has(i);
+        const isFocused = focusedIndex === i;
+        // Split child sub-children: first = header, rest = detail
+        const subChildren = child.children ?? [];
+        const headerChild: ViewNode | undefined = subChildren[0];
+        const detailChildren = subChildren.slice(1);
+
+        return (
+          <div
+            key={i}
+            ref={(el) => { if (el) itemRefs.current.set(i, el); }}
+            className="relative"
+          >
+            <div className={`absolute -left-4 top-2.5 h-2 w-2 rounded-full ${isRead ? "bg-foreground/10" : "bg-primary"}`} />
+            <div
+              className={`rounded-lg border bg-card px-4 py-2 cursor-pointer transition-colors ${
+                isFocused ? "border-primary/50 ring-1 ring-primary/20" : "border-border"
+              } ${isRead ? "opacity-60" : ""}`}
+              onClick={() => toggle(i)}
+            >
+              {/* Header — always visible */}
+              {headerChild && (
+                <RenderNode node={headerChild} data={data} onAction={onAction} />
+              )}
+              {/* Detail — collapsible */}
+              {isExpanded && detailChildren.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  {detailChildren.map((dc, di) => (
+                    <RenderNode key={di} node={dc} data={data} onAction={onAction} />
+                  ))}
+                  {child.action && onAction && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onAction(child.action!); }}
+                      className="mt-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                    >
+                      Summarize in chat
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function RenderNode({ node: rawNode, data, onAction }: Props) {
@@ -245,19 +369,7 @@ function RenderNode({ node: rawNode, data, onAction }: Props) {
 
     case "timeline":
       return (
-        <div className="relative pl-6 space-y-3">
-          <div className="absolute left-2 top-0 bottom-0 w-px bg-border" />
-          {node.children?.map((child, i) => (
-            <div key={i} className="relative">
-              <div className="absolute -left-4 top-2.5 h-2 w-2 rounded-full bg-foreground/20" />
-              <ActionWrapper action={child.action} onAction={onAction}>
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <RenderNode node={child} data={data} onAction={onAction} />
-                </div>
-              </ActionWrapper>
-            </div>
-          ))}
-        </div>
+        <TimelineView node={node} data={data} onAction={onAction} />
       );
 
     case "section": {

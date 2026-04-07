@@ -23,6 +23,7 @@ import { codocRoutes } from "./routes/codoc-routes.js";
 import { buildRoutes } from "./routes/build-routes.js";
 import { graphRoutes } from "./routes/graph-routes.js";
 import { chatRoutes, type AgentRegistry } from "./routes/chat-routes.js";
+import { createRssScheduler } from "./rss-scheduler.js";
 
 // ---------------------------------------------------------------------------
 // Database
@@ -85,14 +86,22 @@ app.route("/api/chat", chatRoutes(chatService, service, agents, agentSessionRepo
 // Start
 // ---------------------------------------------------------------------------
 
+const rssScheduler = createRssScheduler({
+  service,
+  codocRepo,
+  workspaceRepo,
+});
+
 const port = Number(process.env["PORT"] ?? 3100);
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
   console.log(`cobook server listening on http://localhost:${info.port}`);
+  rssScheduler.start();
 });
 
 // Graceful shutdown
 function shutdown() {
+  rssScheduler.stop();
   server.close();
   db.$pool.end().catch(() => {});
   process.exit(0);
