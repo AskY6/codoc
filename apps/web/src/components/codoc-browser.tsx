@@ -4,6 +4,7 @@ import type { CodocListItem } from "@/types.js";
 
 export interface TreeNode {
   name: string;
+  title?: string;
   path?: string;
   state?: string;
   children: Map<string, TreeNode>;
@@ -22,6 +23,7 @@ export function buildTree(codocs: CodocListItem[]): TreeNode {
       cur = cur.children.get(part)!;
       if (i === parts.length - 1) {
         cur.path = c.path;
+        if (c.meta.title) cur.title = c.meta.title;
         cur.state = c.nodeState;
       }
     }
@@ -56,7 +58,7 @@ export function TreeItem({
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate flex-1">{node.name}</span>
+        <span className="truncate flex-1">{node.title ?? node.name}</span>
         {node.state && <StatusBadge state={node.state} />}
       </button>
     );

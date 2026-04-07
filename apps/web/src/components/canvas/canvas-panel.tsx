@@ -23,6 +23,16 @@ interface Props {
   loading?: boolean;
 }
 
+/** Feed codocs are managed by the RSS FEEDS section — hide from CODOCS tree. */
+function isRssFeedCodoc(c: CodocListItem): boolean {
+  return (
+    c.path.startsWith("rss/") &&
+    !!c.meta.tags?.includes("rss") &&
+    !c.meta.tags?.includes("dashboard") &&
+    !c.path.startsWith("rss/summaries/")
+  );
+}
+
 export function CanvasPanel({
   workspaceId,
   allCodocs,
@@ -33,7 +43,11 @@ export function CanvasPanel({
   onAction,
   loading,
 }: Props) {
-  const tree = useMemo(() => buildTree(codocs), [codocs]);
+  const displayCodocs = useMemo(
+    () => codocs.filter((c) => !isRssFeedCodoc(c)),
+    [codocs],
+  );
+  const tree = useMemo(() => buildTree(displayCodocs), [displayCodocs]);
 
   // -- Empty state: show inline codoc list --
   if (!selectedPath) {
@@ -52,7 +66,7 @@ export function CanvasPanel({
             Codocs
           </h2>
         </div>
-        {codocs.length === 0 ? (
+        {displayCodocs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
             <div className="rounded-full bg-muted p-4">
               <FileText className="h-8 w-8" />
@@ -108,7 +122,7 @@ export function CanvasPanel({
             }
           />
           <DropdownMenuContent align="start" className="w-64">
-            {codocs.map((c) => (
+            {displayCodocs.map((c) => (
               <DropdownMenuItem
                 key={c.path}
                 onClick={() => onSelectPath(c.path)}
@@ -119,7 +133,7 @@ export function CanvasPanel({
                 }
               >
                 <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                {c.path}
+                {c.meta.title ?? c.path}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
