@@ -78,6 +78,10 @@ export function WorkspaceDetailPage() {
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatAgentIds, setNewChatAgentIds] = useState<string[]>([]);
   const [newChatCodocIds, setNewChatCodocIds] = useState<string[]>([]);
+  const [quickChatLoading, setQuickChatLoading] = useState(false);
+
+  // Agent management dialog state
+  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -97,6 +101,19 @@ export function WorkspaceDetailPage() {
     setNewChatAgentIds(wsAgentIds.length > 0 ? [...wsAgentIds] : agents.map((a) => a.id));
     setNewChatCodocIds(preselectedCodocId ? [preselectedCodocId] : []);
     setNewChatOpen(true);
+  }
+
+  async function handleQuickChat(codocId: string) {
+    if (!workspaceId || quickChatLoading) return;
+    setQuickChatLoading(true);
+    try {
+      const thread = await createThread(workspaceId, {
+        codocIds: [codocId],
+      });
+      navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
+    } finally {
+      setQuickChatLoading(false);
+    }
   }
 
   async function handleCreateThread() {
@@ -335,9 +352,10 @@ export function WorkspaceDetailPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            disabled={quickChatLoading}
                             onClick={(e) => {
                               e.stopPropagation();
-                              openNewChatDialog(codoc.id);
+                              handleQuickChat(codoc.id);
                             }}
                             title="New chat"
                           >
@@ -391,44 +409,58 @@ export function WorkspaceDetailPage() {
           </Tabs>
         </section>
 
-        {/* Agents — collapsible */}
-        <details className="group">
-          <summary className="flex items-center justify-between cursor-pointer list-none mb-3">
+        {/* Agents — workspace-scoped */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Agents
             </h2>
-            <span className="text-xs text-muted-foreground">
-              {wsAgentIds.length > 0
-                ? `${wsAgentIds.length} enabled`
-                : "All enabled"}
-            </span>
-          </summary>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {agents.map((a) => {
-              const enabled = wsAgentIds.length === 0 || wsAgentIds.includes(a.id);
-              return (
-                <Card
-                  key={a.id}
-                  className={`cursor-pointer transition-colors ${
-                    enabled ? "" : "opacity-50"
-                  }`}
-                  onClick={() => handleToggleWsAgent(a.id)}
-                >
-                  <CardHeader className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="text-sm">{a.name}</CardTitle>
-                        <p className="text-xs text-muted-foreground truncate">{a.description}</p>
-                      </div>
-                      <Checkbox checked={enabled} readOnly className="size-3.5" />
-                    </div>
-                  </CardHeader>
-                </Card>
-              );
-            })}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground"
+              onClick={() => setAgentBrowserOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Browse all
+            </Button>
           </div>
-        </details>
+          {(() => {
+            const wsAgents = wsAgentIds.length > 0
+              ? agents.filter((a) => wsAgentIds.includes(a.id))
+              : agents;
+            return wsAgents.length === 0 ? (
+              <div className="flex items-center gap-3 py-2">
+                <Bot className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No agents enabled</p>
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="h-auto p-0 text-sm"
+                  onClick={() => setAgentBrowserOpen(true)}
+                >
+                  Add agents
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {wsAgents.map((a) => (
+                  <Card key={a.id}>
+                    <CardHeader className="py-3 px-4">
+                      <div className="flex items-start gap-2">
+                        <Bot className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-sm">{a.name}</CardTitle>
+                          <p className="text-xs text-muted-foreground">{a.description}</p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            );
+          })()}
+        </section>
       </div>
 
       {/* New Chat Dialog */}
@@ -509,6 +541,36 @@ export function WorkspaceDetailPage() {
               <Plus className="h-4 w-4 mr-1.5" />
               Create
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Browse Agents Dialog */}
+      <Dialog open={agentBrowserOpen} onOpenChange={setAgentBrowserOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>All agents</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1 py-2">
+            {agents.map((a) => {
+              const enabled = wsAgentIds.includes(a.id);
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => handleToggleWsAgent(a.id)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                    enabled ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Checkbox checked={enabled} readOnly className="size-3.5" />
+                  <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm">{a.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">{a.description}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

@@ -15,6 +15,7 @@ import {
   getThreadCodocs,
   getThreadAgents,
   listAgents,
+  getWorkspaceAgents,
   setThreadCodocs,
   setThreadAgents,
   updateThread,
@@ -58,7 +59,12 @@ export function ChatPage() {
     if (!workspaceId || !threadId) return;
     getWorkspace(workspaceId).then(setWorkspace);
     listCodocs(workspaceId).then(setCodocs);
-    listAgents().then(setAgents);
+    Promise.all([listAgents(), getWorkspaceAgents(workspaceId)]).then(
+      ([all, wa]) => {
+        const wsIds = new Set(wa.map((w) => w.agentId));
+        setAgents(wsIds.size > 0 ? all.filter((a) => wsIds.has(a.id)) : all);
+      },
+    );
     getThread(threadId).then((result) => {
       if (result) setThread(result.thread);
     });
@@ -80,6 +86,15 @@ export function ChatPage() {
       .then(setCodocDetail)
       .finally(() => setCodocLoading(false));
   }, [workspaceId, selectedPath]);
+
+  // Reconnect to an in-progress stream (e.g. navigated here after fire-and-forget send)
+  useEffect(() => {
+    if (!threadId) return;
+    const timer = setTimeout(() => {
+      chatRef.current?.reconnect();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [threadId]);
 
   const handleClearContext = useCallback(() => {
     setSelectedPath(null);

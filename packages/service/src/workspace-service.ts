@@ -169,9 +169,12 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     }
 
     for (const [codocPath, update] of codocUpdates) {
+      // Merge with existing resolved data to preserve previously resolved refs/sources
+      const existing = await codocRepo.findByPath(workspaceId, codocPath);
+      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
       await codocRepo.upsert(workspaceId, codocPath, {
         nodeState: update.state,
-        resolvedValue: update.resolved,
+        resolvedValue: { ...prev, ...update.resolved },
       });
     }
 

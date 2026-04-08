@@ -7,6 +7,40 @@ import type { Agent, AgentMessage } from "@cobook/agent";
 export type AgentRegistry = Map<string, Agent>;
 
 // ---------------------------------------------------------------------------
+// Active stream tracking — allows reconnecting to an in-progress response
+// ---------------------------------------------------------------------------
+
+interface SSEEvent {
+  event: string;
+  data: string; // already JSON-stringified
+}
+
+interface ActiveStream {
+  events: SSEEvent[];
+  listeners: Set<(evt: SSEEvent) => void>;
+  done: boolean;
+}
+
+const activeStreams = new Map<string, ActiveStream>();
+
+function createActiveStream(threadId: string): ActiveStream {
+  const stream: ActiveStream = { events: [], listeners: new Set(), done: false };
+  activeStreams.set(threadId, stream);
+  return stream;
+}
+
+function emitToStream(stream: ActiveStream, evt: SSEEvent) {
+  stream.events.push(evt);
+  for (const listener of stream.listeners) listener(evt);
+}
+
+function closeActiveStream(threadId: string, stream: ActiveStream) {
+  stream.done = true;
+  stream.listeners.clear();
+  activeStreams.delete(threadId);
+}
+
+// ---------------------------------------------------------------------------
 // Raw action context sent by the UI. Describes where a message originated
 // (e.g. which codoc's view the user clicked on) so the enhancer can turn it
 // into richer routing signals.
@@ -354,6 +388,49 @@ export function chatRoutes(
     return c.json(list);
   });
 
+  // GET /api/chat/thread/:id/stream — reconnect to an in-progress response
+  app.get("/thread/:id/stream", async (c) => {
+    const threadId = c.req.param("id");
+    const active = activeStreams.get(threadId);
+    if (!active || active.done) {
+      return new Response(null, { status: 204 });
+    }
+
+    return streamSSE(c, async (stream) => {
+      // 1. Replay buffered events
+      for (const evt of active.events) {
+        await stream.writeSSE(evt);
+      }
+
+      // If already done during replay, stop
+      if (active.done) return;
+
+      // 2. Listen for new events
+      await new Promise<void>((resolve) => {
+        const listener = (evt: SSEEvent) => {
+          stream.writeSSE(evt).catch(() => {
+            active.listeners.delete(listener);
+            resolve();
+          });
+          if (evt.event === "done" || evt.event === "error") {
+            // Allow a brief window for title-update before closing
+            setTimeout(() => {
+              active.listeners.delete(listener);
+              resolve();
+            }, 3000);
+          }
+        };
+        active.listeners.add(listener);
+
+        // Clean up if client disconnects
+        c.req.raw.signal.addEventListener("abort", () => {
+          active.listeners.delete(listener);
+          resolve();
+        });
+      });
+    });
+  });
+
   // POST /api/chat/thread/:id/message — send message, stream response via SSE
   app.post("/thread/:id/message", async (c) => {
     const threadId = c.req.param("id");
@@ -398,9 +475,16 @@ export function chatRoutes(
       content: m.content,
     }));
 
+    const active = createActiveStream(threadId);
+
     return streamSSE(c, async (stream) => {
       let fullText = "";
       let titlePromise: Promise<void> | undefined;
+
+      function emit(evt: SSEEvent) {
+        emitToStream(active, evt);
+        return stream.writeSSE(evt);
+      }
 
       try {
         for await (const event of agent.run(agentMessages, {
@@ -411,35 +495,35 @@ export function chatRoutes(
           switch (event.kind) {
             case "text-delta":
               fullText += event.text;
-              await stream.writeSSE({ event: "text-delta", data: JSON.stringify({ text: event.text, agentId }) });
+              await emit({ event: "text-delta", data: JSON.stringify({ text: event.text, agentId }) });
               break;
             case "status":
-              await stream.writeSSE({ event: "status", data: JSON.stringify({ text: event.text, agentId }) });
+              await emit({ event: "status", data: JSON.stringify({ text: event.text, agentId }) });
               break;
             case "tool-use":
-              await stream.writeSSE({ event: "tool-use", data: JSON.stringify({ toolName: event.toolName, input: event.input, agentId }) });
+              await emit({ event: "tool-use", data: JSON.stringify({ toolName: event.toolName, input: event.input, agentId }) });
               break;
             case "tool-result":
-              await stream.writeSSE({ event: "tool-result", data: JSON.stringify({ toolName: event.toolName, output: event.output, agentId }) });
+              await emit({ event: "tool-result", data: JSON.stringify({ toolName: event.toolName, output: event.output, agentId }) });
               break;
             case "done":
               // Persist assistant message with agent attribution
               await chatService.addMessage(threadId, { role: "assistant", content: event.fullText, agentId });
-              await stream.writeSSE({ event: "done", data: JSON.stringify({ fullText: event.fullText, agentId }) });
+              await emit({ event: "done", data: JSON.stringify({ fullText: event.fullText, agentId }) });
               // Auto-generate title from first exchange
               if (needsTitle) {
                 titlePromise = generateTitle(llmClient, lightModel, content, event.fullText)
                   .then(async (title) => {
                     if (title) {
                       await chatService.updateThread(threadId, { title });
-                      await stream.writeSSE({ event: "title-update", data: JSON.stringify({ title }) });
+                      await emit({ event: "title-update", data: JSON.stringify({ title }) });
                     }
                   })
                   .catch(() => {});
               }
               break;
             case "error":
-              await stream.writeSSE({ event: "error", data: JSON.stringify({ message: event.message, agentId }) });
+              await emit({ event: "error", data: JSON.stringify({ message: event.message, agentId }) });
               break;
           }
         }
@@ -447,10 +531,11 @@ export function chatRoutes(
         if (fullText) {
           await chatService.addMessage(threadId, { role: "assistant", content: fullText, agentId });
         }
-        await stream.writeSSE({ event: "error", data: JSON.stringify({ message: String(err), agentId }) });
+        await emit({ event: "error", data: JSON.stringify({ message: String(err), agentId }) });
       }
       // Wait for title generation before closing the stream
       if (titlePromise) await titlePromise;
+      closeActiveStream(threadId, active);
     });
   });
 

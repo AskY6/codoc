@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
-import { getThread, sendMessage } from "@/api/chat.js";
+import { getThread, sendMessage, reconnectStream } from "@/api/chat.js";
 import {
   Conversation,
   ConversationContent,
@@ -19,7 +19,8 @@ import {
   PromptInputFooter,
   PromptInputSubmit,
 } from "@/components/ai-elements/prompt-input";
-import { Bot, CopyIcon, MessageSquare } from "lucide-react";
+import { CopyIcon, MessageSquare } from "lucide-react";
+import { agentColor } from "@/lib/utils.js";
 import { MentionPopover, useMentionItems } from "./mention-popover";
 import type { MentionItem } from "./mention-popover";
 import { renderMentions } from "./mention-render";
@@ -32,6 +33,7 @@ export interface ChatPanelSendOptions {
 
 export interface ChatPanelHandle {
   send: (text: string, options?: ChatPanelSendOptions) => void;
+  reconnect: () => Promise<void>;
 }
 
 interface Props {
@@ -160,6 +162,96 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     [mentionTriggerPos, closeMention],
   );
 
+  const handleStreamEvent = useCallback(
+    (eventType: string, data: unknown) => {
+      const d = data as Record<string, unknown>;
+      switch (eventType) {
+        case "text-delta":
+          setStreaming((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  text: prev.text + (d.text as string),
+                  status: "",
+                  agentId: (d.agentId as string) ?? prev.agentId,
+                }
+              : prev,
+          );
+          break;
+        case "status":
+          setStreaming((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  status: d.text as string,
+                  agentId: (d.agentId as string) ?? prev.agentId,
+                }
+              : prev,
+          );
+          break;
+        case "tool-use":
+          setStreaming((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  toolCalls: [
+                    ...prev.toolCalls,
+                    { toolName: d.toolName as string, input: d.input },
+                  ],
+                }
+              : prev,
+          );
+          break;
+        case "tool-result":
+          setStreaming((prev) => {
+            if (!prev) return prev;
+            const calls = [...prev.toolCalls];
+            const name = d.toolName as string;
+            const idx = calls.findLastIndex(
+              (tc) => tc.toolName === name && !tc.output,
+            );
+            if (idx >= 0) {
+              calls[idx] = {
+                toolName: calls[idx]!.toolName,
+                input: calls[idx]!.input,
+                output: d.output,
+              };
+            }
+            return { ...prev, toolCalls: calls };
+          });
+          break;
+        case "done": {
+          const fullText = d.fullText as string;
+          const doneAgentId = (d.agentId as string) ?? null;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              threadId,
+              role: "assistant",
+              content: fullText,
+              agentId: doneAgentId,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+          setStreaming(null);
+          setSending(false);
+          break;
+        }
+        case "title-update":
+          if (onTitleUpdate && d.title) {
+            onTitleUpdate(d.title as string);
+          }
+          break;
+        case "error":
+          setStreaming(null);
+          setSending(false);
+          break;
+      }
+    },
+    [threadId, onTitleUpdate],
+  );
+
   const handleSend = useCallback(
     (text: string, options?: ChatPanelSendOptions) => {
       if (!text.trim() || sending) return;
@@ -193,92 +285,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         threadId,
         workspaceId,
         userMsg.content,
-        (eventType, data) => {
-          const d = data as Record<string, unknown>;
-          switch (eventType) {
-            case "text-delta":
-              setStreaming((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      text: prev.text + (d.text as string),
-                      status: "",
-                      agentId: (d.agentId as string) ?? prev.agentId,
-                    }
-                  : prev,
-              );
-              break;
-            case "status":
-              setStreaming((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      status: d.text as string,
-                      agentId: (d.agentId as string) ?? prev.agentId,
-                    }
-                  : prev,
-              );
-              break;
-            case "tool-use":
-              setStreaming((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      toolCalls: [
-                        ...prev.toolCalls,
-                        { toolName: d.toolName as string, input: d.input },
-                      ],
-                    }
-                  : prev,
-              );
-              break;
-            case "tool-result":
-              setStreaming((prev) => {
-                if (!prev) return prev;
-                const calls = [...prev.toolCalls];
-                const name = d.toolName as string;
-                const idx = calls.findLastIndex(
-                  (tc) => tc.toolName === name && !tc.output,
-                );
-                if (idx >= 0) {
-                  calls[idx] = {
-                    toolName: calls[idx]!.toolName,
-                    input: calls[idx]!.input,
-                    output: d.output,
-                  };
-                }
-                return { ...prev, toolCalls: calls };
-              });
-              break;
-            case "done": {
-              const fullText = d.fullText as string;
-              const doneAgentId = (d.agentId as string) ?? null;
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  threadId,
-                  role: "assistant",
-                  content: fullText,
-                  agentId: doneAgentId,
-                  createdAt: new Date().toISOString(),
-                },
-              ]);
-              setStreaming(null);
-              setSending(false);
-              break;
-            }
-            case "title-update":
-              if (onTitleUpdate && d.title) {
-                onTitleUpdate(d.title as string);
-              }
-              break;
-            case "error":
-              setStreaming(null);
-              setSending(false);
-              break;
-          }
-        },
+        handleStreamEvent,
         {
           ...(sentTargetAgentId && { targetAgentId: sentTargetAgentId }),
           ...(sentContext && { context: sentContext }),
@@ -286,8 +293,18 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       );
       abortRef.current = ctrl;
     },
-    [sending, threadId, workspaceId, agents, codocs, selectedPath, closeMention, onTitleUpdate],
+    [sending, threadId, workspaceId, agents, codocs, selectedPath, closeMention, handleStreamEvent],
   );
+
+  const handleReconnect = useCallback(async () => {
+    if (sending) return;
+    const ctrl = await reconnectStream(threadId, handleStreamEvent);
+    if (ctrl) {
+      setSending(true);
+      setStreaming({ text: "", status: "", toolCalls: [], agentId: null });
+      abortRef.current = ctrl;
+    }
+  }, [sending, threadId, handleStreamEvent]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -295,7 +312,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
     setSending(false);
   }, []);
 
-  useImperativeHandle(ref, () => ({ send: handleSend }), [handleSend]);
+  useImperativeHandle(ref, () => ({ send: handleSend, reconnect: handleReconnect }), [handleSend, handleReconnect]);
 
   const chatStatus = sending
     ? streaming?.text
@@ -393,8 +410,8 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           {messages.map((msg) => (
             <Message key={msg.id} from={msg.role}>
               {msg.role === "assistant" && msg.agentId && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Bot className="h-3 w-3" />
+                <div className={`flex items-center gap-1 text-xs ${agentColor(msg.agentId).text}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${agentColor(msg.agentId).dot}`} />
                   <span>{agentName(msg.agentId)}</span>
                 </div>
               )}
@@ -423,8 +440,8 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
           {streaming && (
             <Message from="assistant">
               {streaming.agentId && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Bot className="h-3 w-3" />
+                <div className={`flex items-center gap-1 text-xs ${agentColor(streaming.agentId).text}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${agentColor(streaming.agentId).dot}`} />
                   <span>{agentName(streaming.agentId)}</span>
                 </div>
               )}

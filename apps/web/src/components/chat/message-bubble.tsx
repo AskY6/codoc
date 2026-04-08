@@ -2,7 +2,8 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
-import { Bot, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { agentColor } from "@/lib/utils.js";
 
 interface ToolCall {
   toolName: string;
@@ -75,8 +76,8 @@ export function MessageBubble({ role, content, agentId, toolCalls, isStreaming }
     <div className="flex justify-start">
       <div className="max-w-[85%] space-y-2">
         {agentId && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Bot className="h-3 w-3" />
+          <div className={`flex items-center gap-1 text-xs ${agentColor(agentId).text}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${agentColor(agentId).dot}`} />
             <span>{agentId}</span>
           </div>
         )}

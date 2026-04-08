@@ -1,4 +1,4 @@
-import { apiFetch, apiSSE } from "./client.js";
+import { apiFetch, apiSSE, apiSSEGet } from "./client.js";
 import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, AgentInfo, WorkspaceAgent, ViewActionContext } from "../types.js";
 
 export function createThread(
@@ -104,4 +104,11 @@ export function sendMessage(
     },
     onEvent,
   );
+}
+
+export function reconnectStream(
+  threadId: string,
+  onEvent: (eventType: string, data: unknown) => void,
+): Promise<AbortController | null> {
+  return apiSSEGet(`/chat/thread/${threadId}/stream`, onEvent);
 }

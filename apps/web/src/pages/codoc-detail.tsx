@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getCodoc, createCodoc, listCodocs } from "@/api/codoc.js";
-import { createThread } from "@/api/chat.js";
+import { getCodoc, createCodoc, listCodocs, patchCodocData } from "@/api/codoc.js";
+import { createThread, sendMessage } from "@/api/chat.js";
 import { generateCodocContent } from "@/lib/codoc-generators.js";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +40,24 @@ export function CodocDetailPage() {
 
   const handleViewAction = useCallback(
     async (action: ViewAction) => {
-      if (action.type === "navigate" && workspaceId) {
+      if (action.type === "chat" && workspaceId && codocPath) {
+        // Create a quick chat thread with this codoc and send the prompt
+        const codocs = await listCodocs(workspaceId);
+        const match = codocs.find((c) => c.path === codocPath);
+        const thread = await createThread(workspaceId, {
+          codocIds: match ? [match.id] : [],
+        });
+        // Fire-and-forget: send the prompt (chat page will reconnect to the stream)
+        sendMessage(thread.id, workspaceId, action.prompt, () => {}, {
+          context: { sourceCodocPath: codocPath },
+        });
+        // Side effect: mark article as read if patchPath is present
+        const patchPath = action.meta?.patchPath;
+        if (typeof patchPath === "string") {
+          patchCodocData(workspaceId, codocPath, patchPath, new Date().toISOString());
+        }
+        navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
+      } else if (action.type === "navigate" && workspaceId) {
         // Check if target codoc exists; if not, generate it
         try {
           await getCodoc(workspaceId, action.path);
@@ -58,7 +75,7 @@ export function CodocDetailPage() {
         navigate(`/workspace/${workspaceId}/codoc/${action.path}`);
       }
     },
-    [workspaceId, navigate],
+    [workspaceId, codocPath, navigate],
   );
 
   if (!workspaceId || !codocPath) return null;
