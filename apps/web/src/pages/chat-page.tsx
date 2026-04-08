@@ -8,7 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getWorkspace } from "@/api/workspace.js";
-import { listCodocs, getCodoc, patchCodocData } from "@/api/codoc.js";
+import { listCodocs, getCodoc, createCodoc, patchCodocData } from "@/api/codoc.js";
+import { generateCodocContent } from "@/lib/codoc-generators.js";
 import {
   getThread,
   getThreadCodocs,
@@ -136,7 +137,7 @@ export function ChatPage() {
   }, []);
 
   const handleViewAction = useCallback(
-    (action: ViewAction) => {
+    async (action: ViewAction) => {
       if (action.type === "chat") {
         chatRef.current?.send(action.prompt, {
           ...(selectedPath && { context: { sourceCodocPath: selectedPath } }),
@@ -148,6 +149,24 @@ export function ChatPage() {
             .then(() => getCodoc(workspaceId, selectedPath))
             .then(setCodocDetail);
         }
+      } else if (action.type === "navigate") {
+        if (!workspaceId) return;
+        // Check if target codoc exists; if not, generate it
+        try {
+          await getCodoc(workspaceId, action.path);
+        } catch {
+          if (action.generate) {
+            const content = generateCodocContent(
+              action.generate.source,
+              action.generate.params,
+            );
+            if (content) {
+              await createCodoc(workspaceId, action.path, content);
+            }
+          }
+        }
+        // Navigate within canvas panel
+        setSelectedPath(action.path);
       }
     },
     [selectedPath, workspaceId],

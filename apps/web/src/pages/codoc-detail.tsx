@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getCodoc } from "@/api/codoc.js";
+import { getCodoc, createCodoc, listCodocs } from "@/api/codoc.js";
 import { createThread } from "@/api/chat.js";
-import { listCodocs } from "@/api/codoc.js";
+import { generateCodocContent } from "@/lib/codoc-generators.js";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { CodocViewer } from "@/components/codoc-viewer";
 import { ArrowLeft, MessageSquare } from "lucide-react";
-import type { CodocDetail } from "@/types.js";
+import type { CodocDetail, ViewAction } from "@/types.js";
 
 export function CodocDetailPage() {
   const { id: workspaceId, "*": codocPath } = useParams<{
@@ -37,6 +37,29 @@ export function CodocDetailPage() {
     });
     navigate(`/workspace/${workspaceId}/chat/${thread.id}`);
   }
+
+  const handleViewAction = useCallback(
+    async (action: ViewAction) => {
+      if (action.type === "navigate" && workspaceId) {
+        // Check if target codoc exists; if not, generate it
+        try {
+          await getCodoc(workspaceId, action.path);
+        } catch {
+          if (action.generate) {
+            const content = generateCodocContent(
+              action.generate.source,
+              action.generate.params,
+            );
+            if (content) {
+              await createCodoc(workspaceId, action.path, content);
+            }
+          }
+        }
+        navigate(`/workspace/${workspaceId}/codoc/${action.path}`);
+      }
+    },
+    [workspaceId, navigate],
+  );
 
   if (!workspaceId || !codocPath) return null;
 
@@ -73,7 +96,7 @@ export function CodocDetailPage() {
             <Skeleton className="h-48 w-full" />
           </div>
         ) : codoc ? (
-          <CodocViewer codoc={codoc} />
+          <CodocViewer codoc={codoc} onAction={handleViewAction} />
         ) : (
           <p className="text-sm text-muted-foreground">Codoc not found</p>
         )}

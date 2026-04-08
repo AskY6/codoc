@@ -58,16 +58,33 @@ function instantiateTemplate(
     node.bind = interpolate(template.bind, scope);
   }
   if (template.action) {
-    node.action = {
-      ...template.action,
-      prompt: interpolate(template.action.prompt, scope),
-    };
-    if (template.action.meta) {
-      const meta: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(template.action.meta)) {
-        meta[k] = typeof v === "string" ? interpolate(v, scope) : v;
+    if (template.action.type === "chat") {
+      node.action = {
+        ...template.action,
+        prompt: interpolate(template.action.prompt, scope),
+      };
+      if (template.action.meta) {
+        const meta: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(template.action.meta)) {
+          meta[k] = typeof v === "string" ? interpolate(v, scope) : v;
+        }
+        (node.action as { meta: Record<string, unknown> }).meta = meta;
       }
-      node.action.meta = meta;
+    } else if (template.action.type === "navigate") {
+      node.action = {
+        ...template.action,
+        path: interpolate(template.action.path, scope),
+      };
+      if (template.action.generate) {
+        const params: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(template.action.generate.params)) {
+          params[k] = typeof v === "string" ? interpolate(v, scope) : v;
+        }
+        (node.action as { generate: { source: string; params: Record<string, unknown> } }).generate = {
+          source: template.action.generate.source,
+          params,
+        };
+      }
     }
   }
   if (template.children) {

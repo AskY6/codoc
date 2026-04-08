@@ -53,11 +53,14 @@ export interface ViewActionContext {
   sourceCodocPath?: string; // codoc that owns the view where the action was triggered
 }
 
-export interface ViewAction {
-  type: "chat";
-  prompt: string; // supports {{var.path}} interpolation
-  meta?: Record<string, unknown>; // pass-through context (e.g. patchPath for mark-as-read)
+export interface NavigateGenerate {
+  source: string;
+  params: Record<string, unknown>;
 }
+
+export type ViewAction =
+  | { type: "chat"; prompt: string; meta?: Record<string, unknown> }
+  | { type: "navigate"; path: string; generate?: NavigateGenerate };
 
 export interface ViewNode {
   type: string; // "stack" | "grid" | "tabs" | "timeline" | "section" | "text" | "markdown" | "table"

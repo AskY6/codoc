@@ -37,3 +37,19 @@ export type { SourceProvider, SourceResult } from "./source.js";
 
 // Errors
 export { ParseError, RefError, InvalidTransition } from "./errors.js";
+
+// Claude Code Log
+export {
+  parseSession,
+  parseSessionSummary,
+  projectNameFromDir,
+} from "./claude-code-log/index.js";
+export type {
+  LogMessage,
+  ToolCall,
+  ToolBreakdownEntry,
+  SessionStats,
+  ParsedSession,
+  SessionSummary,
+  ProjectInfo,
+} from "./claude-code-log/index.js";

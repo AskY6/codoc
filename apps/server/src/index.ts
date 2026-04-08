@@ -17,7 +17,7 @@ import {
   createWorkspaceService,
   createChatService,
 } from "@cobook/service";
-import { createBaseAgent, createRssAgent } from "@cobook/agent";
+import { createBaseAgent, createRssAgent, createClaudeCodeLogAgent } from "@cobook/agent";
 import { workspaceRoutes } from "./routes/workspace-routes.js";
 import { codocRoutes } from "./routes/codoc-routes.js";
 import { buildRoutes } from "./routes/build-routes.js";
@@ -65,6 +65,7 @@ agents.set("base", createBaseAgent({
   description: "General workspace assistant — manage codocs, answer questions, and build knowledge",
 }));
 agents.set("rss", createRssAgent(llmConfig));
+agents.set("claude-code-log", createClaudeCodeLogAgent(llmConfig));
 
 // ---------------------------------------------------------------------------
 // Hono app
