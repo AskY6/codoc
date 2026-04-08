@@ -1,7 +1,12 @@
 import { ViewRenderer } from "@/components/view-renderer";
 import { normalizeResolvedData } from "@/lib/codoc-utils";
+import {
+  isClientSourceName,
+  resolveClientSource,
+} from "@/lib/source-registry";
 import { FileText } from "lucide-react";
-import type { CodocDetail, ViewAction, ViewNode } from "@/types.js";
+import { useEffect, useState } from "react";
+import type { CodocDetail, DataField, ViewAction, ViewNode } from "@/types.js";
 
 interface Props {
   codoc: CodocDetail;
@@ -9,7 +14,44 @@ interface Props {
 }
 
 export function CodocViewer({ codoc, onAction }: Props) {
-  const normalizedData = normalizeResolvedData(codoc.resolvedData, codoc.path);
+  const [clientData, setClientData] = useState<Record<string, unknown>>({});
+
+  // Resolve client-side sources that the server skipped (value = null)
+  useEffect(() => {
+    const dataFields = codoc.ast?.data;
+    if (!dataFields) return;
+
+    const sourceFields = Object.entries(dataFields).filter(
+      ([, f]: [string, DataField]) =>
+        f.kind === "source" && isClientSourceName(f.source),
+    );
+
+    if (sourceFields.length === 0) return;
+
+    let cancelled = false;
+
+    Promise.all(
+      sourceFields.map(async ([key, field]) => {
+        if (field.kind !== "source") return [key, null] as const;
+        const result = await resolveClientSource(field.source, field.params);
+        return [key, result.data] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const resolved: Record<string, unknown> = {};
+      for (const [key, data] of entries) {
+        resolved[`${codoc.path}#${key}`] = data;
+      }
+      setClientData(resolved);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [codoc]);
+
+  const mergedResolved = { ...codoc.resolvedData, ...clientData };
+  const normalizedData = normalizeResolvedData(mergedResolved, codoc.path);
 
   return (
     <div>

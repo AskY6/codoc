@@ -31,8 +31,7 @@ export { createWorkspaceService } from "./workspace-service.js";
 export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service.js";
 
 // Source executor
-export { executeSource } from "./source-executor.js";
-export type { Source, StaticSource } from "./source-executor.js";
+export { executeSource, registerSource } from "./source-executor.js";
 
 // Chat service
 export { createChatService } from "./chat-service.js";

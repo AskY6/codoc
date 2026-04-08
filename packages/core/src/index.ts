@@ -31,5 +31,9 @@ export type { RefValidationResult } from "./validate/ref-validator.js";
 export { NodeState } from "./state/node-state.js";
 export type { State } from "./state/node-state.js";
 
+// Source
+export { isClientSource } from "./source.js";
+export type { SourceProvider, SourceResult } from "./source.js";
+
 // Errors
 export { ParseError, RefError, InvalidTransition } from "./errors.js";

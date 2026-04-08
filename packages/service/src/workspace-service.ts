@@ -6,6 +6,7 @@ import {
   detectCycles,
   validateRefs,
   invalidate,
+  isClientSource,
   type CodocAST,
   type DAG,
   ParseError,
@@ -16,7 +17,7 @@ import type {
   EdgeRepository,
   Workspace,
 } from "./db/repositories/types.js";
-import { executeSource, type Source } from "./source-executor.js";
+import { executeSource } from "./source-executor.js";
 import type {
   BuildDiagnostics,
   CodocInfo,
@@ -236,8 +237,11 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
         }
 
         case "source": {
-          const source = toSource(field);
-          value = await executeSource(source);
+          if (isClientSource(field.source)) {
+            value = null; // client-side source — resolved in the browser
+            break;
+          }
+          value = await executeSource(field.source, field.params);
           break;
         }
       }
@@ -388,10 +392,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function toSource(field: { source: string; params: Record<string, unknown> }): Source {
-  return { type: "static", value: field.params };
-}
 
 /**
  * Set a value at a nested path like "articles[2].readAt".
