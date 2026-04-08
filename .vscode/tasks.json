@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "shell": {
+      "executable": "/bin/zsh",
+      "args": ["-i", "-c"]
+    }
+  },
+  "tasks": [
+    {
+      "label": "build-local-connector",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/local-connector build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "build-server",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/core build && pnpm --filter @cobook/service build && pnpm --filter @cobook/agent build && pnpm --filter @cobook/server build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    }
+  ]
+}
