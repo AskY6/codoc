@@ -93,7 +93,6 @@ export function createBaseAgent(config?: AgentConfig): Agent {
           for (const block of response.content) {
             if (block.type === "text") {
               fullText += block.text;
-              yield { kind: "text-delta", text: block.text };
             } else if (block.type === "tool_use") {
               toolUseBlocks.push({
                 id: block.id,
@@ -103,10 +102,18 @@ export function createBaseAgent(config?: AgentConfig): Agent {
             }
           }
 
-          // If no tool calls, we're done
+          // If no tool calls, we're done — emit text as final response
           if (toolUseBlocks.length === 0) {
+            if (fullText) {
+              yield { kind: "text-delta", text: fullText };
+            }
             yield { kind: "done", fullText };
             return;
+          }
+
+          // Tool calls present — emit text as transient status, not message content
+          if (fullText) {
+            yield { kind: "status", text: fullText };
           }
 
           // Execute tool calls and build tool results

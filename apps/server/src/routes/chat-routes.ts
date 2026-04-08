@@ -413,6 +413,9 @@ export function chatRoutes(
               fullText += event.text;
               await stream.writeSSE({ event: "text-delta", data: JSON.stringify({ text: event.text, agentId }) });
               break;
+            case "status":
+              await stream.writeSSE({ event: "status", data: JSON.stringify({ text: event.text, agentId }) });
+              break;
             case "tool-use":
               await stream.writeSSE({ event: "tool-use", data: JSON.stringify({ toolName: event.toolName, input: event.input, agentId }) });
               break;

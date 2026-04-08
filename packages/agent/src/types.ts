@@ -6,6 +6,7 @@ import type { WorkspaceService, AgentSessionRepository } from "@cobook/service";
 
 export type ChatEvent =
   | { kind: "text-delta"; text: string }
+  | { kind: "status"; text: string }
   | { kind: "tool-use"; toolName: string; input: Record<string, unknown> }
   | { kind: "tool-result"; toolName: string; output: unknown }
   | { kind: "done"; fullText: string }

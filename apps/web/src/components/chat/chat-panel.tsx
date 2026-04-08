@@ -51,6 +51,7 @@ interface ToolCall {
 
 interface StreamingState {
   text: string;
+  status: string;
   toolCalls: ToolCall[];
   agentId: string | null;
 }
@@ -175,7 +176,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
       };
       setMessages((prev) => [...prev, userMsg]);
       setSending(true);
-      setStreaming({ text: "", toolCalls: [], agentId: null });
+      setStreaming({ text: "", status: "", toolCalls: [], agentId: null });
 
       // Parse inline mentions for routing
       const mentions = parseMentions(text, agents, codocs);
@@ -201,6 +202,18 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                   ? {
                       ...prev,
                       text: prev.text + (d.text as string),
+                      status: "",
+                      agentId: (d.agentId as string) ?? prev.agentId,
+                    }
+                  : prev,
+              );
+              break;
+            case "status":
+              setStreaming((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: d.text as string,
                       agentId: (d.agentId as string) ?? prev.agentId,
                     }
                   : prev,
@@ -418,8 +431,10 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
               <MessageContent>
                 {streaming.text ? (
                   <MessageResponse>{streaming.text}</MessageResponse>
+                ) : streaming.status ? (
+                  <p className="text-sm text-muted-foreground animate-pulse">{streaming.status}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Thinking...</p>
+                  <p className="text-sm text-muted-foreground animate-pulse">Thinking...</p>
                 )}
               </MessageContent>
             </Message>
