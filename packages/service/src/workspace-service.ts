@@ -319,6 +319,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
     return {
       path: row.path,
+      content: row.content,
       ast: (row.ast as CodocAST) ?? null,
       resolvedData: (row.resolvedValue as Record<string, unknown>) ?? null,
       nodeState: row.nodeState,

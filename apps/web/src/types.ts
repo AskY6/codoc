@@ -27,6 +27,7 @@ export interface CodocListItem {
 
 export interface CodocDetail {
   path: string;
+  content: string;
   ast: CodocAST | null;
   resolvedData: Record<string, unknown> | null;
   nodeState: string;

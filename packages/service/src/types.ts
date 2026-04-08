@@ -34,6 +34,7 @@ export interface WorkspaceStatus {
 
 export interface CodocInfo {
   path: string;
+  content: string;
   ast: CodocAST | null;
   resolvedData: Record<string, unknown> | null;
   nodeState: string;

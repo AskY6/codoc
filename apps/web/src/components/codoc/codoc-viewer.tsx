@@ -4,7 +4,7 @@ import {
   isClientSourceName,
   resolveClientSource,
 } from "@/lib/source-registry";
-import { FileText } from "lucide-react";
+import { Code, Eye, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CodocDetail, DataField, ViewAction } from "@/types.js";
 import type { MdxView } from "@cobook/core";
@@ -25,6 +25,7 @@ function isMdxView(view: unknown): view is MdxView {
 
 export function CodocViewer({ codoc, onAction }: Props) {
   const [clientData, setClientData] = useState<Record<string, unknown>>({});
+  const [showSource, setShowSource] = useState(false);
 
   // Resolve client-side sources that the server skipped (value = null)
   useEffect(() => {
@@ -68,21 +69,45 @@ export function CodocViewer({ codoc, onAction }: Props) {
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
-        {codoc.ast?.meta?.title && (
-          <h1 className="text-xl font-medium text-foreground mb-1">
-            {codoc.ast.meta.title}
-          </h1>
-        )}
-        {codoc.ast?.meta?.description && (
-          <p className="text-sm text-muted-foreground">
-            {codoc.ast.meta.description}
-          </p>
-        )}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          {codoc.ast?.meta?.title && (
+            <h1 className="text-xl font-medium text-foreground mb-1">
+              {codoc.ast.meta.title}
+            </h1>
+          )}
+          {codoc.ast?.meta?.description && (
+            <p className="text-sm text-muted-foreground">
+              {codoc.ast.meta.description}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowSource((v) => !v)}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title={showSource ? "Show rendered view" : "Show source"}
+        >
+          {showSource ? (
+            <>
+              <Eye className="h-3.5 w-3.5" />
+              Rendered
+            </>
+          ) : (
+            <>
+              <Code className="h-3.5 w-3.5" />
+              Source
+            </>
+          )}
+        </button>
       </div>
 
-      {/* View content */}
-      {isMdxView(view) ? (
+      {/* Content */}
+      {showSource ? (
+        <pre className="overflow-auto rounded-md border border-border bg-muted/50 p-4 text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+          <code>{codoc.content}</code>
+        </pre>
+      ) : isMdxView(view) ? (
         <MdxRenderer
           source={view.source}
           data={normalizedData ?? {}}
