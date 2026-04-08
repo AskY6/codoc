@@ -7,6 +7,7 @@ export type {
   StaticField,
   RefField,
   SourceField,
+  MdxView,
 } from "./parser/schema.js";
 
 // Ref

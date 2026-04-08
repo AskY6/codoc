@@ -25,112 +25,92 @@ export function generateCodocContent(
 }
 
 // ---------------------------------------------------------------------------
+// Helper: build MDX codoc from frontmatter + body
+// ---------------------------------------------------------------------------
+
+function mdxCodoc(
+  frontmatter: { meta?: Record<string, unknown>; data?: Record<string, unknown> },
+  body: string,
+): string {
+  const fm = stringify(frontmatter).trim();
+  return `---\n${fm}\n---\n\n${body.trim()}\n`;
+}
+
+// ---------------------------------------------------------------------------
 // Claude Code Log generators
 // ---------------------------------------------------------------------------
 
 function generateSessionsCodoc(params: Record<string, unknown>): string {
   const { projectName, projectPath, projectId } = params;
-  return stringify({
-    meta: {
-      title: `Sessions: ${projectName}`,
-      tags: ["claude-code", "logs"],
-    },
-    data: {
-      sessions: {
-        $source: "local:claude-code-log",
-        mode: "sessions",
-        projectPath,
+  return mdxCodoc(
+    {
+      meta: {
+        title: `Sessions: ${projectName}`,
+        tags: ["claude-code", "logs"],
       },
-    },
-    view: {
-      type: "stack",
-      repeat: { bind: "data.sessions", as: "s" },
-      template: {
-        type: "stack",
-        children: [
-          {
-            type: "text",
-            props: { content: "{{s.startedAt}}", variant: "caption" },
-          },
-          {
-            type: "text",
-            props: {
-              content:
-                "{{s.userMessageCount}} user msgs, {{s.assistantMessageCount}} assistant msgs, {{s.toolCallCount}} tool calls",
-            },
-          },
-        ],
-        action: {
-          type: "navigate",
-          path: `claude-code-logs/${projectId}/{{s.id}}.codoc`,
-          generate: {
-            source: "local:claude-code-log",
-            params: {
-              mode: "session",
-              projectId,
-              file: `${projectPath}/{{s.file}}`,
-              sessionName: "{{s.startedAt}}",
-            },
-          },
+      data: {
+        sessions: {
+          $source: "local:claude-code-log",
+          mode: "sessions",
+          projectPath,
         },
       },
     },
-  });
+    `
+{(data.sessions ?? []).map(s => (
+  <Navigate
+    key={s.id}
+    to={\`claude-code-logs/${projectId}/\${s.id}.codoc\`}
+    generate={{
+      source: "local:claude-code-log",
+      params: { mode: "session", projectId: "${projectId}", file: \`${projectPath}/\${s.file}\`, sessionName: s.startedAt },
+    }}
+  >
+    <Stack>
+
+**{s.startedAt}**
+
+{s.userMessageCount} user msgs, {s.assistantMessageCount} assistant msgs, {s.toolCallCount} tool calls
+
+    </Stack>
+  </Navigate>
+))}
+`,
+  );
 }
 
 function generateSessionCodoc(params: Record<string, unknown>): string {
   const { file, sessionName } = params;
-  return stringify({
-    meta: {
-      title: `Session ${sessionName ?? ""}`.trim(),
-      tags: ["claude-code", "logs", "session"],
-    },
-    data: {
-      session: {
-        $source: "local:claude-code-log",
-        mode: "session",
-        file,
+  return mdxCodoc(
+    {
+      meta: {
+        title: `Session ${sessionName ?? ""}`.trim(),
+        tags: ["claude-code", "logs", "session"],
+      },
+      data: {
+        session: {
+          $source: "local:claude-code-log",
+          mode: "session",
+          file,
+        },
       },
     },
-    view: {
-      type: "section",
-      children: [
-        {
-          type: "section",
-          props: { title: "Tool Usage" },
-          children: [
-            { type: "table", bind: "data.session.stats.toolBreakdown" },
-          ],
-        },
-        {
-          type: "section",
-          props: { title: "Conversation" },
-          children: [
-            {
-              type: "timeline",
-              repeat: { bind: "data.session.messages", as: "msg" },
-              template: {
-                type: "stack",
-                children: [
-                  {
-                    type: "text",
-                    props: {
-                      content: "{{msg.role}} — {{msg.timestamp}}",
-                      variant: "caption",
-                    },
-                  },
-                  {
-                    type: "markdown",
-                    props: { content: "{{msg.content}}" },
-                  },
-                ],
-              },
-            },
-          ],
-        },
-      ],
-    },
-  });
+    `
+<Section title="Tool Usage">
+  <DataTable rows={data.session?.stats?.toolBreakdown ?? []} />
+</Section>
+
+<Section title="Conversation">
+  <Timeline
+    items={(data.session?.messages ?? []).map(msg => ({
+      title: msg.role,
+      pubDate: msg.timestamp,
+      summary: msg.content,
+    }))}
+  />
+</Section>
+`,
+  );
 }
 
 function claudeCodeLogGenerator(params: Record<string, unknown>): string {

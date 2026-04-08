@@ -108,108 +108,93 @@ Session codocs contain resolved data with:
 
 When the user asks to set up log browsing, create logs entry, or similar, create the root codoc at \`claude-code-logs/_index.codoc\` using this exact template:
 
-\`\`\`yaml
+\`\`\`mdx
+---
 meta:
   title: Claude Code Logs
   tags:
     - claude-code
     - logs
-
 data:
   projects:
     $source: "local:claude-code-log"
     mode: projects
     path: .claude/projects
+---
 
-view:
-  type: stack
-  repeat:
-    bind: data.projects
-    as: project
-  template:
-    type: stack
-    children:
-      - type: text
-        props:
-          content: "{{project.name}}"
-      - type: text
-        props:
-          content: "{{project.sessionCount}} sessions"
-          variant: caption
-    action:
-      type: navigate
-      path: "claude-code-logs/{{project.id}}/_index.codoc"
-      generate:
-        source: "local:claude-code-log"
-        params:
-          mode: sessions
-          projectId: "{{project.id}}"
-          projectName: "{{project.name}}"
-          projectPath: "{{project.path}}"
+{(data.projects ?? []).map(project => (
+  <Navigate
+    key={project.id}
+    to={\`claude-code-logs/\${project.id}/_index.codoc\`}
+    generate={{
+      source: "local:claude-code-log",
+      params: { mode: "sessions", projectId: project.id, projectName: project.name, projectPath: project.path },
+    }}
+  >
+    <Stack>
+
+**{project.name}**
+
+{project.sessionCount} sessions
+
+    </Stack>
+  </Navigate>
+))}
 \`\`\`
 
-The child codocs (session list, session detail) are generated automatically when the user clicks — you do NOT need to create them manually. The \`navigate\` action + \`generate\` config handles lazy creation.
+The child codocs (session list, session detail) are generated automatically when the user clicks — you do NOT need to create them manually. The \`Navigate\` component with \`generate\` config handles lazy creation.
 
 ## Creating experience codocs
 
 When the user asks you to summarize or distill experiences, create a codoc at \`experiences/<slug>.codoc\`:
 
-\`\`\`yaml
+\`\`\`mdx
+---
 meta:
   title: "<descriptive title>"
   description: "<one-line summary>"
   tags: [experience, claude-code]
-
 data:
   source_sessions:
     - "<session codoc path>"
   patterns:
     - name: "<pattern name>"
       description: "<what it is and why it works>"
-      evidence_count: <number>
+      evidence_count: 0
   anti_patterns:
     - name: "<anti-pattern name>"
       description: "<what happens and how to avoid it>"
-      occurrences: <number>
+      occurrences: 0
   tool_profile:
     - tool: Read
-      count: <number>
+      count: 0
     - tool: Edit
-      count: <number>
+      count: 0
   key_learnings:
     - "<concrete, actionable learning>"
+---
 
-view:
-  type: section
-  children:
-    - type: section
-      props:
-        title: Patterns
-      children:
-        - type: table
-          bind: data.patterns
-    - type: section
-      props:
-        title: Anti-patterns
-      children:
-        - type: table
-          bind: data.anti_patterns
-    - type: section
-      props:
-        title: Tool Usage
-      children:
-        - type: table
-          bind: data.tool_profile
-    - type: section
-      props:
-        title: Key Learnings
-      children:
-        - type: markdown
-          bind: data.key_learnings
+<Section title="Patterns">
+  <DataTable rows={data.patterns} />
+</Section>
+
+<Section title="Anti-patterns">
+  <DataTable rows={data.anti_patterns} />
+</Section>
+
+<Section title="Tool Usage">
+  <DataTable rows={data.tool_profile} />
+</Section>
+
+<Section title="Key Learnings">
+
+{(data.key_learnings ?? []).map((l, i) => <p key={i}>- {l}</p>)}
+
+</Section>
 \`\`\`
 
-## Supported view types (strict whitelist)
-\`text\`, \`markdown\`, \`table\`, \`stack\`, \`grid\`, \`tabs\`, \`timeline\`, \`section\`.
+## Available MDX components
+\`Timeline\`, \`DataTable\`, \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`.
 
 ## Guidelines
 - Be concise. Focus on actionable insights, not raw data dumps.

@@ -63,6 +63,14 @@ export const CodocRawSchema = z
   })
   .passthrough();
 
+// Frontmatter schema for MDX format — meta + data only, no view
+export const FrontmatterRawSchema = z
+  .object({
+    meta: CodocMetaRawSchema.optional(),
+    data: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
 // ---------------------------------------------------------------------------
 // Classified AST types
 // ---------------------------------------------------------------------------
@@ -92,8 +100,13 @@ export interface SourceField {
 
 export type DataField = StaticField | RefField | SourceField;
 
+export interface MdxView {
+  type: "mdx";
+  source: string;
+}
+
 export interface CodocAST {
   meta?: CodocMeta;
   data?: Record<string, DataField>;
-  view?: unknown;
+  view?: unknown; // MdxView | legacy ViewNode tree
 }

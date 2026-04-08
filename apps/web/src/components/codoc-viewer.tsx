@@ -1,4 +1,5 @@
 import { ViewRenderer } from "@/components/view-renderer";
+import { MdxRenderer } from "@/components/codoc/MdxRenderer";
 import { normalizeResolvedData } from "@/lib/codoc-utils";
 import {
   isClientSourceName,
@@ -7,10 +8,20 @@ import {
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CodocDetail, DataField, ViewAction, ViewNode } from "@/types.js";
+import type { MdxView } from "@cobook/core";
 
 interface Props {
   codoc: CodocDetail;
   onAction?: ((action: ViewAction) => void) | undefined;
+}
+
+function isMdxView(view: unknown): view is MdxView {
+  return (
+    view != null &&
+    typeof view === "object" &&
+    "type" in view &&
+    (view as Record<string, unknown>)["type"] === "mdx"
+  );
 }
 
 export function CodocViewer({ codoc, onAction }: Props) {
@@ -53,6 +64,8 @@ export function CodocViewer({ codoc, onAction }: Props) {
   const mergedResolved = { ...codoc.resolvedData, ...clientData };
   const normalizedData = normalizeResolvedData(mergedResolved, codoc.path);
 
+  const view = codoc.ast?.view;
+
   return (
     <div>
       {/* Header */}
@@ -69,10 +82,16 @@ export function CodocViewer({ codoc, onAction }: Props) {
         )}
       </div>
 
-      {/* View content */}
-      {codoc.ast?.view ? (
+      {/* View content — MDX or legacy YAML view tree */}
+      {isMdxView(view) ? (
+        <MdxRenderer
+          source={view.source}
+          data={normalizedData ?? {}}
+          onAction={onAction}
+        />
+      ) : view ? (
         <ViewRenderer
-          node={codoc.ast.view as ViewNode}
+          node={view as ViewNode}
           data={normalizedData}
           onAction={onAction}
         />
