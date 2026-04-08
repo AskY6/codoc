@@ -22,8 +22,8 @@ import {
 import { ChatPanel } from "@/components/chat/chat-panel";
 import type { ChatPanelHandle } from "@/components/chat/chat-panel";
 import { CanvasPanel } from "@/components/canvas/canvas-panel";
-import { AgentSelector } from "@/components/agent-selector";
-import { CodocSubsetSelector } from "@/components/codoc-subset-selector";
+import { AgentSelector } from "@/components/chat/agent-selector";
+import { CodocSubsetSelector } from "@/components/chat/codoc-subset-selector";
 import { ArrowLeft } from "lucide-react";
 import type {
   Workspace,

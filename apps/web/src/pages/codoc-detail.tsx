@@ -5,8 +5,8 @@ import { createThread } from "@/api/chat.js";
 import { generateCodocContent } from "@/lib/codoc-generators.js";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusBadge } from "@/components/status-badge";
-import { CodocViewer } from "@/components/codoc-viewer";
+import { StatusBadge } from "@/components/codoc/status-badge";
+import { CodocViewer } from "@/components/codoc/codoc-viewer";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 import type { CodocDetail, ViewAction } from "@/types.js";
 

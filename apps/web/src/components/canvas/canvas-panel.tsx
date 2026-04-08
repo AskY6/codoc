@@ -6,9 +6,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CodocViewer } from "@/components/codoc-viewer";
-import { buildTree, TreeItem } from "@/components/codoc-browser";
-import { RssFeedList } from "@/components/rss-feed-list";
+import { CodocViewer } from "@/components/codoc/codoc-viewer";
+import { buildTree, TreeItem } from "@/components/codoc/codoc-browser";
+import { RssFeedList } from "@/components/codoc/agents/rss-feed-list";
 import { ChevronDown, FileText, List } from "lucide-react";
 import type { CodocDetail, CodocListItem, ViewAction } from "@/types.js";
 

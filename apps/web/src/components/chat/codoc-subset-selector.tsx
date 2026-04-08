@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
-import { StatusBadge } from "@/components/status-badge";
+import { StatusBadge } from "@/components/codoc/status-badge";
 import { FileText, Search, Layers } from "lucide-react";
 import type { CodocListItem } from "@/types.js";
 

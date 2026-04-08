@@ -26,9 +26,9 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { StatusBadge } from "@/components/status-badge";
-import { CodocViewer } from "@/components/codoc-viewer";
-import { buildTree, TreeItem } from "@/components/codoc-browser";
+import { StatusBadge } from "@/components/codoc/status-badge";
+import { CodocViewer } from "@/components/codoc/codoc-viewer";
+import { buildTree, TreeItem } from "@/components/codoc/codoc-browser";
 import {
   ArrowLeft,
   Bot,
@@ -48,7 +48,7 @@ import type {
   GraphData,
   AgentInfo,
 } from "@/types.js";
-import { GraphView } from "@/components/graph-view";
+import { GraphView } from "@/components/codoc/graph-view";
 
 export function WorkspaceDetailPage() {
   const { id: workspaceId } = useParams<{ id: string }>();
