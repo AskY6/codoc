@@ -9,9 +9,14 @@ import type { Ref } from "./ref-types.js";
  *   → "notes/other.codoc#data.x"
  */
 export function normalizeRef(ref: Ref, baseCodocPath: string): string {
-  const baseDir = dirname(baseCodocPath);
-  const resolved = resolvePath(baseDir, ref.path);
-  return `${resolved}#${ref.field}`;
+  // Paths starting with "./" or "../" are relative to the base codoc's directory.
+  // All other paths are absolute (workspace-root-relative).
+  if (ref.path.startsWith("./") || ref.path.startsWith("../")) {
+    const baseDir = dirname(baseCodocPath);
+    const resolved = resolvePath(baseDir, ref.path);
+    return `${resolved}#${ref.field}`;
+  }
+  return `${ref.path}#${ref.field}`;
 }
 
 function dirname(path: string): string {

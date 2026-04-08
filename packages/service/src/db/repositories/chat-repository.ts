@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { chatThreads, chatMessages, threadCodocs, threadAgents, workspaceAgents } from "../schema.js";
 import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, WorkspaceAgent, ChatRepository } from "./types.js";
@@ -53,7 +53,8 @@ export function createChatRepository(db: Database): ChatRepository {
       return (await db
         .select()
         .from(chatMessages)
-        .where(eq(chatMessages.threadId, threadId))) as ChatMessage[];
+        .where(eq(chatMessages.threadId, threadId))
+        .orderBy(asc(chatMessages.createdAt))) as ChatMessage[];
     },
 
     async setThreadCodocs(threadId, codocIds) {
