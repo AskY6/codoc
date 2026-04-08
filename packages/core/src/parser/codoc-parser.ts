@@ -6,7 +6,6 @@ import { ParseError } from "../errors.js";
 import type { z } from "zod";
 import {
   CodocMetaRawSchema,
-  CodocRawSchema,
   FrontmatterRawSchema,
   type CodocAST,
   type CodocMeta,
@@ -103,67 +102,19 @@ function parseMdxCodoc(content: string): CodocAST {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy YAML format parser
-// ---------------------------------------------------------------------------
-
-function parseYamlCodoc(content: string): CodocAST {
-  let raw: unknown;
-  try {
-    raw = parseYaml(content);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new ParseError(`YAML syntax error: ${message}`);
-  }
-
-  if (raw == null) return {};
-
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    throw new ParseError("Codoc must be a YAML mapping at the top level");
-  }
-
-  let parsed: ReturnType<typeof CodocRawSchema.parse>;
-  try {
-    parsed = CodocRawSchema.parse(raw);
-  } catch (err) {
-    if (err instanceof ZodError) {
-      const first = err.issues[0];
-      throw new ParseError(
-        `Invalid codoc structure: ${first?.path.join(".") ?? ""} ${first?.message ?? "unknown error"}`,
-      );
-    }
-    throw err;
-  }
-
-  const result: CodocAST = {};
-
-  if (parsed.meta) {
-    result.meta = normaliseMeta(parsed.meta);
-  }
-
-  if (parsed.data) {
-    const data: Record<string, DataField> = {};
-    for (const [key, value] of Object.entries(parsed.data)) {
-      data[key] = classifyDataField(value);
-    }
-    result.data = data;
-  }
-
-  if (parsed.view !== undefined) {
-    result.view = parsed.view;
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export function parseCodoc(content: string): CodocAST {
+  if (!content.trim()) return {};
+
   if (splitFrontmatter(content) !== null) {
     return parseMdxCodoc(content);
   }
-  return parseYamlCodoc(content);
+
+  throw new ParseError(
+    "Codoc must use MDX frontmatter format (--- delimiters). Plain YAML format is not supported.",
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -5,9 +5,9 @@ describe("invalidate", () => {
   function buildChain() {
     // A → B → C  (A depends on B, B depends on C)
     const codocs = new Map([
-      ["c.codoc", parseCodoc("data:\n  value: 100")],
-      ["b.codoc", parseCodoc("data:\n  value:\n    $ref: ./c.codoc#data.value")],
-      ["a.codoc", parseCodoc("data:\n  value:\n    $ref: ./b.codoc#data.value")],
+      ["c.codoc", parseCodoc("---\ndata:\n  value: 100\n---")],
+      ["b.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./c.codoc#data.value\n---")],
+      ["a.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./b.codoc#data.value\n---")],
     ]);
     return buildDAG(codocs);
   }

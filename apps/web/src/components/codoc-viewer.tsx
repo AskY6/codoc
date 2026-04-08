@@ -1,4 +1,3 @@
-import { ViewRenderer } from "@/components/view-renderer";
 import { MdxRenderer } from "@/components/codoc/MdxRenderer";
 import { normalizeResolvedData } from "@/lib/codoc-utils";
 import {
@@ -7,7 +6,7 @@ import {
 } from "@/lib/source-registry";
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { CodocDetail, DataField, ViewAction, ViewNode } from "@/types.js";
+import type { CodocDetail, DataField, ViewAction } from "@/types.js";
 import type { MdxView } from "@cobook/core";
 
 interface Props {
@@ -82,23 +81,21 @@ export function CodocViewer({ codoc, onAction }: Props) {
         )}
       </div>
 
-      {/* View content — MDX or legacy YAML view tree */}
+      {/* View content */}
       {isMdxView(view) ? (
         <MdxRenderer
           source={view.source}
           data={normalizedData ?? {}}
           onAction={onAction}
         />
-      ) : view ? (
-        <ViewRenderer
-          node={view as ViewNode}
-          data={normalizedData}
-          onAction={onAction}
-        />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
           <FileText className="h-6 w-6" />
-          <p className="text-sm">No view defined for this codoc</p>
+          <p className="text-sm">
+            {view
+              ? "Unsupported view format — only MDX views are supported"
+              : "No view defined for this codoc"}
+          </p>
         </div>
       )}
     </div>

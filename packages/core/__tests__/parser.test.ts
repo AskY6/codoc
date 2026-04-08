@@ -3,8 +3,8 @@ import { parseCodoc } from "../src/index.js";
 import { ParseError } from "../src/index.js";
 
 describe("parseCodoc", () => {
-  it("parses a full codoc with meta, data, and view", () => {
-    const ast = parseCodoc(`
+  it("parses a full codoc with meta, data, and MDX view", () => {
+    const ast = parseCodoc(`---
 meta:
   title: Meeting Notes
   description: Weekly sync
@@ -15,9 +15,11 @@ data:
     path: ./notes.md
   summary:
     $ref: ./other.codoc#data.summary
-view:
-  type: stack
-`);
+---
+
+# Notes
+
+<Stack>{data.title}</Stack>`);
 
     expect(ast.meta?.title).toBe("Meeting Notes");
     expect(ast.meta?.description).toBe("Weekly sync");
@@ -33,11 +35,16 @@ view:
       $ref: "./other.codoc#data.summary",
     });
 
-    expect(ast.view).toEqual({ type: "stack" });
+    const view = ast.view as { type: string; source: string };
+    expect(view.type).toBe("mdx");
+    expect(view.source).toContain("<Stack>");
   });
 
   it("parses codoc with only meta (no data, no view)", () => {
-    const ast = parseCodoc("meta:\n  title: Hello");
+    const ast = parseCodoc(`---
+meta:
+  title: Hello
+---`);
     expect(ast.meta?.title).toBe("Hello");
     expect(ast.data).toBeUndefined();
     expect(ast.view).toBeUndefined();
@@ -48,12 +55,12 @@ view:
   });
 
   it("classifies plain objects as static", () => {
-    const ast = parseCodoc(`
+    const ast = parseCodoc(`---
 data:
   info:
     key: value
     nested: true
-`);
+---`);
     expect(ast.data?.["info"]).toEqual({
       kind: "static",
       value: { key: "value", nested: true },
@@ -61,12 +68,12 @@ data:
   });
 
   it("classifies arrays as static", () => {
-    const ast = parseCodoc(`
+    const ast = parseCodoc(`---
 data:
   tags:
     - alpha
     - beta
-`);
+---`);
     expect(ast.data?.["tags"]).toEqual({
       kind: "static",
       value: ["alpha", "beta"],
@@ -74,30 +81,44 @@ data:
   });
 
   it("normalises meta schema shorthand", () => {
-    const ast = parseCodoc(`
+    const ast = parseCodoc(`---
 meta:
   schema:
     title: string
     count:
       type: number
-`);
+---`);
     expect(ast.meta?.schema).toEqual({
       title: { type: "string" },
       count: { type: "number" },
     });
   });
 
-  it("throws ParseError for YAML syntax error", () => {
-    expect(() => parseCodoc("key: [unterminated")).toThrow(ParseError);
+  it("throws ParseError for YAML syntax error in frontmatter", () => {
+    expect(() => parseCodoc("---\nkey: [unterminated\n---")).toThrow(ParseError);
   });
 
-  it("throws ParseError for non-mapping top level", () => {
+  it("throws ParseError for non-mapping frontmatter", () => {
+    expect(() => parseCodoc("---\n- list\n- item\n---")).toThrow(ParseError);
+  });
+
+  it("throws ParseError for structural error in frontmatter", () => {
+    expect(() => parseCodoc("---\nmeta:\n  - bad\n---")).toThrow(ParseError);
+  });
+
+  it("rejects plain YAML without frontmatter delimiters", () => {
+    expect(() =>
+      parseCodoc(`meta:
+  title: Legacy
+data:
+  x: 42
+view:
+  type: stack`),
+    ).toThrow(ParseError);
+
+    expect(() => parseCodoc("key: value")).toThrow(ParseError);
     expect(() => parseCodoc("- list\n- item")).toThrow(ParseError);
     expect(() => parseCodoc("just a string")).toThrow(ParseError);
-  });
-
-  it("throws ParseError for structural error (meta is array)", () => {
-    expect(() => parseCodoc("meta:\n  - bad")).toThrow(ParseError);
   });
 
   // -----------------------------------------------------------------------
@@ -176,18 +197,5 @@ meta:
 
     expect(ast.meta?.title).toBe("Empty");
     expect(ast.view).toBeUndefined();
-  });
-
-  it("still parses legacy YAML format without frontmatter", () => {
-    const ast = parseCodoc(`meta:
-  title: Legacy
-data:
-  x: 42
-view:
-  type: stack`);
-
-    expect(ast.meta?.title).toBe("Legacy");
-    expect(ast.data?.["x"]).toEqual({ kind: "static", value: 42 });
-    expect(ast.view).toEqual({ type: "stack" });
   });
 });

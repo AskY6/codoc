@@ -60,8 +60,8 @@ describe("validateSchema", () => {
 describe("validateRefs", () => {
   it("returns valid when all refs resolve", () => {
     const codocs = new Map([
-      ["a.codoc", parseCodoc("data:\n  value:\n    $ref: ./b.codoc#data.value")],
-      ["b.codoc", parseCodoc("data:\n  value: 42")],
+      ["a.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./b.codoc#data.value\n---")],
+      ["b.codoc", parseCodoc("---\ndata:\n  value: 42\n---")],
     ]);
     const dag = buildDAG(codocs);
     const result = validateRefs(dag);
@@ -72,7 +72,7 @@ describe("validateRefs", () => {
 
   it("returns error for dangling ref", () => {
     const codocs = new Map([
-      ["a.codoc", parseCodoc("data:\n  value:\n    $ref: ./missing.codoc#data.x")],
+      ["a.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./missing.codoc#data.x\n---")],
     ]);
     const dag = buildDAG(codocs);
     const result = validateRefs(dag);

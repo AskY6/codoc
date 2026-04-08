@@ -12,20 +12,9 @@ import {
 function buildThreeNodeDAG() {
   // C is standalone, B refs C, A refs B  →  A → B → C
   const codocs = new Map([
-    ["c.codoc", parseCodoc(`
-data:
-  value: 100
-`)],
-    ["b.codoc", parseCodoc(`
-data:
-  value:
-    $ref: ./c.codoc#data.value
-`)],
-    ["a.codoc", parseCodoc(`
-data:
-  value:
-    $ref: ./b.codoc#data.value
-`)],
+    ["c.codoc", parseCodoc("---\ndata:\n  value: 100\n---")],
+    ["b.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./c.codoc#data.value\n---")],
+    ["a.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./b.codoc#data.value\n---")],
   ]);
 
   return buildDAG(codocs);
@@ -47,7 +36,7 @@ describe("buildDAG", () => {
 
   it("skips codocs without data", () => {
     const codocs = new Map([
-      ["empty.codoc", parseCodoc("meta:\n  title: Empty")],
+      ["empty.codoc", parseCodoc("---\nmeta:\n  title: Empty\n---")],
     ]);
     const dag = buildDAG(codocs);
     expect(dag.nodes.size).toBe(0);
@@ -97,8 +86,8 @@ describe("topoSort", () => {
 
   it("handles independent nodes in any order", () => {
     const codocs = new Map([
-      ["x.codoc", parseCodoc("data:\n  val: 1")],
-      ["y.codoc", parseCodoc("data:\n  val: 2")],
+      ["x.codoc", parseCodoc("---\ndata:\n  val: 1\n---")],
+      ["y.codoc", parseCodoc("---\ndata:\n  val: 2\n---")],
     ]);
     const dag = buildDAG(codocs);
     const sorted = topoSort(dag);
@@ -114,16 +103,8 @@ describe("detectCycles", () => {
 
   it("detects A → B → A cycle", () => {
     const codocs = new Map([
-      ["a.codoc", parseCodoc(`
-data:
-  value:
-    $ref: ./b.codoc#data.value
-`)],
-      ["b.codoc", parseCodoc(`
-data:
-  value:
-    $ref: ./a.codoc#data.value
-`)],
+      ["a.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./b.codoc#data.value\n---")],
+      ["b.codoc", parseCodoc("---\ndata:\n  value:\n    $ref: ./a.codoc#data.value\n---")],
     ]);
 
     const dag = buildDAG(codocs);
