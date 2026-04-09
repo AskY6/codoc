@@ -91,6 +91,7 @@ export const chatMessages = pgTable("chat_messages", {
   role: text().notNull(),
   content: text().notNull(),
   agentId: text("agent_id"),
+  metadata: jsonb(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

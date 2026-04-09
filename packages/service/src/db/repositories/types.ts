@@ -38,12 +38,17 @@ export interface ChatThread {
   updatedAt: Date;
 }
 
+export interface ChatMessageMetadata {
+  toolCalls?: { name: string; input: Record<string, unknown> }[];
+}
+
 export interface ChatMessage {
   id: string;
   threadId: string;
   role: string;
   content: string;
   agentId: string | null;
+  metadata: ChatMessageMetadata | null;
   createdAt: Date;
 }
 
@@ -81,6 +86,7 @@ export interface CodocRepository {
     path: string,
     data: { content?: string; ast?: unknown; resolvedValue?: unknown; nodeState?: string },
   ): Promise<Codoc>;
+  findById(id: string): Promise<Codoc | undefined>;
   findByPath(workspaceId: string, path: string): Promise<Codoc | undefined>;
   listByWorkspace(workspaceId: string): Promise<Codoc[]>;
   delete(workspaceId: string, path: string): Promise<void>;
@@ -123,7 +129,7 @@ export interface ChatRepository {
   deleteThread(threadId: string): Promise<void>;
   addMessage(
     threadId: string,
-    msg: { role: string; content: string; agentId?: string },
+    msg: { role: string; content: string; agentId?: string; metadata?: ChatMessageMetadata },
   ): Promise<ChatMessage>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
   setThreadCodocs(threadId: string, codocIds: string[]): Promise<void>;

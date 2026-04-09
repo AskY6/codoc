@@ -14,6 +14,7 @@ import {
 import type {
   WorkspaceRepository,
   CodocRepository,
+  Codoc,
   EdgeRepository,
   Workspace,
 } from "./db/repositories/types.js";
@@ -47,6 +48,7 @@ export interface WorkspaceService {
   updateCodoc(workspaceId: string, path: string, newContent: string): Promise<void>;
   deleteCodoc(workspaceId: string, path: string): Promise<void>;
   getCodoc(workspaceId: string, path: string): Promise<CodocInfo | undefined>;
+  getCodocById(id: string): Promise<Codoc | undefined>;
   patchCodocData(workspaceId: string, path: string, dataPath: string, value: unknown): Promise<void>;
 }
 
@@ -398,6 +400,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     updateCodoc: updateCodocEntry,
     deleteCodoc: deleteCodocEntry,
     getCodoc: getCodocEntry,
+    getCodocById: (id: string) => codocRepo.findById(id),
     patchCodocData: patchCodocDataEntry,
   };
 }

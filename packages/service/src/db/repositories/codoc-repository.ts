@@ -32,6 +32,14 @@ export function createCodocRepository(db: Database): CodocRepository {
       return row as Codoc;
     },
 
+    async findById(id) {
+      const [row] = await db
+        .select()
+        .from(codocs)
+        .where(eq(codocs.id, id));
+      return row as Codoc | undefined;
+    },
+
     async findByPath(workspaceId, path) {
       const [row] = await db
         .select()

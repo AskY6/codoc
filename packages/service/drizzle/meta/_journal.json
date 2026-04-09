@@ -43,6 +43,13 @@
       "when": 1775702723593,
       "tag": "0005_previous_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1775720466899,
+      "tag": "0006_chubby_punisher",
+      "breakpoints": true
     }
   ]
 }

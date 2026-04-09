@@ -20,6 +20,7 @@ export interface AgentContext {
   workspaceId: string;
   service: WorkspaceService;
   sessionRepo?: AgentSessionRepository;
+  threadCodocs?: { path: string; content: string }[];
 }
 
 // ---------------------------------------------------------------------------

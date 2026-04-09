@@ -113,6 +113,13 @@ async function enhanceIntent(
 // Priority: explicit @mention > single-agent shortcut > LLM classification.
 // ---------------------------------------------------------------------------
 
+interface RouteResult {
+  agentId: string;
+  agent: Agent;
+  fallback: boolean;
+  invalidMention?: string; // set when @mention targets a non-existent agent
+}
+
 async function routeToAgent(
   client: Anthropic,
   model: string,
@@ -120,11 +127,15 @@ async function routeToAgent(
   threadAgentIds: string[],
   targetAgentId: string | undefined,
   intent: RoutingIntent,
-): Promise<{ agentId: string; agent: Agent }> {
+): Promise<RouteResult> {
+  let invalidMention: string | undefined;
+
   // 1. Explicit @mention or targetAgentId — honour it if valid
   if (targetAgentId) {
     const agent = agents.get(targetAgentId);
-    if (agent) return { agentId: targetAgentId, agent };
+    if (agent) return { agentId: targetAgentId, agent, fallback: false };
+    // Invalid @mention — note it but continue with normal routing
+    invalidMention = targetAgentId;
   }
 
   // Scope to thread agents (fall back to all agents if thread has none)
@@ -132,10 +143,15 @@ async function routeToAgent(
     ? threadAgentIds.filter((id) => agents.has(id))
     : [...agents.keys()];
 
+  if (scopedIds.length === 0) {
+    throw new Error("No agents available for this thread");
+  }
+
+  const base = invalidMention != null ? { invalidMention } : {};
+
   // 2. Single agent in scope — no routing needed
   if (scopedIds.length <= 1) {
-    const id = scopedIds[0] ?? agents.keys().next().value!;
-    return { agentId: id, agent: agents.get(id)! };
+    return { agentId: scopedIds[0]!, agent: agents.get(scopedIds[0]!)!, fallback: false, ...base };
   }
 
   // 3. LLM-based routing — ask haiku to pick the best agent
@@ -162,7 +178,7 @@ async function routeToAgent(
     const block = res.content[0];
     const chosen = block?.type === "text" ? block.text.trim() : "";
     if (chosen && agents.has(chosen) && scopedIds.includes(chosen)) {
-      return { agentId: chosen, agent: agents.get(chosen)! };
+      return { agentId: chosen, agent: agents.get(chosen)!, fallback: false, ...base };
     }
   } catch {
     // Routing failure — fall through to default
@@ -170,7 +186,7 @@ async function routeToAgent(
 
   // 4. Fallback — first thread agent
   const fallbackId = scopedIds[0]!;
-  return { agentId: fallbackId, agent: agents.get(fallbackId)! };
+  return { agentId: fallbackId, agent: agents.get(fallbackId)!, fallback: true, ...base };
 }
 
 // ---------------------------------------------------------------------------
@@ -447,38 +463,66 @@ export function chatRoutes(
       return c.json({ error: "workspaceId is required" }, 400);
     }
 
+    // Reject concurrent streams on the same thread (before any side effects)
+    const existing = activeStreams.get(threadId);
+    if (existing && !existing.done) {
+      return c.json({ error: "Thread has an active response in progress" }, 409);
+    }
+
     // Resolve target agent: explicit field takes priority, then @mention parsing
     const parsed = parseAtMention(body.content);
     const effectiveTargetId = body.targetAgentId ?? parsed.targetAgentId;
-    const content = parsed.content;
+    // Only strip @mention from saved content when it matches a registered agent
+    const mentionIsValid = parsed.targetAgentId != null && agents.has(parsed.targetAgentId);
+    const content = mentionIsValid ? parsed.content : body.content;
 
-    // Persist user message (with original content including @mention)
-    await chatService.addMessage(threadId, { role: "user", content: body.content });
+    // Persist user message with stripped content — @mention is routing-only metadata
+    await chatService.addMessage(threadId, { role: "user", content });
 
     // Enhance the raw action into a structured routing intent (adds codoc
     // meta signals when the message originated from a view action).
-    const intent = await enhanceIntent(content, body.context, workspaceService, body.workspaceId);
+    const intent = await enhanceIntent(parsed.content, body.context, workspaceService, body.workspaceId);
 
     // Query thread agents and route to the best-matching one
     const threadAgentRows = await chatService.getThreadAgents(threadId);
     const threadAgentIds = threadAgentRows.map((ta) => ta.agentId);
-    const { agentId, agent } = await routeToAgent(llmClient, lightModel, agents, threadAgentIds, effectiveTargetId, intent);
+    const routeResult = await routeToAgent(llmClient, lightModel, agents, threadAgentIds, effectiveTargetId, intent);
+    const { agentId, agent } = routeResult;
 
     // Check if this thread needs an auto-generated title
     const threadData = await chatService.getThread(threadId);
     const needsTitle = threadData != null && threadData.thread.title == null;
 
+    // Load thread codocs for agent context
+    const threadCodocRows = await chatService.getThreadCodocs(threadId);
+    const threadCodocs = (await Promise.all(
+      threadCodocRows.map((tc) => workspaceService.getCodocById(tc.codocId)),
+    )).filter((c): c is NonNullable<typeof c> => c != null)
+      .map((c) => ({ path: c.path, content: c.content }));
+
     // Load history
     const history = await chatService.getMessages(threadId);
-    const agentMessages: AgentMessage[] = history.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
+    const agentMessages: AgentMessage[] = history.map((m) => {
+      let msgContent = m.content;
+      // Prefix assistant messages with agent attribution
+      if (m.role === "assistant" && m.agentId) {
+        msgContent = `[agent: ${m.agentId}]\n${msgContent}`;
+      }
+      // Append tool call summaries from metadata
+      if (m.metadata?.toolCalls && m.metadata.toolCalls.length > 0) {
+        const summary = m.metadata.toolCalls
+          .map((t: { name: string; input: Record<string, unknown> }) => `- ${t.name}(${JSON.stringify(t.input)})`)
+          .join("\n");
+        msgContent += `\n\n[tools used:\n${summary}\n]`;
+      }
+      return { role: m.role as "user" | "assistant", content: msgContent };
+    });
 
     const active = createActiveStream(threadId);
 
     return streamSSE(c, async (stream) => {
       let fullText = "";
+      const toolCalls: { name: string; input: Record<string, unknown> }[] = [];
       let titlePromise: Promise<void> | undefined;
 
       function emit(evt: SSEEvent) {
@@ -487,11 +531,20 @@ export function chatRoutes(
       }
 
       try {
-        for await (const event of agent.run(agentMessages, {
+        // Emit routing feedback before agent starts
+        if (routeResult.invalidMention) {
+          await emit({ event: "status", data: JSON.stringify({ text: `Unknown agent @${routeResult.invalidMention}, routed to ${agentId}`, agentId }) });
+        } else if (routeResult.fallback) {
+          await emit({ event: "status", data: JSON.stringify({ text: `Routed to ${agentId} (fallback)`, agentId }) });
+        }
+
+        const agentCtx = {
           workspaceId: body.workspaceId,
           service: workspaceService,
           sessionRepo,
-        })) {
+          ...(threadCodocs.length > 0 ? { threadCodocs } : {}),
+        };
+        for await (const event of agent.run(agentMessages, agentCtx)) {
           switch (event.kind) {
             case "text-delta":
               fullText += event.text;
@@ -501,14 +554,20 @@ export function chatRoutes(
               await emit({ event: "status", data: JSON.stringify({ text: event.text, agentId }) });
               break;
             case "tool-use":
+              toolCalls.push({ name: event.toolName, input: event.input });
               await emit({ event: "tool-use", data: JSON.stringify({ toolName: event.toolName, input: event.input, agentId }) });
               break;
             case "tool-result":
               await emit({ event: "tool-result", data: JSON.stringify({ toolName: event.toolName, output: event.output, agentId }) });
               break;
             case "done":
-              // Persist assistant message with agent attribution
-              await chatService.addMessage(threadId, { role: "assistant", content: event.fullText, agentId });
+              // Persist assistant message with agent attribution and tool call metadata
+              await chatService.addMessage(threadId, {
+                role: "assistant",
+                content: event.fullText,
+                agentId,
+                ...(toolCalls.length > 0 ? { metadata: { toolCalls } } : {}),
+              });
               await emit({ event: "done", data: JSON.stringify({ fullText: event.fullText, agentId }) });
               // Auto-generate title from first exchange
               if (needsTitle) {
@@ -529,7 +588,12 @@ export function chatRoutes(
         }
       } catch (err) {
         if (fullText) {
-          await chatService.addMessage(threadId, { role: "assistant", content: fullText, agentId });
+          await chatService.addMessage(threadId, {
+            role: "assistant",
+            content: fullText,
+            agentId,
+            ...(toolCalls.length > 0 ? { metadata: { toolCalls } } : {}),
+          });
         }
         await emit({ event: "error", data: JSON.stringify({ message: String(err), agentId }) });
       }

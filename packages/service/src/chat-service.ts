@@ -3,6 +3,7 @@ import type {
   AgentSessionRepository,
   ChatThread,
   ChatMessage,
+  ChatMessageMetadata,
   ThreadCodoc,
   ThreadAgent,
   WorkspaceAgent,
@@ -19,7 +20,7 @@ export interface ChatService {
   listThreads(workspaceId: string): Promise<ChatThread[]>;
   updateThread(threadId: string, data: { title?: string }): Promise<ChatThread>;
   deleteThread(threadId: string): Promise<void>;
-  addMessage(threadId: string, msg: { role: string; content: string; agentId?: string }): Promise<ChatMessage>;
+  addMessage(threadId: string, msg: { role: string; content: string; agentId?: string; metadata?: ChatMessageMetadata }): Promise<ChatMessage>;
   getMessages(threadId: string): Promise<ChatMessage[]>;
   setThreadCodocs(threadId: string, codocIds: string[]): Promise<void>;
   getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;

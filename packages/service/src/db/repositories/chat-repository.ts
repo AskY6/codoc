@@ -44,7 +44,13 @@ export function createChatRepository(db: Database): ChatRepository {
     async addMessage(threadId, msg) {
       const [row] = await db
         .insert(chatMessages)
-        .values({ threadId, role: msg.role, content: msg.content, agentId: msg.agentId ?? null })
+        .values({
+          threadId,
+          role: msg.role,
+          content: msg.content,
+          agentId: msg.agentId ?? null,
+          metadata: msg.metadata ?? null,
+        })
         .returning();
       return row as ChatMessage;
     },
