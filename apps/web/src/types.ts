@@ -43,6 +43,7 @@ export interface CodocAST {
   meta?: {
     title?: string;
     description?: string;
+    tags?: string[];
     schema?: Record<string, { type: string }>;
   };
   data?: Record<string, DataField>;

@@ -191,8 +191,16 @@ When the user says "刷新" / "refresh":
 5. Call updateCodoc with the updated data section (same view structure, new articles + timestamp).
 
 ### Available MDX components
-The following components are available in MDX codocs:
-\`Timeline\`, \`DataTable\`, \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`.
+
+**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`Timeline\`
+**RSS:** \`ArticleList\`
+
+#### Component guidance
+- **ArticleList**: Primary display component for article feeds. Accepts \`items\` (Article[]) and optional \`itemAction\`. Use instead of Timeline for article data.
+- **MetricBar**: Horizontal metric cards — great for feed stats (article count, unread count, etc.) at the top.
+- **Callout**: Colored callout box for notices or highlights.
+- **Timeline**: Legacy fallback. Prefer ArticleList for article data.
+- Choose components based on data semantics. Don't force all data into one component.
 
 **Never invent component names.** Only use the components listed above. When in doubt, use plain markdown.
 
@@ -225,7 +233,7 @@ data:
       readAt: null
 ---
 
-<Timeline
+<ArticleList
   items={data.articles}
   itemAction={(item, i) => ({
     type: "chat",
@@ -237,7 +245,7 @@ data:
 
 Key rules:
 - \`meta.description\` stores the feed URL — this is how you match subscriptions to codocs.
-- \`data.articles\` is an array; the \`<Timeline>\` component renders each item.
+- \`data.articles\` is an array; the \`<ArticleList>\` component renders each item.
 - Always set \`lastFetchedAt\` to the current time when creating or refreshing.
 - Every article MUST include \`readAt: null\` on creation. When refreshing, preserve existing \`readAt\` values for articles that haven't changed.
 - When refreshing, update only the \`data\` section in the frontmatter. The MDX body stays the same. The \`meta\` stays the same.
@@ -268,7 +276,7 @@ export const allArticles = [
 
 {allArticles.length} articles from 2 feeds
 
-<Timeline items={allArticles} />
+<ArticleList items={allArticles} />
 \`\`\`
 
 Key: the JS \`export const\` merges and sorts articles from all feeds. The \`<Timeline>\` component renders the merged, time-ordered list with \`feedTitle\` badges.

@@ -96,18 +96,18 @@ function generateSessionCodoc(params: Record<string, unknown>): string {
       },
     },
     `
-<Section title="Tool Usage">
+<MetricBar items={[
+  { label: "Messages", value: data.session?.stats?.messageCount ?? 0 },
+  { label: "Tool Calls", value: data.session?.stats?.toolCallCount ?? 0 },
+  { label: "User Msgs", value: data.session?.stats?.userMessageCount ?? 0 },
+]} />
+
+<Section title="Tool Breakdown">
   <DataTable rows={data.session?.stats?.toolBreakdown ?? []} />
 </Section>
 
 <Section title="Conversation">
-  <Timeline
-    items={(data.session?.messages ?? []).map(msg => ({
-      title: msg.role,
-      pubDate: msg.timestamp,
-      summary: msg.content,
-    }))}
-  />
+  <Conversation messages={data.session?.messages ?? []} />
 </Section>
 `,
   );

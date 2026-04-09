@@ -194,7 +194,18 @@ data:
 \`\`\`
 
 ## Available MDX components
-\`Timeline\`, \`DataTable\`, \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`.
+
+**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`Timeline\`
+**Claude Code:** \`Conversation\`
+
+### Component guidance
+- **Conversation**: Display conversation flow. Accepts \`messages: {role, content, timestamp, toolCalls}[]\`. Use for session message display.
+- **MetricBar**: Show session stats overview (message count, tool calls, etc.).
+- **DataTable**: Show tool usage breakdown or structured data.
+- **Callout**: Highlight key findings or warnings.
+- Different sessions may need different display emphasis. Tool-heavy sessions should highlight tool stats; conversation-heavy ones should highlight the conversation flow.
+
+**Never invent component names.** Only use the components listed above.
 
 ## Guidelines
 - Be concise. Focus on actionable insights, not raw data dumps.

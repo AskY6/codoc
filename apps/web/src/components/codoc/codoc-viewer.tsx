@@ -1,4 +1,5 @@
 import { MdxRenderer } from "@/components/codoc/MdxRenderer";
+import { getComponentsForTags } from "@/components/codoc/index";
 import { normalizeResolvedData } from "@/lib/codoc-utils";
 import {
   isClientSourceName,
@@ -137,6 +138,7 @@ export function CodocViewer({ codoc, onAction }: Props) {
         <MdxRenderer
           source={view.source}
           data={normalizedData ?? {}}
+          components={getComponentsForTags(codoc.ast?.meta?.tags ?? [])}
           onAction={onAction}
         />
       ) : (

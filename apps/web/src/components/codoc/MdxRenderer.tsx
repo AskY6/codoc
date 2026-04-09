@@ -1,6 +1,7 @@
 import { useEffect, useState, Component, type ReactNode } from "react";
 import { compileMdx } from "@/lib/mdx-runtime.js";
 import { codocComponents, CodocActionsProvider } from "./index.js";
+import type { ComponentType } from "react";
 import type { ViewAction } from "@/types.js";
 
 // ---------------------------------------------------------------------------
@@ -48,10 +49,11 @@ class MdxErrorBoundary extends Component<
 interface MdxRendererProps {
   source: string;
   data: Record<string, unknown>;
+  components?: Record<string, ComponentType<any>>;
   onAction?: ((action: ViewAction) => void) | undefined;
 }
 
-export function MdxRenderer({ source, data, onAction }: MdxRendererProps) {
+export function MdxRenderer({ source, data, components, onAction }: MdxRendererProps) {
   const [Content, setContent] = useState<React.ComponentType<{
     components?: Record<string, React.ComponentType<any>>;
   }> | null>(null);
@@ -104,7 +106,7 @@ export function MdxRenderer({ source, data, onAction }: MdxRendererProps) {
     <CodocActionsProvider onAction={onAction}>
       <MdxErrorBoundary>
         <div className="prose prose-sm max-w-none text-foreground">
-          <Content components={codocComponents} />
+          <Content components={components ?? codocComponents} />
         </div>
       </MdxErrorBoundary>
     </CodocActionsProvider>
