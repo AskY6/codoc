@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
-import { workspaces } from "../schema.js";
-import type { Workspace, WorkspaceRepository } from "./types.js";
+import { workspaces, codocs, workspaceAgents } from "../schema.js";
+import type { Workspace, WorkspaceListItem, WorkspaceRepository } from "./types.js";
 
 export function createWorkspaceRepository(db: Database): WorkspaceRepository {
   return {
@@ -32,6 +32,24 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
 
     async list() {
       return (await db.select().from(workspaces)) as Workspace[];
+    },
+
+    async listWithStats() {
+      const rows = await db
+        .select({
+          id: workspaces.id,
+          name: workspaces.name,
+          description: workspaces.description,
+          createdAt: workspaces.createdAt,
+          updatedAt: workspaces.updatedAt,
+          codocCount: sql<number>`coalesce(count(distinct ${codocs.id}), 0)::int`,
+          agentCount: sql<number>`coalesce(count(distinct ${workspaceAgents.id}), 0)::int`,
+        })
+        .from(workspaces)
+        .leftJoin(codocs, eq(codocs.workspaceId, workspaces.id))
+        .leftJoin(workspaceAgents, eq(workspaceAgents.workspaceId, workspaces.id))
+        .groupBy(workspaces.id);
+      return rows as WorkspaceListItem[];
     },
 
     async delete(id) {

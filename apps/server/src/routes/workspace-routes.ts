@@ -8,9 +8,9 @@ export function workspaceRoutes(
 ) {
   const app = new Hono();
 
-  // GET /api/workspace — list all workspaces
+  // GET /api/workspace — list all workspaces (with codoc/agent counts)
   app.get("/", async (c) => {
-    const list = await workspaceRepo.list();
+    const list = await workspaceRepo.listWithStats();
     return c.json(list);
   });
 

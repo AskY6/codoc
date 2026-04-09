@@ -11,6 +11,7 @@ export { createAgentSessionRepository } from "./repositories/agent-session-repos
 
 export type {
   Workspace,
+  WorkspaceListItem,
   Codoc,
   Edge,
   ChatThread,

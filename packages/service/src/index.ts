@@ -11,6 +11,7 @@ export {
 export type {
   Database,
   Workspace,
+  WorkspaceListItem,
   Codoc,
   Edge,
   ChatThread,

@@ -1,7 +1,7 @@
 import { apiFetch } from "./client.js";
-import type { Workspace, WorkspaceStatus } from "../types.js";
+import type { Workspace, WorkspaceListItem, WorkspaceStatus } from "../types.js";
 
-export function listWorkspaces(): Promise<Workspace[]> {
+export function listWorkspaces(): Promise<WorkspaceListItem[]> {
   return apiFetch("/workspace");
 }
 

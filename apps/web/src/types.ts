@@ -8,6 +8,11 @@ export interface Workspace {
   updatedAt: string;
 }
 
+export interface WorkspaceListItem extends Workspace {
+  codocCount: number;
+  agentCount: number;
+}
+
 export interface WorkspaceStatus {
   codocCount: number;
   states: Record<string, number>;

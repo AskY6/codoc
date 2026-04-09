@@ -7,6 +7,7 @@ import {
 } from "@/api/workspace.js";
 import {
   Card,
+  CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -26,11 +27,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FolderOpen, Plus, MoreVertical, Trash2 } from "lucide-react";
-import type { Workspace } from "@/types.js";
+import { FolderOpen, Plus, MoreVertical, Trash2, FileText, Bot } from "lucide-react";
+import type { WorkspaceListItem } from "@/types.js";
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
 
 export function WorkspaceListPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [addName, setAddName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -48,7 +62,7 @@ export function WorkspaceListPage() {
     setAdding(true);
     try {
       const ws = await createWorkspace(addName.trim());
-      setWorkspaces((prev) => [...prev, ws]);
+      setWorkspaces((prev) => [...prev, { ...ws, codocCount: 0, agentCount: 0 }]);
       setAddName("");
       setDialogOpen(false);
     } catch (err) {
@@ -137,6 +151,11 @@ export function WorkspaceListPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-lg">{ws.name}</CardTitle>
+                    {ws.description && (
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                        {ws.description}
+                      </p>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -166,6 +185,19 @@ export function WorkspaceListPage() {
                   </DropdownMenu>
                 </div>
               </CardHeader>
+              <CardContent className="relative z-10 pointer-events-none pt-0">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    {ws.codocCount}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Bot className="h-3.5 w-3.5" />
+                    {ws.agentCount}
+                  </span>
+                  <span>{relativeTime(ws.updatedAt)}</span>
+                </div>
+              </CardContent>
             </Card>
           ))}
         </div>

@@ -61,11 +61,17 @@ export interface AgentSession {
 // Repository interfaces
 // ---------------------------------------------------------------------------
 
+export interface WorkspaceListItem extends Workspace {
+  codocCount: number;
+  agentCount: number;
+}
+
 export interface WorkspaceRepository {
   create(data: { name: string; description?: string }): Promise<Workspace>;
   update(id: string, data: { name?: string; description?: string | null }): Promise<Workspace>;
   findById(id: string): Promise<Workspace | undefined>;
   list(): Promise<Workspace[]>;
+  listWithStats(): Promise<WorkspaceListItem[]>;
   delete(id: string): Promise<void>;
 }
 
