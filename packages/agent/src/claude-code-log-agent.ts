@@ -195,7 +195,7 @@ data:
 
 ## Available MDX components
 
-**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`Timeline\`
+**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`MarkdownContent\`, \`Timeline\`
 **Claude Code:** \`Conversation\`
 
 ### Component guidance

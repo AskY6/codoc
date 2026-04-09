@@ -7,6 +7,7 @@ export { Tabs, Tab } from "./Tabs.js";
 export { Navigate } from "./Navigate.js";
 export { MetricBar } from "./MetricBar.js";
 export { Callout } from "./Callout.js";
+export { MarkdownContent } from "./MarkdownContent.js";
 export { CodocActionsProvider, useCodocActions } from "./codoc-context.js";
 
 import type { ComponentType } from "react";
@@ -19,6 +20,7 @@ import { Tabs, Tab } from "./Tabs.js";
 import { Navigate } from "./Navigate.js";
 import { MetricBar } from "./MetricBar.js";
 import { Callout } from "./Callout.js";
+import { MarkdownContent } from "./MarkdownContent.js";
 
 // ---- Base components (all codocs can use) ----
 const baseComponents: Record<string, ComponentType<any>> = {
@@ -32,6 +34,7 @@ const baseComponents: Record<string, ComponentType<any>> = {
   Navigate,
   MetricBar,
   Callout,
+  MarkdownContent,
 };
 
 // ---- Agent-scoped components ----

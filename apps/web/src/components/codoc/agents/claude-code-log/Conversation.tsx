@@ -1,4 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ChevronRight, Wrench, User, Bot } from "lucide-react";
 
 interface ToolCall {
@@ -30,7 +32,9 @@ function MessageContent({ text }: { text: string }) {
 
   return (
     <div>
-      <p className="text-sm whitespace-pre-wrap break-words">{display}</p>
+      <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-ul:my-1 prose-ol:my-1 prose-hr:my-2">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{display}</ReactMarkdown>
+      </div>
       {needsCollapse && !expanded && (
         <button
           type="button"

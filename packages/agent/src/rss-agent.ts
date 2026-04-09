@@ -192,11 +192,12 @@ When the user says "刷新" / "refresh":
 
 ### Available MDX components
 
-**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`Timeline\`
+**Base:** \`Section\`, \`Stack\`, \`Grid\`, \`Tabs\`, \`Tab\`, \`Navigate\`, \`DataTable\`, \`MetricBar\`, \`Callout\`, \`MarkdownContent\`, \`Timeline\`
 **RSS:** \`ArticleList\`
 
 #### Component guidance
 - **ArticleList**: Primary display component for article feeds. Accepts \`items\` (Article[]) and optional \`itemAction\`. Use instead of Timeline for article data.
+- **MarkdownContent**: Renders a markdown string as styled HTML. Use \`<MarkdownContent content={data.someField} />\` when data contains markdown text. Essential for article summaries stored as markdown.
 - **MetricBar**: Horizontal metric cards — great for feed stats (article count, unread count, etc.) at the top.
 - **Callout**: Colored callout box for notices or highlights.
 - **Timeline**: Legacy fallback. Prefer ArticleList for article data.
@@ -304,9 +305,7 @@ data:
 {data.pubDate} — [Source]({data.link})
 
 <Section title="Summary">
-
-{data.summary}
-
+  <MarkdownContent content={data.summary} />
 </Section>
 \`\`\`
 
