@@ -46,4 +46,12 @@ export type {
   DiagnosticError,
   WorkspaceStatus,
   CodocInfo,
+  WorkspacePresetSummary,
+  WorkspacePresetDefinition,
 } from "./types.js";
+
+export {
+  listWorkspacePresets,
+  getWorkspacePreset,
+  applyWorkspacePreset,
+} from "./presets/index.js";

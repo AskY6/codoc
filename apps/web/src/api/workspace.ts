@@ -1,5 +1,11 @@
-import { apiFetch } from "./client.js";
-import type { Workspace, WorkspaceListItem, WorkspaceStatus } from "../types.js";
+import { apiFetch, apiSSE } from "./client.js";
+import type {
+  PresetApplyProgressStep,
+  Workspace,
+  WorkspaceListItem,
+  WorkspacePresetSummary,
+  WorkspaceStatus,
+} from "../types.js";
 
 export function listWorkspaces(): Promise<WorkspaceListItem[]> {
   return apiFetch("/workspace");
@@ -18,6 +24,48 @@ export function createWorkspace(name: string): Promise<Workspace> {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+}
+
+export function listWorkspacePresets(): Promise<WorkspacePresetSummary[]> {
+  return apiFetch("/workspace/presets");
+}
+
+export function createWorkspaceFromPreset(
+  presetId: string,
+  name?: string,
+  agentIds?: string[],
+): Promise<Workspace> {
+  return apiFetch("/workspace/from-preset", {
+    method: "POST",
+    body: JSON.stringify({ presetId, name, agentIds }),
+  });
+}
+
+export function createWorkspaceFromPresetStream(
+  presetId: string,
+  name: string,
+  agentIds: string[],
+  onEvent: (
+    eventType: string,
+    data:
+      | { steps: PresetApplyProgressStep[] }
+      | { message: string; steps: PresetApplyProgressStep[] }
+      | { workspace: Workspace; steps: PresetApplyProgressStep[] },
+  ) => void,
+) {
+  return apiSSE(
+    "/workspace/from-preset/stream",
+    { presetId, name, agentIds },
+    (eventType, data) => {
+      onEvent(
+        eventType,
+        data as
+          | { steps: PresetApplyProgressStep[] }
+          | { message: string; steps: PresetApplyProgressStep[] }
+          | { workspace: Workspace; steps: PresetApplyProgressStep[] },
+      );
+    },
+  );
 }
 
 export function updateWorkspace(

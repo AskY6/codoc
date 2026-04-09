@@ -56,6 +56,34 @@ export interface CodocListItem {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace presets
+// ---------------------------------------------------------------------------
+
+export interface WorkspacePresetSummary {
+  id: string;
+  name: string;
+  description: string;
+  defaultWorkspaceName: string;
+  tags: string[];
+  highlights: string[];
+  agentOptions: WorkspacePresetAgentOption[];
+  featured?: boolean;
+}
+
+export interface WorkspacePresetAgentOption {
+  id: string;
+  selectedByDefault?: boolean;
+}
+
+export interface WorkspacePresetDefinition extends WorkspacePresetSummary {
+  workspaceDescription: string;
+  codocs: Array<{
+    path: string;
+    content: string;
+  }>;
+}
+
+// ---------------------------------------------------------------------------
 // Source execution
 // ---------------------------------------------------------------------------
 

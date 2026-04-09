@@ -17,13 +17,20 @@ import type {
   Codoc,
   EdgeRepository,
   Workspace,
+  ChatRepository,
 } from "./db/repositories/types.js";
 import { executeSource } from "./source-executor.js";
+import {
+  applyWorkspacePreset,
+  getWorkspacePreset,
+  listWorkspacePresets,
+} from "./presets/index.js";
 import type {
   BuildDiagnostics,
   CodocInfo,
   CodocListItem,
   DiagnosticError,
+  WorkspacePresetSummary,
   WorkspaceStatus,
 } from "./types.js";
 
@@ -35,10 +42,18 @@ export interface WorkspaceServiceDeps {
   workspaceRepo: WorkspaceRepository;
   codocRepo: CodocRepository;
   edgeRepo: EdgeRepository;
+  chatRepo?: ChatRepository;
 }
 
 export interface WorkspaceService {
-  createWorkspace(name: string): Promise<Workspace>;
+  createWorkspace(name: string, description?: string | null): Promise<Workspace>;
+  applyPreset(workspaceId: string, presetId: string, agentIds?: string[]): Promise<void>;
+  createWorkspaceFromPreset(
+    presetId: string,
+    name?: string,
+    agentIds?: string[],
+  ): Promise<Workspace>;
+  listPresets(): WorkspacePresetSummary[];
   updateWorkspace(id: string, data: { name?: string; description?: string | null }): Promise<Workspace>;
   getStatus(workspaceId: string): Promise<WorkspaceStatus>;
   listCodocs(workspaceId: string): Promise<CodocListItem[]>;
@@ -53,7 +68,7 @@ export interface WorkspaceService {
 }
 
 export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceService {
-  const { workspaceRepo, codocRepo, edgeRepo } = deps;
+  const { workspaceRepo, codocRepo, edgeRepo, chatRepo } = deps;
 
   // In-memory DAG cache keyed by workspaceId — rebuilt on build()
   const dagCache = new Map<string, DAG>();
@@ -62,8 +77,56 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   // createWorkspace
   // -----------------------------------------------------------------------
 
-  async function createWorkspace(name: string): Promise<Workspace> {
+  async function createWorkspace(
+    name: string,
+    description?: string | null,
+  ): Promise<Workspace> {
+    if (description !== undefined && description !== null) {
+      return workspaceRepo.create({ name, description });
+    }
     return workspaceRepo.create({ name });
+  }
+
+  function listPresets(): WorkspacePresetSummary[] {
+    return listWorkspacePresets();
+  }
+
+  async function applyPreset(
+    workspaceId: string,
+    presetId: string,
+    agentIds?: string[],
+  ): Promise<void> {
+    const preset = getWorkspacePreset(presetId);
+    if (!preset) {
+      throw new Error(`Preset not found: ${presetId}`);
+    }
+
+    await applyWorkspacePreset(workspaceId, preset, {
+      codocRepo,
+      buildWorkspace: build,
+      ...(chatRepo ? { chatRepo } : {}),
+      ...(agentIds ? { agentIds } : {}),
+    });
+  }
+
+  async function createWorkspaceFromPreset(
+    presetId: string,
+    name?: string,
+    agentIds?: string[],
+  ): Promise<Workspace> {
+    const preset = getWorkspacePreset(presetId);
+    if (!preset) {
+      throw new Error(`Preset not found: ${presetId}`);
+    }
+
+    const workspace = await createWorkspace(
+      name?.trim() || preset.defaultWorkspaceName,
+      preset.workspaceDescription,
+    );
+
+    await applyPreset(workspace.id, presetId, agentIds);
+
+    return workspace;
   }
 
   async function updateWorkspace(
@@ -375,13 +438,19 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
     setNestedValue(rawData, dataPath, value);
 
-    // Rebuild full YAML document
-    const doc: Record<string, unknown> = {};
-    if (parsed.meta) doc["meta"] = parsed.meta;
-    doc["data"] = rawData;
-    if (parsed.view) doc["view"] = parsed.view;
+    const body =
+      parsed.view &&
+      typeof parsed.view === "object" &&
+      "source" in parsed.view &&
+      typeof parsed.view.source === "string"
+        ? parsed.view.source
+        : undefined;
 
-    const newContent = stringifyYaml(doc);
+    const newContent = stringifyCodocDocument({
+      ...(parsed.meta ? { meta: parsed.meta } : {}),
+      data: rawData,
+      ...(body ? { body } : {}),
+    });
     await updateCodocEntry(workspaceId, path, newContent);
   }
 
@@ -391,6 +460,9 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
   return {
     createWorkspace,
+    applyPreset,
+    createWorkspaceFromPreset,
+    listPresets,
     updateWorkspace,
     getStatus,
     listCodocs,
@@ -445,4 +517,23 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
     throw new Error(`Cannot set value at path "${path}": parent is not an object`);
   }
   (current as Record<string | number, unknown>)[last] = value;
+}
+
+function stringifyCodocDocument(doc: {
+  meta?: CodocAST["meta"];
+  data?: Record<string, unknown>;
+  body?: string;
+}): string {
+  const frontmatter: Record<string, unknown> = {};
+  if (doc.meta) frontmatter["meta"] = doc.meta;
+  if (doc.data) frontmatter["data"] = doc.data;
+
+  const yaml = stringifyYaml(frontmatter).trim();
+  const body = doc.body?.trim();
+
+  if (!body) {
+    return `---\n${yaml}\n---\n`;
+  }
+
+  return `---\n${yaml}\n---\n\n${body}\n`;
 }

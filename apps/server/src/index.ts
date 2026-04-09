@@ -48,7 +48,7 @@ const edgeRepo = createEdgeRepository(db);
 const chatRepo = createChatRepository(db);
 const agentSessionRepo = createAgentSessionRepository(db);
 
-const service = createWorkspaceService({ workspaceRepo, codocRepo, edgeRepo });
+const service = createWorkspaceService({ workspaceRepo, codocRepo, edgeRepo, chatRepo });
 const chatService = createChatService({ chatRepo, agentSessionRepo });
 const llmBaseURL = process.env["LLM_BASE_URL"];
 const llmApiKey = process.env["LLM_API_KEY"];
@@ -89,7 +89,6 @@ app.route("/api/chat", chatRoutes(chatService, service, agents, agentSessionRepo
 
 const rssScheduler = createRssScheduler({
   service,
-  codocRepo,
   workspaceRepo,
 });
 

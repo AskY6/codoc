@@ -13,6 +13,37 @@ export interface WorkspaceListItem extends Workspace {
   agentCount: number;
 }
 
+export interface WorkspacePresetSummary {
+  id: string;
+  name: string;
+  description: string;
+  defaultWorkspaceName: string;
+  tags: string[];
+  highlights: string[];
+  agentOptions: WorkspacePresetAgentOption[];
+  featured?: boolean;
+}
+
+export interface WorkspacePresetAgentOption {
+  id: string;
+  selectedByDefault?: boolean;
+}
+
+export interface PresetApplyProgressSubstep {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  detail?: string;
+}
+
+export interface PresetApplyProgressStep {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  detail?: string;
+  substeps?: PresetApplyProgressSubstep[];
+}
+
 export interface WorkspaceStatus {
   codocCount: number;
   states: Record<string, number>;
