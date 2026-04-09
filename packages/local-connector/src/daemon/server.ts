@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { IncomingMessage } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
 import WebSocket, { WebSocketServer, type RawData } from 'ws'
 
@@ -20,6 +20,7 @@ import { Guard } from './guard'
 import { HeartbeatManager } from './heartbeat'
 import { createSession, type Session } from './session'
 import { WatchManager } from './watch'
+import { adminPageHtml } from './admin-page'
 
 export type LocalConnectorServerOptions = {
   host?: string
@@ -31,6 +32,7 @@ export class LocalConnectorServer {
   readonly grants: GrantStore
 
   private wss: WebSocketServer | null = null
+  private httpServer: ReturnType<typeof createServer> | null = null
   private readonly gateway: Gateway
   private readonly heartbeat: HeartbeatManager
   private startPromise: Promise<void> | null = null
@@ -63,20 +65,32 @@ export class LocalConnectorServer {
     }
 
     this.startPromise = new Promise<void>((resolve, reject) => {
-      const wss = new WebSocketServer({
-        host: this.options.host ?? DEFAULT_HOST,
-        port: this.options.port ?? DEFAULT_PORT
+      const host = this.options.host ?? DEFAULT_HOST
+      const port = this.options.port ?? DEFAULT_PORT
+
+      const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+        if (req.method === 'GET' && (req.url === '/' || req.url === '/admin')) {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(adminPageHtml())
+          return
+        }
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('Not Found')
       })
 
+      const wss = new WebSocketServer({ server: httpServer })
+
+      this.httpServer = httpServer
       this.wss = wss
 
       const handleStartupError = (error: Error) => {
         this.wss = null
+        this.httpServer = null
         this.startPromise = null
         reject(error)
       }
 
-      wss.once('error', handleStartupError)
+      httpServer.once('error', handleStartupError)
 
       wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
         const origin = request.headers.origin
@@ -145,18 +159,15 @@ export class LocalConnectorServer {
         })
       })
 
-      wss.once('listening', () => {
-        wss.off('error', handleStartupError)
-        wss.on('error', (error) => {
+      httpServer.listen(port, host, () => {
+        httpServer.off('error', handleStartupError)
+        httpServer.on('error', (error) => {
           console.error(`Local Connector server error: ${error.message}`)
         })
 
         this.heartbeat.start()
-        const address = wss.address()
-
-        if (address && typeof address === 'object') {
-          console.log(`Local Connector listening on ws://${address.address}:${address.port}`)
-        }
+        console.log(`Local Connector listening on ws://${host}:${port}`)
+        console.log(`Admin page: http://${host}:${port}/`)
 
         resolve()
       })
@@ -167,7 +178,8 @@ export class LocalConnectorServer {
 
   async stop(): Promise<void> {
     const wss = this.wss
-    if (!wss) {
+    const httpServer = this.httpServer
+    if (!wss || !httpServer) {
       return
     }
 
@@ -182,16 +194,18 @@ export class LocalConnectorServer {
 
     this.sessions.clear()
     this.wss = null
+    this.httpServer = null
     this.startPromise = null
 
     await new Promise<void>((resolve, reject) => {
-      wss.close((error?: Error) => {
-        if (error) {
-          reject(error)
-          return
-        }
-
-        resolve()
+      wss.close(() => {
+        httpServer.close((error?: Error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
       })
     })
   }

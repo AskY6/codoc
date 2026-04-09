@@ -1,4 +1,4 @@
-import { DEFAULT_HOST, DEFAULT_PORT, PROTOCOL_VERSION, type ConnectorClientOptions, type ConnectorStatus, type HelloResult, type SessionReadyPayload } from '../shared/types'
+import { DEFAULT_HOST, DEFAULT_PORT, PROTOCOL_VERSION, type ConnectorClientOptions, type ConnectorStatus, type GrantRecord, type HelloResult, type SessionReadyPayload } from '../shared/types'
 import { ERROR_CODES, LocalConnectorError } from '../shared/errors'
 import { BrowserConnection } from './connection'
 import { createWatchQueue, FilesystemClient, type WatchStream } from './filesystem'
@@ -137,6 +137,16 @@ export class ConnectorClient {
     this.rpc.failPending('Local connector disconnected')
     this.resetConnectPromise()
     this.setStatus('closed')
+  }
+
+  async listGrants(): Promise<GrantRecord[]> {
+    const result = await this.rpc.request<{ grants: GrantRecord[] }>('grants.list')
+    return result.grants
+  }
+
+  async revokeGrant(origin: string, clientId: string): Promise<boolean> {
+    const result = await this.rpc.request<{ revoked: boolean }>('grants.revoke', { origin, clientId })
+    return result.revoked
   }
 
   onStatusChange(listener: StatusListener): () => void {
@@ -288,6 +298,7 @@ export class ConnectorClient {
 
 export type {
   ConnectorClientOptions,
-  ConnectorStatus
+  ConnectorStatus,
+  GrantRecord,
 } from '../shared/types'
 export type { WatchStream } from './filesystem'

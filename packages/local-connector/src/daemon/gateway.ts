@@ -2,13 +2,14 @@ import WebSocket from 'ws'
 
 import { createErrorResponse, createEvent, createSuccessResponse } from '../shared/protocol'
 import {
+  parseGrantsRevokeParams,
   parseHelloParams,
   parseReadDirParams,
   parseReadFileParams,
   parseUnwatchParams,
   parseWatchParams
 } from '../shared/schema'
-import { PROTOCOL_VERSION, type FilesystemPermission, type HelloResult, type RequestMessage } from '../shared/types'
+import { DEFAULT_HOST, DEFAULT_PORT, PROTOCOL_VERSION, type FilesystemPermission, type HelloResult, type RequestMessage } from '../shared/types'
 import { ERROR_CODES, LocalConnectorError, toErrorPayload } from '../shared/errors'
 import type { ApprovalManager } from './approval'
 import { GrantStore } from './grants'
@@ -56,6 +57,12 @@ export class Gateway {
         case 'filesystem.unwatch':
           await this.handleUnwatch(session, message)
           return
+        case 'grants.list':
+          await this.handleGrantsList(session, message)
+          return
+        case 'grants.revoke':
+          await this.handleGrantsRevoke(session, message)
+          return
         default:
           throw new LocalConnectorError(ERROR_CODES.unsupportedOperation, `Unsupported method: ${message.method}`)
       }
@@ -90,9 +97,15 @@ export class Gateway {
 
     const existingGrant = await this.deps.grants.find(session.origin, params.clientId)
     const requestedPermissions = uniquePermissions(filesystemRequest.permissions)
+
+    // Auto-approve sessions from the daemon's own admin page
+    const adminOrigin = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`
+    const isAdminOrigin = session.origin === adminOrigin
+
     const needsApproval =
-      !existingGrant ||
-      requestedPermissions.some((permission) => !existingGrant.capability.permissions.includes(permission))
+      !isAdminOrigin &&
+      (!existingGrant ||
+        requestedPermissions.some((permission) => !existingGrant.capability.permissions.includes(permission)))
 
     if (needsApproval) {
       session.state = 'pending_auth'
@@ -143,14 +156,15 @@ export class Gateway {
     session.grant = existingGrant ?? null
     session.state = 'ready'
 
-    if (!session.grant) {
+    if (!session.grant && !isAdminOrigin) {
       throw new LocalConnectorError(ERROR_CODES.accessDenied, 'Missing stored grant for ready session')
     }
 
+    const grantedCapabilities = session.grant ? [session.grant.capability] : []
     const result: HelloResult = {
       sessionId: session.id,
       state: 'ready',
-      grantedCapabilities: [session.grant.capability]
+      grantedCapabilities
     }
 
     this.safeSend(session, createSuccessResponse(message.id, result))
@@ -218,6 +232,23 @@ export class Gateway {
     }
 
     this.safeSend(session, createSuccessResponse(message.id, { subscriptionId: params.subscriptionId }))
+  }
+
+  private async handleGrantsList(session: Session, message: RequestMessage): Promise<void> {
+    if (!session.helloReceived) {
+      throw new LocalConnectorError(ERROR_CODES.accessDenied, 'Session must complete hello to list grants')
+    }
+    const grants = await this.deps.grants.list()
+    this.safeSend(session, createSuccessResponse(message.id, { grants }))
+  }
+
+  private async handleGrantsRevoke(session: Session, message: RequestMessage): Promise<void> {
+    if (!session.helloReceived) {
+      throw new LocalConnectorError(ERROR_CODES.accessDenied, 'Session must complete hello to revoke grants')
+    }
+    const params = parseGrantsRevokeParams(message.params)
+    const revoked = await this.deps.grants.revoke(params.origin, params.clientId)
+    this.safeSend(session, createSuccessResponse(message.id, { revoked }))
   }
 
   private assertSessionAlive(session: Session): void {

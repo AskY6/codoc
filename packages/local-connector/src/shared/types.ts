@@ -54,7 +54,14 @@ export type RequestMessage = {
     | 'filesystem.readDir'
     | 'filesystem.watch'
     | 'filesystem.unwatch'
+    | 'grants.list'
+    | 'grants.revoke'
   params?: unknown
+}
+
+export type GrantsRevokeParams = {
+  origin: string
+  clientId: string
 }
 
 export type SuccessResponseMessage = {

@@ -2,6 +2,7 @@ import { LocalConnectorError, ERROR_CODES } from './errors'
 import type {
   EventMessage,
   FilesystemPermission,
+  GrantsRevokeParams,
   HelloParams,
   Message,
   ReadDirParams,
@@ -132,6 +133,14 @@ export function parseWatchParams(value: unknown): WatchParams {
 export function parseUnwatchParams(value: unknown): UnwatchParams {
   const record = assertRecord(value, 'Invalid unwatch params')
   return { subscriptionId: assertString(record.subscriptionId, 'Missing subscriptionId') }
+}
+
+export function parseGrantsRevokeParams(value: unknown): GrantsRevokeParams {
+  const record = assertRecord(value, 'Invalid grants.revoke params')
+  return {
+    origin: assertString(record.origin, 'Missing origin'),
+    clientId: assertString(record.clientId, 'Missing clientId')
+  }
 }
 
 export function parseWatchEventPayload(value: unknown): WatchEventPayload {
