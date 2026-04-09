@@ -9,6 +9,24 @@ import { registerClientSource } from "@/lib/source-registry.js";
 import type { SourceResult } from "@/lib/source-registry.js";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Join connector-relative path segments, avoiding "./" prefixes that the
+ *  daemon guard rejects (segments must not contain "." or ""). */
+function joinPath(base: string, ...parts: string[]): string {
+  if (base === ".") return parts.join("/");
+  return [base, ...parts].join("/");
+}
+
+/** The connector rootPath is already `.claude/projects`, so map legacy
+ *  absolute-style path hints to the connector-relative root. */
+function normalizeBasePath(raw: string | undefined): string {
+  if (!raw || raw === ".claude/projects") return ".";
+  return raw;
+}
+
+// ---------------------------------------------------------------------------
 // Resolve modes
 // ---------------------------------------------------------------------------
 
@@ -16,7 +34,7 @@ async function resolveProjects(
   params: Record<string, unknown>,
 ): Promise<SourceResult> {
   const connector = await getConnector();
-  const basePath = (params["path"] as string) ?? ".claude/projects";
+  const basePath = normalizeBasePath(params["path"] as string | undefined);
   const entries = await connector.filesystem.readDir(basePath);
 
   const projects: ProjectInfo[] = [];
@@ -28,7 +46,7 @@ async function resolveProjects(
     let sessionCount = 0;
     try {
       const files = await connector.filesystem.readDir(
-        `${basePath}/${entry.name}`,
+        joinPath(basePath, entry.name),
       );
       sessionCount = files.filter(
         (f) => f.kind === "file" && f.name.endsWith(".jsonl"),
@@ -43,7 +61,7 @@ async function resolveProjects(
     projects.push({
       id: entry.name,
       name: projectNameFromDir(entry.name),
-      path: `${basePath}/${entry.name}`,
+      path: joinPath(basePath, entry.name),
       sessionCount,
     });
   }
@@ -70,7 +88,7 @@ async function resolveSessions(
   for (const file of jsonlFiles) {
     try {
       const result = await connector.filesystem.readFile(
-        `${projectPath}/${file.name}`,
+        joinPath(projectPath, file.name),
       );
       const id = file.name.replace(/\.jsonl$/, "");
       const summary = parseSessionSummary(result.content, id, file.name);

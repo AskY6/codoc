@@ -51,7 +51,7 @@ export function CodocViewer({ codoc, onAction }: Props) {
       if (cancelled) return;
       const resolved: Record<string, unknown> = {};
       for (const [key, data] of entries) {
-        resolved[`${codoc.path}#${key}`] = data;
+        resolved[`${codoc.path}#data.${key}`] = data;
       }
       setClientData(resolved);
     });
