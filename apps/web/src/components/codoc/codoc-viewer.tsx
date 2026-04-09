@@ -4,7 +4,7 @@ import {
   isClientSourceName,
   resolveClientSource,
 } from "@/lib/source-registry";
-import { Code, Eye, FileText } from "lucide-react";
+import { Code, Eye, FileText, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CodocDetail, DataField, ViewAction } from "@/types.js";
 import type { MdxView } from "@cobook/core";
@@ -25,6 +25,7 @@ function isMdxView(view: unknown): view is MdxView {
 
 export function CodocViewer({ codoc, onAction }: Props) {
   const [clientData, setClientData] = useState<Record<string, unknown>>({});
+  const [clientError, setClientError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
 
   // Resolve client-side sources that the server skipped (value = null)
@@ -40,6 +41,7 @@ export function CodocViewer({ codoc, onAction }: Props) {
     if (sourceFields.length === 0) return;
 
     let cancelled = false;
+    setClientError(null);
 
     Promise.all(
       sourceFields.map(async ([key, field]) => {
@@ -54,6 +56,10 @@ export function CodocViewer({ codoc, onAction }: Props) {
         resolved[`${codoc.path}#data.${key}`] = data;
       }
       setClientData(resolved);
+    }).catch((err) => {
+      if (cancelled) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setClientError(msg);
     });
 
     return () => {
@@ -101,6 +107,26 @@ export function CodocViewer({ codoc, onAction }: Props) {
           )}
         </button>
       </div>
+
+      {/* Client source error */}
+      {clientError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 mb-4">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-sm font-medium text-destructive">
+                Failed to load local data
+              </h4>
+              <p className="text-xs text-destructive/80 mt-1">
+                {clientError}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Make sure the local-connector daemon is running.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       {showSource ? (

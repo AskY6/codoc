@@ -58,6 +58,11 @@ interface StreamingState {
   agentId: string | null;
 }
 
+interface ErrorEntry {
+  id: string;
+  message: string;
+}
+
 // ---------------------------------------------------------------------------
 // Parse @mentions from message text
 // ---------------------------------------------------------------------------
@@ -100,6 +105,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
 ) {
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [errors, setErrors] = useState<ErrorEntry[]>([]);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
   const [sending, setSending] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -243,10 +249,16 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
             onTitleUpdate(d.title as string);
           }
           break;
-        case "error":
+        case "error": {
+          const errorMsg = (d.message as string) ?? "An error occurred";
+          setErrors((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), message: errorMsg },
+          ]);
           setStreaming(null);
           setSending(false);
           break;
+        }
       }
     },
     [threadId, onTitleUpdate],
@@ -267,6 +279,7 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, userMsg]);
+      setErrors([]);
       setSending(true);
       setStreaming({ text: "", status: "", toolCalls: [], agentId: null });
 
@@ -435,6 +448,15 @@ export const ChatPanel = forwardRef<ChatPanelHandle, Props>(function ChatPanel(
                 </MessageActions>
               )}
             </Message>
+          ))}
+
+          {errors.map((err) => (
+            <div
+              key={err.id}
+              className="mx-4 my-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              {err.message}
+            </div>
           ))}
 
           {streaming && (

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Toaster } from "sonner";
 import { WorkspaceListPage } from "./pages/workspace-list.js";
 import { WorkspaceDetailPage } from "./pages/workspace-detail.js";
 import { CodocDetailPage } from "./pages/codoc-detail.js";
@@ -13,6 +14,7 @@ export function App() {
         <Route path="/workspace/:id/codoc/*" element={<CodocDetailPage />} />
         <Route path="/workspace/:id/chat/:threadId" element={<ChatPage />} />
       </Routes>
+      <Toaster position="bottom-right" />
     </BrowserRouter>
   );
 }
