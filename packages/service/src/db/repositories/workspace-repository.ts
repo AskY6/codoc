@@ -8,7 +8,16 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
     async create(data) {
       const [row] = await db
         .insert(workspaces)
-        .values({ name: data.name })
+        .values({ name: data.name, description: data.description })
+        .returning();
+      return row as Workspace;
+    },
+
+    async update(id, data) {
+      const [row] = await db
+        .update(workspaces)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(workspaces.id, id))
         .returning();
       return row as Workspace;
     },

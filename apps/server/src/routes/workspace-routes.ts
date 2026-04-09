@@ -45,6 +45,17 @@ export function workspaceRoutes(
     }
   });
 
+  // PATCH /api/workspace/:id — update workspace name / description
+  app.patch("/:id", async (c) => {
+    const body = await c.req.json<{ name?: string; description?: string | null }>();
+    try {
+      const ws = await service.updateWorkspace(c.req.param("id"), body);
+      return c.json(ws);
+    } catch (err) {
+      return c.json({ error: String(err) }, 500);
+    }
+  });
+
   // DELETE /api/workspace/:id — remove workspace
   app.delete("/:id", async (c) => {
     try {

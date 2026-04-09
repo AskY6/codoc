@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback, useSyncExternalStore } from "react";
 import { StatusBadge } from "@/components/codoc/status-badge";
-import { FileText } from "lucide-react";
+import { ChevronRight, FileText } from "lucide-react";
 import type { CodocListItem } from "@/types.js";
 
 export interface TreeNode {
@@ -32,26 +32,77 @@ export function buildTree(codocs: CodocListItem[]): TreeNode {
   return root;
 }
 
+/* ---- localStorage-backed collapsed set ---- */
+const LS_KEY = "codoc-tree-collapsed";
+const listeners = new Set<() => void>();
+let snapshot: Set<string> = readFromStorage();
+
+function readFromStorage(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    /* ignore */
+  }
+  return new Set();
+}
+
+function persist(next: Set<string>) {
+  snapshot = next;
+  localStorage.setItem(LS_KEY, JSON.stringify([...next]));
+  for (const l of listeners) l();
+}
+
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function getSnapshot() {
+  return snapshot;
+}
+
+function useCollapsedSet() {
+  const set = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const toggle = useCallback((key: string) => {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    persist(next);
+  }, [set]);
+  return { collapsed: set, toggle };
+}
+
+/* ---- Tree component ---- */
+
 export function TreeItem({
   node,
   depth,
   selectedPath,
   onSelect,
   renderActions,
+  _prefix = "",
 }: {
   node: TreeNode;
   depth: number;
   selectedPath: string | null;
   onSelect: (path: string) => void;
   renderActions?: ((path: string) => ReactNode) | undefined;
+  _prefix?: string;
 }) {
   const isLeaf = !!node.path;
   const isSelected = node.path === selectedPath;
+  const folderKey = _prefix ? `${_prefix}/${node.name}` : node.name;
+  const { collapsed, toggle } = useCollapsedSet();
+  const isCollapsed = collapsed.has(folderKey);
+
   const children = [...node.children.values()].sort((a, b) => {
-    // Folders (non-leaf) before files (leaf)
+    // Files (leaf) before folders (non-leaf)
     const aIsLeaf = !!a.path;
     const bIsLeaf = !!b.path;
-    if (aIsLeaf !== bIsLeaf) return aIsLeaf ? 1 : -1;
+    if (aIsLeaf !== bIsLeaf) return aIsLeaf ? -1 : 1;
     // Alphabetical within same type
     return a.name.localeCompare(b.name);
   });
@@ -78,23 +129,29 @@ export function TreeItem({
   return (
     <div>
       {node.name && (
-        <div
-          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wider"
+        <button
+          onClick={() => toggle(folderKey)}
+          className="flex w-full items-center gap-1 px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
         >
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+          />
           {node.name}/
-        </div>
+        </button>
       )}
-      {children.map((child) => (
-        <TreeItem
-          key={child.name}
-          node={child}
-          depth={node.name ? depth + 1 : depth}
-          selectedPath={selectedPath}
-          onSelect={onSelect}
-          renderActions={renderActions}
-        />
-      ))}
+      {!isCollapsed &&
+        children.map((child) => (
+          <TreeItem
+            key={child.name}
+            node={child}
+            depth={node.name ? depth + 1 : depth}
+            selectedPath={selectedPath}
+            onSelect={onSelect}
+            renderActions={renderActions}
+            _prefix={node.name ? folderKey : _prefix}
+          />
+        ))}
     </div>
   );
 }

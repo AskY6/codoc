@@ -14,6 +14,7 @@ import {
 export const workspaces = pgTable("workspaces", {
   id: uuid().primaryKey().defaultRandom(),
   name: text().notNull(),
+  description: text(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { getWorkspace, getWorkspaceStatus } from "@/api/workspace.js";
+import { getWorkspace, getWorkspaceStatus, updateWorkspace } from "@/api/workspace.js";
 import { listCodocs, getCodoc, deleteCodoc } from "@/api/codoc.js";
 import { getGraph } from "@/api/graph.js";
 import {
@@ -32,12 +32,15 @@ import { buildTree, TreeItem } from "@/components/codoc/codoc-browser";
 import {
   ArrowLeft,
   Bot,
+  Check,
+  Pencil,
   Plus,
   MessageSquare,
   FileText,
   FolderOpen,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import type {
   Workspace,
@@ -79,6 +82,14 @@ export function WorkspaceDetailPage() {
   const [newChatAgentIds, setNewChatAgentIds] = useState<string[]>([]);
   const [newChatCodocIds, setNewChatCodocIds] = useState<string[]>([]);
   const [quickChatLoading, setQuickChatLoading] = useState(false);
+
+  // Workspace edit state
+  const [editingName, setEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [editDesc, setEditDesc] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const descInputRef = useRef<HTMLInputElement>(null);
 
   // Agent management dialog state
   const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
@@ -166,6 +177,33 @@ export function WorkspaceDetailPage() {
     navigate(`/workspace/${workspaceId}/codoc/${codocPath}`);
   }
 
+  function startEditName() {
+    setEditName(workspace?.name ?? "");
+    setEditingName(true);
+    requestAnimationFrame(() => nameInputRef.current?.focus());
+  }
+
+  async function saveName() {
+    if (!workspaceId || !editName.trim()) return;
+    const updated = await updateWorkspace(workspaceId, { name: editName.trim() });
+    setWorkspace(updated);
+    setEditingName(false);
+  }
+
+  function startEditDesc() {
+    setEditDesc(workspace?.description ?? "");
+    setEditingDesc(true);
+    requestAnimationFrame(() => descInputRef.current?.focus());
+  }
+
+  async function saveDesc() {
+    if (!workspaceId) return;
+    const val = editDesc.trim() || null;
+    const updated = await updateWorkspace(workspaceId, { description: val });
+    setWorkspace(updated);
+    setEditingDesc(false);
+  }
+
   async function handleViewCodoc(codocPath: string) {
     if (!workspaceId) return;
     setViewDialogOpen(true);
@@ -213,19 +251,79 @@ export function WorkspaceDetailPage() {
       {/* Header */}
       <header className="border-b border-border bg-background px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 shrink-0"
               onClick={() => navigate("/")}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <Separator orientation="vertical" className="h-5" />
-            <h1 className="text-xl font-medium">{workspace?.name}</h1>
+            <div className="min-w-0 flex-1">
+              {/* Name */}
+              {editingName ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    ref={nameInputRef}
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveName();
+                      if (e.key === "Escape") setEditingName(false);
+                    }}
+                    className="h-8 text-xl font-medium"
+                  />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={saveName}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setEditingName(false)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  onClick={startEditName}
+                  className="group flex items-center gap-1.5 text-xl font-medium hover:text-foreground/80 transition-colors"
+                >
+                  <span className="truncate">{workspace?.name}</span>
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+              {/* Description */}
+              {editingDesc ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <Input
+                    ref={descInputRef}
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveDesc();
+                      if (e.key === "Escape") setEditingDesc(false);
+                    }}
+                    placeholder="Add a description…"
+                    className="h-6 text-sm text-muted-foreground border-none px-0 shadow-none focus-visible:ring-0 bg-transparent"
+                  />
+                  <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={saveDesc}>
+                    <Check className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setEditingDesc(false)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  onClick={startEditDesc}
+                  className="group flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground/80 transition-colors mt-0.5"
+                >
+                  <span className="truncate">{workspace?.description ?? "Add a description…"}</span>
+                  <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+            </div>
           </div>
-          <Button size="sm" onClick={() => openNewChatDialog()}>
+          <Button size="sm" className="shrink-0" onClick={() => openNewChatDialog()}>
             <Plus className="h-4 w-4 mr-1.5" />
             New chat
           </Button>

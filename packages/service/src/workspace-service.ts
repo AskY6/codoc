@@ -38,6 +38,7 @@ export interface WorkspaceServiceDeps {
 
 export interface WorkspaceService {
   createWorkspace(name: string): Promise<Workspace>;
+  updateWorkspace(id: string, data: { name?: string; description?: string | null }): Promise<Workspace>;
   getStatus(workspaceId: string): Promise<WorkspaceStatus>;
   listCodocs(workspaceId: string): Promise<CodocListItem[]>;
   build(workspaceId: string): Promise<BuildDiagnostics>;
@@ -61,6 +62,13 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
   async function createWorkspace(name: string): Promise<Workspace> {
     return workspaceRepo.create({ name });
+  }
+
+  async function updateWorkspace(
+    id: string,
+    data: { name?: string; description?: string | null },
+  ): Promise<Workspace> {
+    return workspaceRepo.update(id, data);
   }
 
   // -----------------------------------------------------------------------
@@ -381,6 +389,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
   return {
     createWorkspace,
+    updateWorkspace,
     getStatus,
     listCodocs,
     build,

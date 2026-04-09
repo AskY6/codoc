@@ -20,6 +20,16 @@ export function createWorkspace(name: string): Promise<Workspace> {
   });
 }
 
+export function updateWorkspace(
+  id: string,
+  data: { name?: string; description?: string | null },
+): Promise<Workspace> {
+  return apiFetch(`/workspace/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export function deleteWorkspace(id: string): Promise<{ ok: true }> {
   return apiFetch(`/workspace/${id}`, { method: "DELETE" });
 }
