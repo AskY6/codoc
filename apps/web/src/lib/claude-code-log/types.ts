@@ -17,6 +17,8 @@ export interface ToolCall {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  /** Truncated result text attached during parsing */
+  result?: string;
 }
 
 /** Parsed conversation message (user or assistant) */
@@ -50,6 +52,9 @@ export interface ParsedSession {
   version?: string;
   gitBranch?: string;
   model?: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
 }
 
 /** Lightweight summary for session listing (no full messages) */

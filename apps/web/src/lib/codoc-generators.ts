@@ -96,11 +96,7 @@ function generateSessionCodoc(params: Record<string, unknown>): string {
       },
     },
     `
-<MetricBar items={[
-  { label: "Messages", value: data.session?.stats?.messageCount ?? 0 },
-  { label: "Tool Calls", value: data.session?.stats?.toolCallCount ?? 0 },
-  { label: "User Msgs", value: data.session?.stats?.userMessageCount ?? 0 },
-]} />
+<SessionHeader session={data.session} />
 
 <Section title="Tool Breakdown">
   <DataTable rows={data.session?.stats?.toolBreakdown ?? []} />

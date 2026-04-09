@@ -2,8 +2,12 @@ import {
   parseSession,
   parseSessionSummary,
   projectNameFromDir,
-} from "@cobook/core";
-import type { ProjectInfo, SessionSummary, ParsedSession } from "@cobook/core";
+} from "@/lib/claude-code-log/index.js";
+import type {
+  ProjectInfo,
+  SessionSummary,
+  ParsedSession,
+} from "@/lib/claude-code-log/index.js";
 import { getConnector } from "@/lib/local-filesystem.js";
 import { registerClientSource } from "@/lib/source-registry.js";
 import type { SourceResult } from "@/lib/source-registry.js";
