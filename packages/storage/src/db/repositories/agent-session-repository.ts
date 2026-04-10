@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
-import type { Database } from "../client.js";
+import type { DbExecutor } from "../client.js";
 import { agentSessions } from "../schema.js";
 import type { AgentSession, AgentSessionRepository } from "./types.js";
 
 export function createAgentSessionRepository(
-  db: Database,
+  db: DbExecutor,
 ): AgentSessionRepository {
   return {
     async upsert(workspaceId, threadId, data) {

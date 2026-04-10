@@ -56,6 +56,25 @@ export interface CodocListItem {
 }
 
 // ---------------------------------------------------------------------------
+// Workspace graph (returned by getGraph — shape consumed by the UI)
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceGraphNode {
+  path: string;
+  nodeState: string;
+}
+
+export interface WorkspaceGraphEdge {
+  from: string;
+  to: string;
+}
+
+export interface WorkspaceGraph {
+  nodes: WorkspaceGraphNode[];
+  edges: WorkspaceGraphEdge[];
+}
+
+// ---------------------------------------------------------------------------
 // Workspace presets
 // ---------------------------------------------------------------------------
 

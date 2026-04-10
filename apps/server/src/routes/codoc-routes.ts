@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { ParseError } from "@cobook/core";
 import type { WorkspaceService } from "@cobook/service";
-import type { CodocRepository } from "@cobook/service";
 
 function extractCodocPath(reqPath: string, workspaceId: string): string {
   const prefix = `/workspace/${workspaceId}/codoc/`;
@@ -9,10 +8,7 @@ function extractCodocPath(reqPath: string, workspaceId: string): string {
   return idx >= 0 ? reqPath.slice(idx + prefix.length) : "";
 }
 
-export function codocRoutes(
-  service: WorkspaceService,
-  codocRepo: CodocRepository,
-) {
+export function codocRoutes(service: WorkspaceService) {
   const app = new Hono();
 
   // GET /api/workspace/:id/codocs — list codocs in workspace

@@ -1,6 +1,10 @@
 import { parseCodoc } from "@cobook/core";
-import type { ChatRepository, CodocRepository } from "../db/index.js";
-import type { WorkspacePresetDefinition, WorkspacePresetSummary } from "../types.js";
+import type { ChatRepository, CodocRepository } from "@cobook/storage";
+import type {
+  BuildDiagnostics,
+  WorkspacePresetDefinition,
+  WorkspacePresetSummary,
+} from "../types.js";
 import { buildAiDevRadarPreset } from "./ai-dev-radar.js";
 
 const workspacePresets: WorkspacePresetDefinition[] = [
@@ -31,12 +35,16 @@ export async function applyWorkspacePreset(
   preset: WorkspacePresetDefinition,
   deps: {
     codocRepo: CodocRepository;
-    buildWorkspace: (workspaceId: string) => Promise<unknown>;
-    chatRepo?: ChatRepository;
+    chatRepo: ChatRepository;
+    buildWorkspace: (workspaceId: string) => Promise<BuildDiagnostics>;
     removeOtherCodocs?: boolean;
     agentIds?: string[];
   },
-): Promise<void> {
+): Promise<BuildDiagnostics> {
+  // Resolve agent selection up front so validation failures short-circuit
+  // before any writes happen — this keeps applyPreset atomic under withTx.
+  const agentIds = resolvePresetAgentIds(preset, deps.agentIds);
+
   const expectedPaths = new Set(preset.codocs.map((codoc) => codoc.path));
 
   if (deps.removeOtherCodocs) {
@@ -56,11 +64,11 @@ export async function applyWorkspacePreset(
     });
   }
 
-  await deps.buildWorkspace(workspaceId);
+  const diag = await deps.buildWorkspace(workspaceId);
 
-  if (deps.chatRepo) {
-    await deps.chatRepo.setWorkspaceAgents(workspaceId, resolvePresetAgentIds(preset, deps.agentIds));
-  }
+  await deps.chatRepo.setWorkspaceAgents(workspaceId, agentIds);
+
+  return diag;
 }
 
 export function resolvePresetAgentIds(

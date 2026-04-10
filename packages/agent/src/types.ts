@@ -1,4 +1,5 @@
-import type { WorkspaceService, AgentSessionRepository } from "@cobook/service";
+import type { WorkspaceService } from "@cobook/service";
+import type { AgentSessionRepository } from "@cobook/storage";
 
 // ---------------------------------------------------------------------------
 // Chat events — yielded by agent.run() as an async iterable

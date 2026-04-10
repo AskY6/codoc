@@ -1,33 +1,3 @@
-// DB
-export {
-  createDb,
-  createWorkspaceRepository,
-  createCodocRepository,
-  createEdgeRepository,
-  createChatRepository,
-  createAgentSessionRepository,
-} from "./db/index.js";
-
-export type {
-  Database,
-  Workspace,
-  WorkspaceListItem,
-  Codoc,
-  Edge,
-  ChatThread,
-  ChatMessage,
-  ChatMessageMetadata,
-  ThreadCodoc,
-  ThreadAgent,
-  WorkspaceAgent,
-  AgentSession,
-  WorkspaceRepository,
-  CodocRepository,
-  EdgeRepository,
-  ChatRepository,
-  AgentSessionRepository,
-} from "./db/index.js";
-
 // Service
 export { createWorkspaceService } from "./workspace-service.js";
 export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service.js";
@@ -46,9 +16,25 @@ export type {
   DiagnosticError,
   WorkspaceStatus,
   CodocInfo,
+  CodocListItem,
+  WorkspaceGraph,
+  WorkspaceGraphNode,
+  WorkspaceGraphEdge,
   WorkspacePresetSummary,
   WorkspacePresetDefinition,
 } from "./types.js";
+
+// Re-export storage pieces needed by HTTP routes / server bootstrap so that
+// apps/server doesn't have to import from @cobook/storage directly. Routes
+// must only depend on @cobook/service — this is what makes the service layer
+// the true boundary between HTTP and physical storage.
+export { createDb } from "@cobook/storage";
+export type {
+  Database,
+  Workspace,
+  WorkspaceListItem,
+  Codoc,
+} from "@cobook/storage";
 
 export {
   listWorkspacePresets,

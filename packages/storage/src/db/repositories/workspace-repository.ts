@@ -1,9 +1,9 @@
 import { eq, sql } from "drizzle-orm";
-import type { Database } from "../client.js";
+import type { DbExecutor } from "../client.js";
 import { workspaces, codocs, workspaceAgents } from "../schema.js";
 import type { Workspace, WorkspaceListItem, WorkspaceRepository } from "./types.js";
 
-export function createWorkspaceRepository(db: Database): WorkspaceRepository {
+export function createWorkspaceRepository(db: DbExecutor): WorkspaceRepository {
   return {
     async create(data) {
       const [row] = await db

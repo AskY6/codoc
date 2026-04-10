@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import Anthropic from "@anthropic-ai/sdk";
-import type { ChatService, WorkspaceService, AgentSessionRepository } from "@cobook/service";
+import type { ChatService, WorkspaceService } from "@cobook/service";
 import type { Agent, AgentMessage } from "@cobook/agent";
 
 export type AgentRegistry = Map<string, Agent>;
@@ -220,7 +220,6 @@ export function chatRoutes(
   chatService: ChatService,
   workspaceService: WorkspaceService,
   agents: AgentRegistry,
-  sessionRepo: AgentSessionRepository,
   llmConfig?: LightLLMConfig,
 ) {
   const app = new Hono();
@@ -541,7 +540,7 @@ export function chatRoutes(
         const agentCtx = {
           workspaceId: body.workspaceId,
           service: workspaceService,
-          sessionRepo,
+          sessionRepo: workspaceService.agentSessionRepo,
           ...(threadCodocs.length > 0 ? { threadCodocs } : {}),
         };
         for await (const event of agent.run(agentMessages, agentCtx)) {

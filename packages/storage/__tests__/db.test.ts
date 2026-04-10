@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
 import { createDb, type Database } from "../src/db/client.js";
 import { createWorkspaceRepository } from "../src/db/repositories/workspace-repository.js";
 import { createCodocRepository } from "../src/db/repositories/codoc-repository.js";

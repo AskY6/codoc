@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { getWorkspacePreset, type WorkspaceService } from "@cobook/service";
-import type { WorkspaceRepository, Workspace } from "@cobook/service";
+import {
+  getWorkspacePreset,
+  type WorkspaceService,
+  type Workspace,
+} from "@cobook/service";
 import { refreshWorkspaceFeeds } from "../rss-scheduler.js";
 
 type ProgressStatus = "pending" | "in_progress" | "completed" | "failed";
@@ -21,15 +24,12 @@ interface ProgressStep {
   substeps?: ProgressSubstep[];
 }
 
-export function workspaceRoutes(
-  service: WorkspaceService,
-  workspaceRepo: WorkspaceRepository,
-) {
+export function workspaceRoutes(service: WorkspaceService) {
   const app = new Hono();
 
   // GET /api/workspace — list all workspaces (with codoc/agent counts)
   app.get("/", async (c) => {
-    const list = await workspaceRepo.listWithStats();
+    const list = await service.listWorkspaces();
     return c.json(list);
   });
 
@@ -219,7 +219,7 @@ export function workspaceRoutes(
 
   // GET /api/workspace/:id — get workspace detail
   app.get("/:id", async (c) => {
-    const ws = await workspaceRepo.findById(c.req.param("id"));
+    const ws = await service.getWorkspace(c.req.param("id"));
     if (!ws) return c.json({ error: "Workspace not found" }, 404);
     return c.json(ws);
   });
@@ -248,7 +248,7 @@ export function workspaceRoutes(
   // DELETE /api/workspace/:id — remove workspace
   app.delete("/:id", async (c) => {
     try {
-      await workspaceRepo.delete(c.req.param("id"));
+      await service.deleteWorkspace(c.req.param("id"));
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: String(err) }, 500);

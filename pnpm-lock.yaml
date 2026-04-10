@@ -197,6 +197,9 @@ importers:
       '@cobook/service':
         specifier: workspace:*
         version: link:../service
+      '@cobook/storage':
+        specifier: workspace:*
+        version: link:../storage
       rss-parser:
         specifier: ^3.13.0
         version: 3.13.0
@@ -254,18 +257,37 @@ importers:
       '@cobook/core':
         specifier: workspace:*
         version: link:../core
+      '@cobook/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@cobook/workspace':
         specifier: workspace:*
         version: link:../workspace
       drizzle-orm:
         specifier: ^0.44.0
         version: 0.44.7(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(pg@8.20.0)
-      pg:
-        specifier: ^8.16.3
-        version: 8.20.0
       yaml:
         specifier: ^2.6.0
         version: 2.8.3
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      tsx:
+        specifier: ^4.0.0
+        version: 4.21.0
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(msw@2.12.14(@types/node@24.12.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/storage:
+    dependencies:
+      drizzle-orm:
+        specifier: ^0.44.0
+        version: 0.44.7(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(pg@8.20.0)
+      pg:
+        specifier: ^8.16.3
+        version: 8.20.0
     devDependencies:
       '@types/pg':
         specifier: ^8.15.4

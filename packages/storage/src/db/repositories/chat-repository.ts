@@ -1,9 +1,9 @@
 import { eq, asc } from "drizzle-orm";
-import type { Database } from "../client.js";
+import type { DbExecutor } from "../client.js";
 import { chatThreads, chatMessages, threadCodocs, threadAgents, workspaceAgents } from "../schema.js";
 import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, WorkspaceAgent, ChatRepository } from "./types.js";
 
-export function createChatRepository(db: Database): ChatRepository {
+export function createChatRepository(db: DbExecutor): ChatRepository {
   return {
     async createThread(workspaceId, title) {
       const [row] = await db

@@ -1,14 +1,13 @@
-import type {
-  ChatRepository,
-  AgentSessionRepository,
-  ChatThread,
-  ChatMessage,
-  ChatMessageMetadata,
-  ThreadCodoc,
-  ThreadAgent,
-  WorkspaceAgent,
-} from "./db/repositories/types.js";
-import type { WorkspaceService } from "./workspace-service.js";
+import {
+  createChatRepository,
+  type Database,
+  type ChatThread,
+  type ChatMessage,
+  type ChatMessageMetadata,
+  type ThreadCodoc,
+  type ThreadAgent,
+  type WorkspaceAgent,
+} from "@cobook/storage";
 
 // ---------------------------------------------------------------------------
 // ChatService interface
@@ -35,12 +34,11 @@ export interface ChatService {
 // ---------------------------------------------------------------------------
 
 export interface ChatServiceDeps {
-  chatRepo: ChatRepository;
-  agentSessionRepo: AgentSessionRepository;
+  db: Database;
 }
 
 export function createChatService(deps: ChatServiceDeps): ChatService {
-  const { chatRepo } = deps;
+  const chatRepo = createChatRepository(deps.db);
 
   return {
     async createThread(workspaceId, title) {

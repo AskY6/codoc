@@ -9,11 +9,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   createDb,
-  createWorkspaceRepository,
-  createCodocRepository,
-  createEdgeRepository,
-  createChatRepository,
-  createAgentSessionRepository,
   createWorkspaceService,
   createChatService,
 } from "@cobook/service";
@@ -38,18 +33,14 @@ if (!databaseUrl) {
 const db = createDb(databaseUrl);
 
 // ---------------------------------------------------------------------------
-// Repositories & Service
+// Services
 // ---------------------------------------------------------------------------
+//
+// Services own the db handle and build their own repositories internally.
+// Routes must only consume services — no direct repository access.
 
-const workspaceRepo = createWorkspaceRepository(db);
-const codocRepo = createCodocRepository(db);
-const edgeRepo = createEdgeRepository(db);
-
-const chatRepo = createChatRepository(db);
-const agentSessionRepo = createAgentSessionRepository(db);
-
-const service = createWorkspaceService({ workspaceRepo, codocRepo, edgeRepo, chatRepo });
-const chatService = createChatService({ chatRepo, agentSessionRepo });
+const service = createWorkspaceService({ db });
+const chatService = createChatService({ db });
 const llmBaseURL = process.env["LLM_BASE_URL"];
 const llmApiKey = process.env["LLM_API_KEY"];
 const llmModel = process.env["LLM_MODEL"];
@@ -77,20 +68,17 @@ app.use("*", cors());
 
 app.get("/", (c) => c.json({ name: "cobook", status: "ok" }));
 
-app.route("/api/workspace", workspaceRoutes(service, workspaceRepo));
-app.route("/api/workspace", codocRoutes(service, codocRepo));
+app.route("/api/workspace", workspaceRoutes(service));
+app.route("/api/workspace", codocRoutes(service));
 app.route("/api/workspace", buildRoutes(service));
-app.route("/api/workspace", graphRoutes(codocRepo, edgeRepo));
-app.route("/api/chat", chatRoutes(chatService, service, agents, agentSessionRepo, llmConfig));
+app.route("/api/workspace", graphRoutes(service));
+app.route("/api/chat", chatRoutes(chatService, service, agents, llmConfig));
 
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
-const rssScheduler = createRssScheduler({
-  service,
-  workspaceRepo,
-});
+const rssScheduler = createRssScheduler({ service });
 
 const port = Number(process.env["PORT"] ?? 3100);
 

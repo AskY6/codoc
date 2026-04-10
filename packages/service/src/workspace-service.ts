@@ -5,20 +5,28 @@ import {
   topoSort,
   detectCycles,
   validateRefs,
-  invalidate,
   isClientSource,
   type CodocAST,
   type DAG,
   ParseError,
 } from "@cobook/core";
-import type {
-  WorkspaceRepository,
-  CodocRepository,
-  Codoc,
-  EdgeRepository,
-  Workspace,
-  ChatRepository,
-} from "./db/repositories/types.js";
+import {
+  createWorkspaceRepository,
+  createCodocRepository,
+  createEdgeRepository,
+  createChatRepository,
+  createAgentSessionRepository,
+  type Database,
+  type DbExecutor,
+  type WorkspaceRepository,
+  type CodocRepository,
+  type Codoc,
+  type EdgeRepository,
+  type Workspace,
+  type WorkspaceListItem,
+  type ChatRepository,
+  type AgentSessionRepository,
+} from "@cobook/storage";
 import { executeSource } from "./source-executor.js";
 import {
   applyWorkspacePreset,
@@ -30,23 +38,45 @@ import type {
   CodocInfo,
   CodocListItem,
   DiagnosticError,
+  WorkspaceGraph,
   WorkspacePresetSummary,
   WorkspaceStatus,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// Factory
+// Internal repo bundle — built once from `db` for reads, and rebuilt from a
+// tx handle for each write path.
 // ---------------------------------------------------------------------------
 
-export interface WorkspaceServiceDeps {
+interface Repos {
   workspaceRepo: WorkspaceRepository;
   codocRepo: CodocRepository;
   edgeRepo: EdgeRepository;
-  chatRepo?: ChatRepository;
+  chatRepo: ChatRepository;
+}
+
+function buildRepos(exec: DbExecutor): Repos {
+  return {
+    workspaceRepo: createWorkspaceRepository(exec),
+    codocRepo: createCodocRepository(exec),
+    edgeRepo: createEdgeRepository(exec),
+    chatRepo: createChatRepository(exec),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceServiceDeps {
+  db: Database;
 }
 
 export interface WorkspaceService {
   createWorkspace(name: string, description?: string | null): Promise<Workspace>;
+  listWorkspaces(): Promise<WorkspaceListItem[]>;
+  getWorkspace(id: string): Promise<Workspace | undefined>;
+  deleteWorkspace(id: string): Promise<void>;
   applyPreset(workspaceId: string, presetId: string, agentIds?: string[]): Promise<void>;
   createWorkspaceFromPreset(
     presetId: string,
@@ -59,118 +89,49 @@ export interface WorkspaceService {
   listCodocs(workspaceId: string): Promise<CodocListItem[]>;
   build(workspaceId: string): Promise<BuildDiagnostics>;
   resolve(workspaceId: string, nodeId: string): Promise<unknown>;
+  getGraph(workspaceId: string): Promise<WorkspaceGraph>;
   createCodoc(workspaceId: string, path: string, content: string): Promise<void>;
   updateCodoc(workspaceId: string, path: string, newContent: string): Promise<void>;
   deleteCodoc(workspaceId: string, path: string): Promise<void>;
   getCodoc(workspaceId: string, path: string): Promise<CodocInfo | undefined>;
   getCodocById(id: string): Promise<Codoc | undefined>;
   patchCodocData(workspaceId: string, path: string, dataPath: string, value: unknown): Promise<void>;
+  /**
+   * Repository used by the agent runtime to persist scene state during
+   * `agent.run()`. Exposed on the service so that HTTP routes don't need
+   * to wire storage dependencies themselves.
+   */
+  readonly agentSessionRepo: AgentSessionRepository;
 }
 
 export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceService {
-  const { workspaceRepo, codocRepo, edgeRepo, chatRepo } = deps;
+  const { db } = deps;
 
-  // In-memory DAG cache keyed by workspaceId — rebuilt on build()
+  // Default (non-tx) repos for read paths.
+  const defaultRepos = buildRepos(db);
+  // Agent session repo lives outside `Repos` — it's only touched by the agent
+  // runtime during `agent.run()`, never inside a service write transaction.
+  const agentSessionRepo = createAgentSessionRepository(db);
+
+  // In-memory DAG cache keyed by workspaceId — rebuilt on build(). Only
+  // updated by public write wrappers *after* the surrounding transaction
+  // commits, so a rollback cannot leave stale DAG state in the cache.
   const dagCache = new Map<string, DAG>();
 
-  // -----------------------------------------------------------------------
-  // createWorkspace
-  // -----------------------------------------------------------------------
-
-  async function createWorkspace(
-    name: string,
-    description?: string | null,
-  ): Promise<Workspace> {
-    if (description !== undefined && description !== null) {
-      return workspaceRepo.create({ name, description });
-    }
-    return workspaceRepo.create({ name });
+  // Run fn inside a pg transaction. Drizzle rolls back on thrown errors.
+  async function withTx<T>(fn: (repos: Repos) => Promise<T>): Promise<T> {
+    return db.transaction(async (tx) => fn(buildRepos(tx)));
   }
 
-  function listPresets(): WorkspacePresetSummary[] {
-    return listWorkspacePresets();
-  }
+  // -----------------------------------------------------------------------
+  // build — parametric on Repos so it composes cleanly inside a tx
+  // -----------------------------------------------------------------------
 
-  async function applyPreset(
+  async function buildImpl(
+    repos: Repos,
     workspaceId: string,
-    presetId: string,
-    agentIds?: string[],
-  ): Promise<void> {
-    const preset = getWorkspacePreset(presetId);
-    if (!preset) {
-      throw new Error(`Preset not found: ${presetId}`);
-    }
-
-    await applyWorkspacePreset(workspaceId, preset, {
-      codocRepo,
-      buildWorkspace: build,
-      ...(chatRepo ? { chatRepo } : {}),
-      ...(agentIds ? { agentIds } : {}),
-    });
-  }
-
-  async function createWorkspaceFromPreset(
-    presetId: string,
-    name?: string,
-    agentIds?: string[],
-  ): Promise<Workspace> {
-    const preset = getWorkspacePreset(presetId);
-    if (!preset) {
-      throw new Error(`Preset not found: ${presetId}`);
-    }
-
-    const workspace = await createWorkspace(
-      name?.trim() || preset.defaultWorkspaceName,
-      preset.workspaceDescription,
-    );
-
-    await applyPreset(workspace.id, presetId, agentIds);
-
-    return workspace;
-  }
-
-  async function updateWorkspace(
-    id: string,
-    data: { name?: string; description?: string | null },
-  ): Promise<Workspace> {
-    return workspaceRepo.update(id, data);
-  }
-
-  // -----------------------------------------------------------------------
-  // getStatus (3-1)
-  // -----------------------------------------------------------------------
-
-  async function getStatus(workspaceId: string): Promise<WorkspaceStatus> {
-    const all = await codocRepo.listByWorkspace(workspaceId);
-    const states: Record<string, number> = {};
-    for (const c of all) {
-      states[c.nodeState] = (states[c.nodeState] ?? 0) + 1;
-    }
-    return { codocCount: all.length, states };
-  }
-
-  // -----------------------------------------------------------------------
-  // listCodocs
-  // -----------------------------------------------------------------------
-
-  async function listCodocs(workspaceId: string): Promise<CodocListItem[]> {
-    const all = await codocRepo.listByWorkspace(workspaceId);
-    return all.map((c) => {
-      const ast = c.ast as CodocAST | null;
-      const meta = ast?.meta as Record<string, unknown> | undefined;
-      const item: CodocListItem = { id: c.id, path: c.path, nodeState: c.nodeState, meta: {} };
-      if (typeof meta?.["title"] === "string") item.meta.title = meta["title"];
-      if (typeof meta?.["description"] === "string") item.meta.description = meta["description"];
-      if (Array.isArray(meta?.["tags"])) item.meta.tags = meta["tags"] as string[];
-      return item;
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // build (3-2)
-  // -----------------------------------------------------------------------
-
-  async function build(workspaceId: string): Promise<BuildDiagnostics> {
+  ): Promise<BuildDiagnostics> {
+    const { codocRepo, edgeRepo } = repos;
     const rows = await codocRepo.listByWorkspace(workspaceId);
     const errors: DiagnosticError[] = [];
     const codocMap = new Map<string, CodocAST>();
@@ -181,7 +142,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
         codocMap.set(row.path, row.ast as CodocAST);
         continue;
       }
-      // Re-parse if ast is missing
       try {
         const ast = parseCodoc(row.content);
         codocMap.set(row.path, ast);
@@ -195,7 +155,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
     // 2. Build DAG
     const dag = buildDAG(codocMap);
-    dagCache.set(workspaceId, dag);
 
     // 3. Detect cycles
     const cycles = detectCycles(dag);
@@ -225,7 +184,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const cycleNodes = new Set(cycles.flat());
     const brokenRefNodes = new Set(refResult.errors.map((e) => e.from));
 
-    // Group nodes by codoc path — compute state and static resolved values per codoc
     const codocUpdates = new Map<string, { state: string; resolved: Record<string, unknown> }>();
     for (const [nodeId, node] of dag.nodes) {
       let entry = codocUpdates.get(node.codocPath);
@@ -272,173 +230,81 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   }
 
   // -----------------------------------------------------------------------
-  // resolve (3-3)
+  // CRUD impls — all parametric on Repos
   // -----------------------------------------------------------------------
 
-  async function resolveNode(workspaceId: string, nodeId: string): Promise<unknown> {
-    let dag = dagCache.get(workspaceId);
-    if (!dag) {
-      const result = await build(workspaceId);
-      dag = result.dag;
-    }
-
-    // Get topo-sorted order, filter to only nodes in the subgraph leading to nodeId
-    const sorted = topoSort(dag);
-
-    // Collect all upstream dependencies of nodeId (including itself)
-    const needed = new Set<string>();
-    const queue = [nodeId];
-    while (queue.length > 0) {
-      const cur = queue.pop()!;
-      if (needed.has(cur)) continue;
-      needed.add(cur);
-      for (const dep of dag.dependencies.get(cur) ?? []) {
-        queue.push(dep);
-      }
-    }
-
-    // Resolve in topo order
-    const resolved = new Map<string, unknown>();
-    for (const id of sorted) {
-      if (!needed.has(id)) continue;
-
-      const node = dag.nodes.get(id);
-      if (!node) continue;
-
-      const field = node.field;
-      let value: unknown;
-
-      switch (field.kind) {
-        case "static":
-          value = field.value;
-          break;
-
-        case "ref": {
-          // The referenced node should already be resolved (topo order)
-          const deps = dag.dependencies.get(id);
-          if (deps && deps.size > 0) {
-            const depId = [...deps][0]!;
-            value = resolved.get(depId);
-          }
-          break;
-        }
-
-        case "source": {
-          if (isClientSource(field.source)) {
-            value = null; // client-side source — resolved in the browser
-            break;
-          }
-          value = await executeSource(field.source, field.params);
-          break;
-        }
-      }
-
-      resolved.set(id, value);
-
-      // Persist resolved value — merge with existing to avoid wiping sibling fields,
-      // but drop stale keys that no longer exist in the current DAG.
-      const existing = await codocRepo.findByPath(workspaceId, node.codocPath);
-      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
-      const current = Object.fromEntries(
-        [...resolved.entries()].filter(([k]) => dag!.nodes.get(k)?.codocPath === node.codocPath),
-      );
-      const validKeys = new Set(
-        [...dag.nodes.entries()]
-          .filter(([, n]) => n.codocPath === node.codocPath)
-          .map(([k]) => k),
-      );
-      const cleaned: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries({ ...prev, ...current })) {
-        if (validKeys.has(k)) cleaned[k] = v;
-      }
-      await codocRepo.upsert(workspaceId, node.codocPath, {
-        resolvedValue: cleaned,
-        nodeState: "ready",
-      });
-    }
-
-    return resolved.get(nodeId);
-  }
-
-  // -----------------------------------------------------------------------
-  // CRUD (3-5)
-  // -----------------------------------------------------------------------
-
-  async function createCodocEntry(
+  async function createCodocImpl(
+    repos: Repos,
     workspaceId: string,
     path: string,
     content: string,
-  ): Promise<void> {
-    // Parse first — reject invalid YAML/structure up front so agents and
-    // HTTP clients get a structured error instead of a persisted-but-broken
-    // codoc. parseCodoc throws ParseError with a useful message on failure.
+  ): Promise<BuildDiagnostics> {
+    // Parse first — reject invalid YAML/structure up front so callers get a
+    // structured error instead of a persisted-but-broken codoc.
     const ast = parseCodoc(content);
-    await codocRepo.upsert(workspaceId, path, {
+    await repos.codocRepo.upsert(workspaceId, path, {
       content,
       ast,
       nodeState: "idle",
     });
-
-    // Trigger rebuild
-    await build(workspaceId);
+    return buildImpl(repos, workspaceId);
   }
 
-  async function updateCodocEntry(
+  async function updateCodocImpl(
+    repos: Repos,
     workspaceId: string,
     path: string,
     newContent: string,
-  ): Promise<void> {
-    // Parse first — same rationale as createCodocEntry.
+  ): Promise<BuildDiagnostics> {
     const ast = parseCodoc(newContent);
-    await codocRepo.upsert(workspaceId, path, {
+    await repos.codocRepo.upsert(workspaceId, path, {
       content: newContent,
       ast,
       nodeState: "dirty",
     });
-
-    // Rebuild to propagate changes
-    await build(workspaceId);
+    return buildImpl(repos, workspaceId);
   }
 
-  async function deleteCodocEntry(workspaceId: string, path: string): Promise<void> {
-    await codocRepo.delete(workspaceId, path);
-
-    // Rebuild to update DAG and detect broken refs
-    await build(workspaceId);
-  }
-
-  async function getCodocEntry(
+  async function deleteCodocImpl(
+    repos: Repos,
     workspaceId: string,
     path: string,
-  ): Promise<CodocInfo | undefined> {
-    const row = await codocRepo.findByPath(workspaceId, path);
-    if (!row) return undefined;
-
-    return {
-      path: row.path,
-      content: row.content,
-      ast: (row.ast as CodocAST) ?? null,
-      resolvedData: (row.resolvedValue as Record<string, unknown>) ?? null,
-      nodeState: row.nodeState,
-    };
+  ): Promise<BuildDiagnostics> {
+    await repos.codocRepo.delete(workspaceId, path);
+    return buildImpl(repos, workspaceId);
   }
 
-  // -----------------------------------------------------------------------
-  // patchCodocData — modify a single data field without rewriting full YAML
-  // -----------------------------------------------------------------------
+  async function applyPresetImpl(
+    repos: Repos,
+    workspaceId: string,
+    presetId: string,
+    agentIds?: string[],
+  ): Promise<BuildDiagnostics> {
+    const preset = getWorkspacePreset(presetId);
+    if (!preset) {
+      throw new Error(`Preset not found: ${presetId}`);
+    }
 
-  async function patchCodocDataEntry(
+    return applyWorkspacePreset(workspaceId, preset, {
+      codocRepo: repos.codocRepo,
+      chatRepo: repos.chatRepo,
+      buildWorkspace: (wid) => buildImpl(repos, wid),
+      ...(agentIds ? { agentIds } : {}),
+    });
+  }
+
+  async function patchCodocDataImpl(
+    repos: Repos,
     workspaceId: string,
     path: string,
     dataPath: string,
     value: unknown,
-  ): Promise<void> {
-    const row = await codocRepo.findByPath(workspaceId, path);
+  ): Promise<BuildDiagnostics> {
+    const row = await repos.codocRepo.findByPath(workspaceId, path);
     if (!row) throw new Error(`Codoc not found: ${path}`);
 
     const parsed = parseCodoc(row.content);
-    // Navigate to the target field in the raw data section
-    // dataPath examples: "articles[2].readAt", "lastFetchedAt"
+
     const rawData: Record<string, unknown> = {};
     if (parsed.data) {
       for (const [k, field] of Object.entries(parsed.data)) {
@@ -472,7 +338,274 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       data: rawData,
       ...(body ? { body } : {}),
     });
-    await updateCodocEntry(workspaceId, path, newContent);
+
+    return updateCodocImpl(repos, workspaceId, path, newContent);
+  }
+
+  async function resolveNodeImpl(
+    repos: Repos,
+    workspaceId: string,
+    nodeId: string,
+    dag: DAG,
+  ): Promise<unknown> {
+    const { codocRepo } = repos;
+    const sorted = topoSort(dag);
+
+    // Collect all upstream dependencies of nodeId (including itself)
+    const needed = new Set<string>();
+    const queue = [nodeId];
+    while (queue.length > 0) {
+      const cur = queue.pop()!;
+      if (needed.has(cur)) continue;
+      needed.add(cur);
+      for (const dep of dag.dependencies.get(cur) ?? []) {
+        queue.push(dep);
+      }
+    }
+
+    const resolved = new Map<string, unknown>();
+    for (const id of sorted) {
+      if (!needed.has(id)) continue;
+
+      const node = dag.nodes.get(id);
+      if (!node) continue;
+
+      const field = node.field;
+      let value: unknown;
+
+      switch (field.kind) {
+        case "static":
+          value = field.value;
+          break;
+
+        case "ref": {
+          const deps = dag.dependencies.get(id);
+          if (deps && deps.size > 0) {
+            const depId = [...deps][0]!;
+            value = resolved.get(depId);
+          }
+          break;
+        }
+
+        case "source": {
+          if (isClientSource(field.source)) {
+            value = null; // client-side source — resolved in the browser
+            break;
+          }
+          value = await executeSource(field.source, field.params);
+          break;
+        }
+      }
+
+      resolved.set(id, value);
+
+      // Persist resolved value — merge with existing to avoid wiping sibling fields,
+      // but drop stale keys that no longer exist in the current DAG.
+      const existing = await codocRepo.findByPath(workspaceId, node.codocPath);
+      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
+      const current = Object.fromEntries(
+        [...resolved.entries()].filter(([k]) => dag.nodes.get(k)?.codocPath === node.codocPath),
+      );
+      const validKeys = new Set(
+        [...dag.nodes.entries()]
+          .filter(([, n]) => n.codocPath === node.codocPath)
+          .map(([k]) => k),
+      );
+      const cleaned: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries({ ...prev, ...current })) {
+        if (validKeys.has(k)) cleaned[k] = v;
+      }
+      await codocRepo.upsert(workspaceId, node.codocPath, {
+        resolvedValue: cleaned,
+        nodeState: "ready",
+      });
+    }
+
+    return resolved.get(nodeId);
+  }
+
+  // -----------------------------------------------------------------------
+  // Read-only public methods — use defaultRepos directly (no tx)
+  // -----------------------------------------------------------------------
+
+  function listPresets(): WorkspacePresetSummary[] {
+    return listWorkspacePresets();
+  }
+
+  async function getStatus(workspaceId: string): Promise<WorkspaceStatus> {
+    const all = await defaultRepos.codocRepo.listByWorkspace(workspaceId);
+    const states: Record<string, number> = {};
+    for (const c of all) {
+      states[c.nodeState] = (states[c.nodeState] ?? 0) + 1;
+    }
+    return { codocCount: all.length, states };
+  }
+
+  async function listCodocs(workspaceId: string): Promise<CodocListItem[]> {
+    const all = await defaultRepos.codocRepo.listByWorkspace(workspaceId);
+    return all.map((c) => {
+      const ast = c.ast as CodocAST | null;
+      const meta = ast?.meta as Record<string, unknown> | undefined;
+      const item: CodocListItem = { id: c.id, path: c.path, nodeState: c.nodeState, meta: {} };
+      if (typeof meta?.["title"] === "string") item.meta.title = meta["title"];
+      if (typeof meta?.["description"] === "string") item.meta.description = meta["description"];
+      if (Array.isArray(meta?.["tags"])) item.meta.tags = meta["tags"] as string[];
+      return item;
+    });
+  }
+
+  async function listWorkspaces(): Promise<WorkspaceListItem[]> {
+    return defaultRepos.workspaceRepo.listWithStats();
+  }
+
+  async function getWorkspace(id: string): Promise<Workspace | undefined> {
+    return defaultRepos.workspaceRepo.findById(id);
+  }
+
+  async function deleteWorkspace(id: string): Promise<void> {
+    // FK cascades handle codocs / edges / threads / agents — a single
+    // DELETE is sufficient.
+    await defaultRepos.workspaceRepo.delete(id);
+  }
+
+  async function getGraph(workspaceId: string): Promise<WorkspaceGraph> {
+    const [codocRows, edgeRows] = await Promise.all([
+      defaultRepos.codocRepo.listByWorkspace(workspaceId),
+      defaultRepos.edgeRepo.listByWorkspace(workspaceId),
+    ]);
+    return {
+      nodes: codocRows.map((r) => ({ path: r.path, nodeState: r.nodeState })),
+      edges: edgeRows.map((e) => ({ from: e.fromNodeId, to: e.toNodeId })),
+    };
+  }
+
+  async function getCodocEntry(
+    workspaceId: string,
+    path: string,
+  ): Promise<CodocInfo | undefined> {
+    const row = await defaultRepos.codocRepo.findByPath(workspaceId, path);
+    if (!row) return undefined;
+
+    return {
+      path: row.path,
+      content: row.content,
+      ast: (row.ast as CodocAST) ?? null,
+      resolvedData: (row.resolvedValue as Record<string, unknown>) ?? null,
+      nodeState: row.nodeState,
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // Public write wrappers — all go through withTx
+  // -----------------------------------------------------------------------
+
+  async function createWorkspace(
+    name: string,
+    description?: string | null,
+  ): Promise<Workspace> {
+    // Single insert — a one-statement "transaction" is fine, no withTx needed.
+    if (description !== undefined && description !== null) {
+      return defaultRepos.workspaceRepo.create({ name, description });
+    }
+    return defaultRepos.workspaceRepo.create({ name });
+  }
+
+  async function updateWorkspace(
+    id: string,
+    data: { name?: string; description?: string | null },
+  ): Promise<Workspace> {
+    return defaultRepos.workspaceRepo.update(id, data);
+  }
+
+  async function build(workspaceId: string): Promise<BuildDiagnostics> {
+    const result = await withTx((repos) => buildImpl(repos, workspaceId));
+    dagCache.set(workspaceId, result.dag);
+    return result;
+  }
+
+  async function createCodocEntry(
+    workspaceId: string,
+    path: string,
+    content: string,
+  ): Promise<void> {
+    const result = await withTx((repos) =>
+      createCodocImpl(repos, workspaceId, path, content),
+    );
+    dagCache.set(workspaceId, result.dag);
+  }
+
+  async function updateCodocEntry(
+    workspaceId: string,
+    path: string,
+    newContent: string,
+  ): Promise<void> {
+    const result = await withTx((repos) =>
+      updateCodocImpl(repos, workspaceId, path, newContent),
+    );
+    dagCache.set(workspaceId, result.dag);
+  }
+
+  async function deleteCodocEntry(workspaceId: string, path: string): Promise<void> {
+    const result = await withTx((repos) =>
+      deleteCodocImpl(repos, workspaceId, path),
+    );
+    dagCache.set(workspaceId, result.dag);
+  }
+
+  async function applyPreset(
+    workspaceId: string,
+    presetId: string,
+    agentIds?: string[],
+  ): Promise<void> {
+    const result = await withTx((repos) =>
+      applyPresetImpl(repos, workspaceId, presetId, agentIds),
+    );
+    dagCache.set(workspaceId, result.dag);
+  }
+
+  async function createWorkspaceFromPreset(
+    presetId: string,
+    name?: string,
+    agentIds?: string[],
+  ): Promise<Workspace> {
+    const preset = getWorkspacePreset(presetId);
+    if (!preset) {
+      throw new Error(`Preset not found: ${presetId}`);
+    }
+
+    return withTx(async (repos) => {
+      const workspace = await repos.workspaceRepo.create({
+        name: name?.trim() || preset.defaultWorkspaceName,
+        description: preset.workspaceDescription,
+      });
+      const result = await applyPresetImpl(repos, workspace.id, presetId, agentIds);
+      dagCache.set(workspace.id, result.dag);
+      return workspace;
+    });
+  }
+
+  async function patchCodocDataEntry(
+    workspaceId: string,
+    path: string,
+    dataPath: string,
+    value: unknown,
+  ): Promise<void> {
+    const result = await withTx((repos) =>
+      patchCodocDataImpl(repos, workspaceId, path, dataPath, value),
+    );
+    dagCache.set(workspaceId, result.dag);
+  }
+
+  async function resolveNode(workspaceId: string, nodeId: string): Promise<unknown> {
+    let dag = dagCache.get(workspaceId);
+    if (!dag) {
+      const diag = await build(workspaceId);
+      dag = diag.dag;
+    }
+    const snapshot = dag;
+    return withTx((repos) =>
+      resolveNodeImpl(repos, workspaceId, nodeId, snapshot),
+    );
   }
 
   // -----------------------------------------------------------------------
@@ -481,6 +614,9 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
   return {
     createWorkspace,
+    listWorkspaces,
+    getWorkspace,
+    deleteWorkspace,
     applyPreset,
     createWorkspaceFromPreset,
     listPresets,
@@ -489,12 +625,14 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     listCodocs,
     build,
     resolve: resolveNode,
+    getGraph,
     createCodoc: createCodocEntry,
     updateCodoc: updateCodocEntry,
     deleteCodoc: deleteCodocEntry,
     getCodoc: getCodocEntry,
-    getCodocById: (id: string) => codocRepo.findById(id),
+    getCodocById: (id: string) => defaultRepos.codocRepo.findById(id),
     patchCodocData: patchCodocDataEntry,
+    agentSessionRepo,
   };
 }
 
@@ -509,7 +647,6 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
-  // Parse path into segments: "articles[2].readAt" → ["articles", 2, "readAt"]
   const segments: (string | number)[] = [];
   for (const part of path.split(".")) {
     const match = /^(\w+)\[(\d+)\]$/.exec(part);

@@ -2,11 +2,10 @@ import {
   createDb,
   createWorkspaceRepository,
   createCodocRepository,
-  createEdgeRepository,
   createChatRepository,
-} from "../index.js";
-import { applyWorkspacePreset, getWorkspacePreset } from "../presets/index.js";
-import { createWorkspaceService } from "../workspace-service.js";
+} from "@cobook/storage";
+import { applyWorkspacePreset, getWorkspacePreset } from "./presets/index.js";
+import { createWorkspaceService } from "./workspace-service.js";
 
 const databaseUrl = process.env["DATABASE_URL"];
 
@@ -16,16 +15,13 @@ if (!databaseUrl) {
 }
 
 const db = createDb(databaseUrl);
+const service = createWorkspaceService({ db });
+// Seed-only direct repos for the "find existing demo workspace by name" step
+// and for the removeOtherCodocs flow that the public service API does not
+// expose.
 const workspaceRepo = createWorkspaceRepository(db);
 const codocRepo = createCodocRepository(db);
-const edgeRepo = createEdgeRepository(db);
 const chatRepo = createChatRepository(db);
-const workspaceService = createWorkspaceService({
-  workspaceRepo,
-  codocRepo,
-  edgeRepo,
-  chatRepo,
-});
 
 const PRESET_ID = "ai-dev-radar";
 const LEGACY_WORKSPACE_NAME = "Welcome to Cobook";
@@ -56,7 +52,7 @@ try {
   await applyWorkspacePreset(workspace.id, preset, {
     codocRepo,
     chatRepo,
-    buildWorkspace: workspaceService.build,
+    buildWorkspace: service.build,
     removeOtherCodocs: true,
   });
 

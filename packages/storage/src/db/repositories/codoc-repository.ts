@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import type { Database } from "../client.js";
+import type { DbExecutor } from "../client.js";
 import { codocs } from "../schema.js";
 import type { Codoc, CodocRepository } from "./types.js";
 
-export function createCodocRepository(db: Database): CodocRepository {
+export function createCodocRepository(db: DbExecutor): CodocRepository {
   return {
     async upsert(workspaceId, path, data) {
       const [row] = await db

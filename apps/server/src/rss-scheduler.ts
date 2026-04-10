@@ -1,6 +1,6 @@
 import Parser from "rss-parser";
 import type { CodocAST } from "@cobook/core";
-import type { WorkspaceService, WorkspaceRepository } from "@cobook/service";
+import type { WorkspaceService } from "@cobook/service";
 
 const rssParser = new Parser();
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
@@ -27,16 +27,13 @@ export interface FeedRefreshResult extends FeedRefreshTarget {
   error?: string;
 }
 
-export function createRssScheduler(deps: {
-  service: WorkspaceService;
-  workspaceRepo: WorkspaceRepository;
-}) {
-  const { service, workspaceRepo } = deps;
+export function createRssScheduler(deps: { service: WorkspaceService }) {
+  const { service } = deps;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
 
   async function refreshAllFeeds() {
-    const workspaces = await workspaceRepo.list();
+    const workspaces = await service.listWorkspaces();
 
     for (const ws of workspaces) {
       await refreshWorkspaceFeeds(service, ws.id);
