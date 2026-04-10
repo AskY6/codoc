@@ -247,7 +247,7 @@ export function chatRoutes(
       // Resolve agent set: explicit > workspace defaults > all agents
       let agentIds = body.agentIds;
       if (!agentIds) {
-        const wsAgents = await chatService.getWorkspaceAgents(body.workspaceId);
+        const wsAgents = await workspaceService.getWorkspaceAgents(body.workspaceId);
         agentIds = wsAgents.length > 0
           ? wsAgents.map((wa) => wa.agentId)
           : [...agents.keys()];
@@ -375,7 +375,7 @@ export function chatRoutes(
       return c.json({ error: "agentIds array is required" }, 400);
     }
     try {
-      await chatService.setWorkspaceAgents(workspaceId, body.agentIds);
+      await workspaceService.setWorkspaceAgents(workspaceId, body.agentIds);
       return c.json({ ok: true });
     } catch (err) {
       return c.json({ error: String(err) }, 500);
@@ -386,7 +386,7 @@ export function chatRoutes(
   app.get("/workspace/:id/agents", async (c) => {
     const workspaceId = c.req.param("id");
     try {
-      const wsAgents = await chatService.getWorkspaceAgents(workspaceId);
+      const wsAgents = await workspaceService.getWorkspaceAgents(workspaceId);
       return c.json(wsAgents);
     } catch (err) {
       return c.json({ error: String(err) }, 500);

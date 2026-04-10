@@ -1,5 +1,8 @@
 import { parseCodoc } from "@cobook/core";
-import type { ChatRepository, CodocRepository } from "@cobook/storage";
+import type {
+  CodocRepository,
+  WorkspaceAgentRepository,
+} from "@cobook/storage";
 import type {
   BuildDiagnostics,
   WorkspacePresetDefinition,
@@ -35,7 +38,7 @@ export async function applyWorkspacePreset(
   preset: WorkspacePresetDefinition,
   deps: {
     codocRepo: CodocRepository;
-    chatRepo: ChatRepository;
+    workspaceAgentRepo: WorkspaceAgentRepository;
     buildWorkspace: (workspaceId: string) => Promise<BuildDiagnostics>;
     removeOtherCodocs?: boolean;
     agentIds?: string[];
@@ -67,7 +70,7 @@ export async function applyWorkspacePreset(
 
   const diag = await deps.buildWorkspace(workspaceId);
 
-  await deps.chatRepo.setWorkspaceAgents(workspaceId, agentIds);
+  await deps.workspaceAgentRepo.setForWorkspace(workspaceId, agentIds);
 
   return diag;
 }

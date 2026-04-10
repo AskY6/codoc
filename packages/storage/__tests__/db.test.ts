@@ -4,6 +4,7 @@ import { createWorkspaceRepository } from "../src/db/repositories/workspace-repo
 import { createCodocRepository } from "../src/db/repositories/codoc-repository.js";
 import { createEdgeRepository } from "../src/db/repositories/edge-repository.js";
 import { createChatRepository } from "../src/db/repositories/chat-repository.js";
+import { createWorkspaceAgentRepository } from "../src/db/repositories/workspace-agent-repository.js";
 import { createAgentSessionRepository } from "../src/db/repositories/agent-session-repository.js";
 import { createResolvedFieldRepository } from "../src/db/repositories/resolved-field-repository.js";
 import {
@@ -13,6 +14,7 @@ import {
   edges,
   chatThreads,
   chatMessages,
+  workspaceAgents,
   agentSessions,
 } from "../src/db/schema.js";
 
@@ -36,6 +38,7 @@ describeDb("repositories (PostgreSQL)", () => {
     await db.delete(agentSessions);
     await db.delete(chatMessages);
     await db.delete(chatThreads);
+    await db.delete(workspaceAgents);
     await db.delete(edges);
     await db.delete(codocResolvedFields);
     await db.delete(codocs);
@@ -255,6 +258,39 @@ describeDb("repositories (PostgreSQL)", () => {
 
       const threads = await repo.listThreads(ws.id);
       expect(threads).toHaveLength(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // WorkspaceAgentRepository
+  // -------------------------------------------------------------------------
+
+  describe("WorkspaceAgentRepository", () => {
+    it("setForWorkspace replaces the workspace agent set", async () => {
+      const wsRepo = createWorkspaceRepository(db);
+      const ws = await wsRepo.create({ name: "ws" });
+      const repo = createWorkspaceAgentRepository(db);
+
+      // Initial set
+      await repo.setForWorkspace(ws.id, ["alpha", "beta"]);
+      let rows = await repo.listByWorkspace(ws.id);
+      expect(rows.map((r) => r.agentId).sort()).toEqual(["alpha", "beta"]);
+
+      // Replace — drops beta, keeps alpha, adds gamma
+      await repo.setForWorkspace(ws.id, ["alpha", "gamma"]);
+      rows = await repo.listByWorkspace(ws.id);
+      expect(rows.map((r) => r.agentId).sort()).toEqual(["alpha", "gamma"]);
+    });
+
+    it("setForWorkspace with an empty array clears the set", async () => {
+      const wsRepo = createWorkspaceRepository(db);
+      const ws = await wsRepo.create({ name: "ws" });
+      const repo = createWorkspaceAgentRepository(db);
+
+      await repo.setForWorkspace(ws.id, ["alpha"]);
+      await repo.setForWorkspace(ws.id, []);
+      const rows = await repo.listByWorkspace(ws.id);
+      expect(rows).toHaveLength(0);
     });
   });
 

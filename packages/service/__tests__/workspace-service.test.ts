@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createDb,
-  createChatRepository,
+  createWorkspaceAgentRepository,
   createCodocRepository,
   workspaces,
   codocs,
@@ -70,7 +70,7 @@ const describeDb = DATABASE_URL ? describe : describe.skip;
 describeDb("WorkspaceService — golden baseline", () => {
   let db: Database;
   let service: WorkspaceService;
-  let chatRepo: ReturnType<typeof createChatRepository>;
+  let workspaceAgentRepo: ReturnType<typeof createWorkspaceAgentRepository>;
 
   beforeAll(() => {
     db = createDb(DATABASE_URL!);
@@ -92,7 +92,7 @@ describeDb("WorkspaceService — golden baseline", () => {
     await db.delete(codocs);
     await db.delete(workspaces);
 
-    chatRepo = createChatRepository(db);
+    workspaceAgentRepo = createWorkspaceAgentRepository(db);
     service = createWorkspaceService({ db });
   });
 
@@ -363,7 +363,7 @@ describeDb("WorkspaceService — golden baseline", () => {
       expect(list.length).toBeGreaterThan(0);
 
       // workspace_agents landed in DB
-      const rows = await chatRepo.getWorkspaceAgents(ws.id);
+      const rows = await workspaceAgentRepo.listByWorkspace(ws.id);
       const persisted = rows.map((r) => r.agentId).sort();
       expect(persisted).toEqual([...expectedAgents].sort());
     });
@@ -382,7 +382,7 @@ describeDb("WorkspaceService — golden baseline", () => {
         picked,
       );
 
-      const rows = await chatRepo.getWorkspaceAgents(ws.id);
+      const rows = await workspaceAgentRepo.listByWorkspace(ws.id);
       expect(rows.map((r) => r.agentId).sort()).toEqual(picked.sort());
     });
 

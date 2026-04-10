@@ -2,7 +2,7 @@ import {
   createDb,
   createWorkspaceRepository,
   createCodocRepository,
-  createChatRepository,
+  createWorkspaceAgentRepository,
 } from "@cobook/storage";
 import { applyWorkspacePreset, getWorkspacePreset } from "./presets/index.js";
 import { createWorkspaceService } from "./workspace-service.js";
@@ -21,7 +21,7 @@ const service = createWorkspaceService({ db });
 // expose.
 const workspaceRepo = createWorkspaceRepository(db);
 const codocRepo = createCodocRepository(db);
-const chatRepo = createChatRepository(db);
+const workspaceAgentRepo = createWorkspaceAgentRepository(db);
 
 const PRESET_ID = "ai-dev-radar";
 const LEGACY_WORKSPACE_NAME = "Welcome to Cobook";
@@ -51,7 +51,7 @@ try {
 
   await applyWorkspacePreset(workspace.id, preset, {
     codocRepo,
-    chatRepo,
+    workspaceAgentRepo,
     buildWorkspace: service.build,
     removeOtherCodocs: true,
   });

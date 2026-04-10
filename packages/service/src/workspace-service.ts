@@ -14,7 +14,7 @@ import {
   createWorkspaceRepository,
   createCodocRepository,
   createEdgeRepository,
-  createChatRepository,
+  createWorkspaceAgentRepository,
   createAgentSessionRepository,
   createResolvedFieldRepository,
   type Database,
@@ -25,7 +25,8 @@ import {
   type EdgeRepository,
   type Workspace,
   type WorkspaceListItem,
-  type ChatRepository,
+  type WorkspaceAgent,
+  type WorkspaceAgentRepository,
   type AgentSessionRepository,
   type ResolvedField,
   type ResolvedFieldRepository,
@@ -56,7 +57,7 @@ interface Repos {
   workspaceRepo: WorkspaceRepository;
   codocRepo: CodocRepository;
   edgeRepo: EdgeRepository;
-  chatRepo: ChatRepository;
+  workspaceAgentRepo: WorkspaceAgentRepository;
   resolvedFieldRepo: ResolvedFieldRepository;
 }
 
@@ -65,7 +66,7 @@ function buildRepos(exec: DbExecutor): Repos {
     workspaceRepo: createWorkspaceRepository(exec),
     codocRepo: createCodocRepository(exec),
     edgeRepo: createEdgeRepository(exec),
-    chatRepo: createChatRepository(exec),
+    workspaceAgentRepo: createWorkspaceAgentRepository(exec),
     resolvedFieldRepo: createResolvedFieldRepository(exec),
   };
 }
@@ -159,6 +160,8 @@ export interface WorkspaceService {
   getCodoc(workspaceId: string, path: string): Promise<CodocInfo | undefined>;
   getCodocById(id: string): Promise<Codoc | undefined>;
   patchCodocData(workspaceId: string, path: string, dataPath: string, value: unknown): Promise<void>;
+  setWorkspaceAgents(workspaceId: string, agentIds: string[]): Promise<void>;
+  getWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]>;
   /**
    * Repository used by the agent runtime to persist scene state during
    * `agent.run()`. Exposed on the service so that HTTP routes don't need
@@ -338,7 +341,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
     return applyWorkspacePreset(workspaceId, preset, {
       codocRepo: repos.codocRepo,
-      chatRepo: repos.chatRepo,
+      workspaceAgentRepo: repos.workspaceAgentRepo,
       buildWorkspace: (wid) => buildImpl(repos, wid),
       ...(agentIds ? { agentIds } : {}),
     });
@@ -675,6 +678,10 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     getCodoc: getCodocEntry,
     getCodocById: (id: string) => defaultRepos.codocRepo.findById(id),
     patchCodocData: patchCodocDataEntry,
+    setWorkspaceAgents: (workspaceId: string, agentIds: string[]) =>
+      defaultRepos.workspaceAgentRepo.setForWorkspace(workspaceId, agentIds),
+    getWorkspaceAgents: (workspaceId: string) =>
+      defaultRepos.workspaceAgentRepo.listByWorkspace(workspaceId),
     agentSessionRepo,
   };
 }

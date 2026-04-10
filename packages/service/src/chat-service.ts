@@ -6,7 +6,6 @@ import {
   type ChatMessageMetadata,
   type ThreadCodoc,
   type ThreadAgent,
-  type WorkspaceAgent,
 } from "@cobook/storage";
 
 // ---------------------------------------------------------------------------
@@ -25,8 +24,6 @@ export interface ChatService {
   getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;
   setThreadAgents(threadId: string, agentIds: string[]): Promise<void>;
   getThreadAgents(threadId: string): Promise<ThreadAgent[]>;
-  setWorkspaceAgents(workspaceId: string, agentIds: string[]): Promise<void>;
-  getWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,14 +83,6 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
     async getThreadAgents(threadId) {
       return chatRepo.getThreadAgents(threadId);
-    },
-
-    async setWorkspaceAgents(workspaceId, agentIds) {
-      return chatRepo.setWorkspaceAgents(workspaceId, agentIds);
-    },
-
-    async getWorkspaceAgents(workspaceId) {
-      return chatRepo.getWorkspaceAgents(workspaceId);
     },
   };
 }

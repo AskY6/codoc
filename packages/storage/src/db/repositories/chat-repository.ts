@@ -1,7 +1,7 @@
 import { eq, asc } from "drizzle-orm";
 import type { DbExecutor } from "../client.js";
-import { chatThreads, chatMessages, threadCodocs, threadAgents, workspaceAgents } from "../schema.js";
-import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, WorkspaceAgent, ChatRepository } from "./types.js";
+import { chatThreads, chatMessages, threadCodocs, threadAgents } from "../schema.js";
+import type { ChatThread, ChatMessage, ThreadCodoc, ThreadAgent, ChatRepository } from "./types.js";
 
 export function createChatRepository(db: DbExecutor): ChatRepository {
   return {
@@ -93,22 +93,6 @@ export function createChatRepository(db: DbExecutor): ChatRepository {
         .select()
         .from(threadAgents)
         .where(eq(threadAgents.threadId, threadId))) as ThreadAgent[];
-    },
-
-    async setWorkspaceAgents(workspaceId, agentIds) {
-      await db.delete(workspaceAgents).where(eq(workspaceAgents.workspaceId, workspaceId));
-      if (agentIds.length > 0) {
-        await db.insert(workspaceAgents).values(
-          agentIds.map((agentId) => ({ workspaceId, agentId })),
-        );
-      }
-    },
-
-    async getWorkspaceAgents(workspaceId) {
-      return (await db
-        .select()
-        .from(workspaceAgents)
-        .where(eq(workspaceAgents.workspaceId, workspaceId))) as WorkspaceAgent[];
     },
   };
 }

@@ -177,8 +177,11 @@ export interface ChatRepository {
   getThreadCodocs(threadId: string): Promise<ThreadCodoc[]>;
   setThreadAgents(threadId: string, agentIds: string[]): Promise<void>;
   getThreadAgents(threadId: string): Promise<ThreadAgent[]>;
-  setWorkspaceAgents(workspaceId: string, agentIds: string[]): Promise<void>;
-  getWorkspaceAgents(workspaceId: string): Promise<WorkspaceAgent[]>;
+}
+
+export interface WorkspaceAgentRepository {
+  setForWorkspace(workspaceId: string, agentIds: string[]): Promise<void>;
+  listByWorkspace(workspaceId: string): Promise<WorkspaceAgent[]>;
 }
 
 export interface AgentSessionRepository {

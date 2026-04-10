@@ -13,6 +13,7 @@ export { createWorkspaceRepository } from "./db/repositories/workspace-repositor
 export { createCodocRepository } from "./db/repositories/codoc-repository.js";
 export { createEdgeRepository } from "./db/repositories/edge-repository.js";
 export { createChatRepository } from "./db/repositories/chat-repository.js";
+export { createWorkspaceAgentRepository } from "./db/repositories/workspace-agent-repository.js";
 export { createAgentSessionRepository } from "./db/repositories/agent-session-repository.js";
 export { createResolvedFieldRepository } from "./db/repositories/resolved-field-repository.js";
 
@@ -34,6 +35,7 @@ export type {
   CodocRepository,
   EdgeRepository,
   ChatRepository,
+  WorkspaceAgentRepository,
   AgentSessionRepository,
   ResolvedFieldRepository,
 } from "./db/repositories/types.js";
