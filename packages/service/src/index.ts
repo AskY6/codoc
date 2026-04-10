@@ -2,8 +2,10 @@
 export { createWorkspaceService } from "./workspace-service.js";
 export type { WorkspaceService, WorkspaceServiceDeps } from "./workspace-service.js";
 
-// Source executor
-export { executeSource, registerSource } from "./source-executor.js";
+// Source registry — per-service, injected into WorkspaceService via
+// `createWorkspaceService({ db, sources: [...] })`. No module-level singleton.
+export { createSourceRegistry } from "./source-executor.js";
+export type { SourceRegistry } from "./source-executor.js";
 
 // Chat service
 export { createChatService } from "./chat-service.js";

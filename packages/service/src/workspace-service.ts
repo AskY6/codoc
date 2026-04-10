@@ -1,3 +1,4 @@
+import type { SourceProvider } from "@cobook/core";
 import {
   createAgentSessionRepository,
   type Database,
@@ -11,6 +12,7 @@ import { buildRepos, type Repos } from "./internal/repos.js";
 import { createBuildService } from "./build-service.js";
 import { createCodocService } from "./codoc-service.js";
 import { createPresetService } from "./preset-service.js";
+import { createSourceRegistry } from "./source-executor.js";
 import type {
   BuildDiagnostics,
   CodocInfo,
@@ -31,6 +33,12 @@ import type {
 
 export interface WorkspaceServiceDeps {
   db: Database;
+  /**
+   * Optional list of source providers to register with this service. Each
+   * service instance owns its own `SourceRegistry`, so two services in the
+   * same process can have independent source sets (useful in tests).
+   */
+  sources?: SourceProvider[];
 }
 
 export interface WorkspaceService {
@@ -109,7 +117,7 @@ export interface WorkspaceService {
 export function createWorkspaceService(
   deps: WorkspaceServiceDeps,
 ): WorkspaceService {
-  const { db } = deps;
+  const { db, sources } = deps;
 
   // Default (non-tx) repos for read paths; every write path builds a fresh
   // bundle bound to the transaction.
@@ -120,6 +128,10 @@ export function createWorkspaceService(
   // transaction.
   const agentSessionRepo = createAgentSessionRepository(db);
 
+  // Per-service source registry — owned by the facade and injected into
+  // BuildService. No module-level singleton.
+  const sourceRegistry = createSourceRegistry(sources);
+
   // Run fn inside a pg transaction. Drizzle rolls back on thrown errors.
   async function withTx<T>(fn: (repos: Repos) => Promise<T>): Promise<T> {
     return db.transaction(async (tx) => fn(buildRepos(tx)));
@@ -129,7 +141,11 @@ export function createWorkspaceService(
   // Sub-services
   // -----------------------------------------------------------------------
 
-  const buildService = createBuildService({ defaultRepos, withTx });
+  const buildService = createBuildService({
+    defaultRepos,
+    withTx,
+    sourceRegistry,
+  });
   const codocService = createCodocService({
     defaultRepos,
     withTx,

@@ -10,7 +10,7 @@ import {
   ParseError,
 } from "@cobook/core";
 import type { ResolvedFieldState } from "@cobook/storage";
-import { executeSource } from "./source-executor.js";
+import type { SourceRegistry } from "./source-executor.js";
 import type { Repos } from "./internal/repos.js";
 import {
   deriveCodocState,
@@ -50,10 +50,11 @@ export interface BuildService {
 export interface BuildServiceDeps {
   defaultRepos: Repos;
   withTx: <T>(fn: (repos: Repos) => Promise<T>) => Promise<T>;
+  sourceRegistry: SourceRegistry;
 }
 
 export function createBuildService(deps: BuildServiceDeps): BuildService {
-  const { defaultRepos, withTx } = deps;
+  const { defaultRepos, withTx, sourceRegistry } = deps;
 
   // In-memory DAG cache keyed by workspaceId — rebuilt on build(). Only
   // updated by `invalidate` callers *after* the surrounding transaction
@@ -223,7 +224,7 @@ export function createBuildService(deps: BuildServiceDeps): BuildService {
             value = null; // client-side source — resolved in the browser
             break;
           }
-          value = await executeSource(field.source, field.params);
+          value = await sourceRegistry.execute(field.source, field.params);
           break;
         }
       }
