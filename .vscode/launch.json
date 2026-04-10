@@ -14,21 +14,24 @@
       "type": "node-terminal",
       "request": "launch",
       "command": "pnpm --filter @cobook/server dev",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "presentation": { "group": "fullstack", "order": 1 }
     },
     {
       "name": "Web (Dev)",
       "type": "node-terminal",
       "request": "launch",
       "command": "pnpm --filter @cobook/web dev",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "presentation": { "group": "fullstack", "order": 2 }
     },
     {
       "name": "Daemon (Debug)",
       "type": "node-terminal",
       "request": "launch",
       "command": "npx tsx watch packages/local-connector/src/daemon/main.ts",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "presentation": { "group": "fullstack", "order": 3 }
     }
   ]
 }

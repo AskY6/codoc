@@ -36,7 +36,8 @@
       "problemMatcher": [],
       "presentation": {
         "reveal": "silent",
-        "panel": "shared"
+        "panel": "shared",
+        "close": true
       }
     },
     {
@@ -177,7 +178,8 @@
       "problemMatcher": [],
       "presentation": {
         "reveal": "silent",
-        "panel": "shared"
+        "panel": "shared",
+        "close": true
       }
     },
     // ── Utilities ────────────────────────────────────────────
