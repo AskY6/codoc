@@ -1,43 +1,34 @@
 {
   "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Local Connector Daemon",
-      "type": "node",
-      "request": "launch",
-      "program": "${workspaceFolder}/packages/local-connector/dist/daemon/main.js",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "preLaunchTask": "build-local-connector"
-    },
-    {
-      "name": "Server",
-      "type": "node",
-      "request": "launch",
-      "program": "${workspaceFolder}/apps/server/dist/index.js",
-      "cwd": "${workspaceFolder}/apps/server",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.env",
-      "preLaunchTask": "build-server"
-    },
-    {
-      "name": "Web (Vite)",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@cobook/web", "dev"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
-    }
-  ],
   "compounds": [
     {
-      "name": "Daemon + Server",
-      "configurations": ["Local Connector Daemon", "Server"]
+      "name": "Full Stack",
+      "configurations": ["Server (Debug)", "Web (Dev)", "Daemon (Debug)"],
+      "preLaunchTask": "launch:pre",
+      "stopAll": true
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Server (Debug)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm --filter @cobook/server dev",
+      "cwd": "${workspaceFolder}"
     },
     {
-      "name": "Full Stack",
-      "configurations": ["Local Connector Daemon", "Server", "Web (Vite)"]
+      "name": "Web (Dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm --filter @cobook/web dev",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Daemon (Debug)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npx tsx watch packages/local-connector/src/daemon/main.ts",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }
