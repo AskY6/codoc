@@ -57,10 +57,11 @@ export async function applyWorkspacePreset(
   }
 
   for (const codoc of preset.codocs) {
+    // Validate parseability up front; throw through to the outer withTx so a
+    // bad preset rolls back cleanly.
+    parseCodoc(codoc.content);
     await deps.codocRepo.upsert(workspaceId, codoc.path, {
       content: codoc.content,
-      ast: parseCodoc(codoc.content),
-      nodeState: "idle",
     });
   }
 

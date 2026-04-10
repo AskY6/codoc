@@ -1,6 +1,6 @@
 import {
   parseCodoc,
-  stringifyYaml,
+  patchCodocSource,
   buildDAG,
   topoSort,
   detectCycles,
@@ -16,6 +16,7 @@ import {
   createEdgeRepository,
   createChatRepository,
   createAgentSessionRepository,
+  createResolvedFieldRepository,
   type Database,
   type DbExecutor,
   type WorkspaceRepository,
@@ -26,6 +27,9 @@ import {
   type WorkspaceListItem,
   type ChatRepository,
   type AgentSessionRepository,
+  type ResolvedField,
+  type ResolvedFieldRepository,
+  type ResolvedFieldState,
 } from "@cobook/storage";
 import { executeSource } from "./source-executor.js";
 import {
@@ -53,6 +57,7 @@ interface Repos {
   codocRepo: CodocRepository;
   edgeRepo: EdgeRepository;
   chatRepo: ChatRepository;
+  resolvedFieldRepo: ResolvedFieldRepository;
 }
 
 function buildRepos(exec: DbExecutor): Repos {
@@ -61,7 +66,65 @@ function buildRepos(exec: DbExecutor): Repos {
     codocRepo: createCodocRepository(exec),
     edgeRepo: createEdgeRepository(exec),
     chatRepo: createChatRepository(exec),
+    resolvedFieldRepo: createResolvedFieldRepository(exec),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Per-field state helpers
+//
+// `codoc_resolved_fields` is the source of truth for a codoc's state: the
+// service layer derives a codoc-level aggregate for the UI by scanning its
+// rows. Parse errors are recorded as a synthetic field with a reserved
+// `#$parse` suffix so the derivation logic has something to aggregate.
+// ---------------------------------------------------------------------------
+
+const PARSE_ERROR_SUFFIX = "#$parse";
+
+function parseErrorNodeId(path: string): string {
+  return `${path}${PARSE_ERROR_SUFFIX}`;
+}
+
+function isSyntheticFieldNodeId(nodeId: string): boolean {
+  return nodeId.endsWith(PARSE_ERROR_SUFFIX);
+}
+
+function deriveCodocState(fields: ResolvedField[]): string {
+  for (const f of fields) {
+    if (f.state === "error") return "error";
+  }
+  return "ready";
+}
+
+function groupFieldsByCodoc(
+  fields: ResolvedField[],
+): Map<string, ResolvedField[]> {
+  const byCodoc = new Map<string, ResolvedField[]>();
+  for (const f of fields) {
+    let bucket = byCodoc.get(f.codocId);
+    if (!bucket) {
+      bucket = [];
+      byCodoc.set(f.codocId, bucket);
+    }
+    bucket.push(f);
+  }
+  return byCodoc;
+}
+
+/**
+ * Collapse a codoc's resolved field rows into a flat `{ nodeId: value }` map
+ * matching the old `resolvedValue` contract. Synthetic parse-error rows are
+ * skipped — they exist only to drive state aggregation.
+ */
+function fieldsToResolvedData(
+  fields: ResolvedField[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (isSyntheticFieldNodeId(f.nodeId)) continue;
+    out[f.nodeId] = f.value;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,25 +194,27 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     repos: Repos,
     workspaceId: string,
   ): Promise<BuildDiagnostics> {
-    const { codocRepo, edgeRepo } = repos;
+    const { codocRepo, edgeRepo, resolvedFieldRepo } = repos;
     const rows = await codocRepo.listByWorkspace(workspaceId);
     const errors: DiagnosticError[] = [];
     const codocMap = new Map<string, CodocAST>();
+    const pathToId = new Map<string, string>();
 
-    // 1. Parse all codocs
+    // 1. Parse all codocs from their source content. The AST is never cached
+    // on the row — `content` is the sole source of truth.
     for (const row of rows) {
-      if (row.ast) {
-        codocMap.set(row.path, row.ast as CodocAST);
-        continue;
-      }
+      pathToId.set(row.path, row.id);
       try {
         const ast = parseCodoc(row.content);
         codocMap.set(row.path, ast);
-        await codocRepo.upsert(workspaceId, row.path, { ast });
       } catch (err) {
         const msg = err instanceof ParseError ? err.message : String(err);
         errors.push({ kind: "parse-error", message: msg, path: row.path });
-        await codocRepo.upsert(workspaceId, row.path, { nodeState: "error" });
+        // Record the parse failure as a synthetic field row so the derived
+        // codoc state surfaces 'error' via the standard aggregation path.
+        await resolvedFieldRepo.replaceForCodoc(workspaceId, row.id, [
+          { nodeId: parseErrorNodeId(row.path), value: null, state: "error" },
+        ]);
       }
     }
 
@@ -176,48 +241,42 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       });
     }
 
-    // 5. Persist edges
+    // 5. Persist edges (physical materialized view — not used for execution)
     const edgeData = dag.edges.map((e) => ({ fromNodeId: e.from, toNodeId: e.to }));
     await edgeRepo.replaceAll(workspaceId, edgeData);
 
-    // 6. Update node states + resolve static fields eagerly
+    // 6. Write per-field rows for every DAG node, partitioned by codoc.
+    //    `replaceForCodoc` is destructive: it wipes the prior row set and
+    //    inserts this build's canonical set. Stale node_ids are evicted for
+    //    free — no "read prev → merge → clean" glue.
     const cycleNodes = new Set(cycles.flat());
     const brokenRefNodes = new Set(refResult.errors.map((e) => e.from));
 
-    const codocUpdates = new Map<string, { state: string; resolved: Record<string, unknown> }>();
+    const codocFields = new Map<
+      string,
+      { nodeId: string; value: unknown; state: ResolvedFieldState }[]
+    >();
+    // Seed with an empty array for every successfully-parsed codoc so that a
+    // codoc with zero data nodes still has its stale rows cleared.
+    for (const path of codocMap.keys()) {
+      codocFields.set(path, []);
+    }
     for (const [nodeId, node] of dag.nodes) {
-      let entry = codocUpdates.get(node.codocPath);
-      if (!entry) {
-        entry = { state: "ready", resolved: {} };
-        codocUpdates.set(node.codocPath, entry);
-      }
-      if (cycleNodes.has(nodeId) || brokenRefNodes.has(nodeId)) {
-        entry.state = "error";
-      }
-      if (node.field.kind === "static") {
-        entry.resolved[nodeId] = node.field.value;
-      }
+      const bucket = codocFields.get(node.codocPath);
+      if (!bucket) continue;
+      const hasError = cycleNodes.has(nodeId) || brokenRefNodes.has(nodeId);
+      const state: ResolvedFieldState = hasError ? "error" : "ready";
+      // Only static fields have a computed value at build time. Ref and
+      // source fields are populated on demand by resolveNode — which
+      // upserts the individual row with its actual value.
+      const value = node.field.kind === "static" ? node.field.value : null;
+      bucket.push({ nodeId, value, state });
     }
 
-    for (const [codocPath, update] of codocUpdates) {
-      // Merge with existing resolved data to preserve previously resolved refs/sources,
-      // but drop stale keys that no longer exist in the current DAG.
-      const existing = await codocRepo.findByPath(workspaceId, codocPath);
-      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
-      const validKeys = new Set(
-        [...dag.nodes.entries()]
-          .filter(([, n]) => n.codocPath === codocPath)
-          .map(([k]) => k),
-      );
-      const merged = { ...prev, ...update.resolved };
-      const cleaned: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(merged)) {
-        if (validKeys.has(k)) cleaned[k] = v;
-      }
-      await codocRepo.upsert(workspaceId, codocPath, {
-        nodeState: update.state,
-        resolvedValue: cleaned,
-      });
+    for (const [codocPath, fields] of codocFields) {
+      const codocId = pathToId.get(codocPath);
+      if (!codocId) continue;
+      await resolvedFieldRepo.replaceForCodoc(workspaceId, codocId, fields);
     }
 
     return {
@@ -241,12 +300,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   ): Promise<BuildDiagnostics> {
     // Parse first — reject invalid YAML/structure up front so callers get a
     // structured error instead of a persisted-but-broken codoc.
-    const ast = parseCodoc(content);
-    await repos.codocRepo.upsert(workspaceId, path, {
-      content,
-      ast,
-      nodeState: "idle",
-    });
+    parseCodoc(content);
+    await repos.codocRepo.upsert(workspaceId, path, { content });
     return buildImpl(repos, workspaceId);
   }
 
@@ -256,12 +311,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     path: string,
     newContent: string,
   ): Promise<BuildDiagnostics> {
-    const ast = parseCodoc(newContent);
-    await repos.codocRepo.upsert(workspaceId, path, {
-      content: newContent,
-      ast,
-      nodeState: "dirty",
-    });
+    parseCodoc(newContent);
+    await repos.codocRepo.upsert(workspaceId, path, { content: newContent });
     return buildImpl(repos, workspaceId);
   }
 
@@ -302,43 +353,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   ): Promise<BuildDiagnostics> {
     const row = await repos.codocRepo.findByPath(workspaceId, path);
     if (!row) throw new Error(`Codoc not found: ${path}`);
-
-    const parsed = parseCodoc(row.content);
-
-    const rawData: Record<string, unknown> = {};
-    if (parsed.data) {
-      for (const [k, field] of Object.entries(parsed.data)) {
-        switch (field.kind) {
-          case "static":
-            rawData[k] = field.value;
-            break;
-          case "ref":
-            rawData[k] = { $ref: field.$ref };
-            break;
-          case "source": {
-            rawData[k] = { $source: field.source, ...field.params };
-            break;
-          }
-        }
-      }
-    }
-
-    setNestedValue(rawData, dataPath, value);
-
-    const body =
-      parsed.view &&
-      typeof parsed.view === "object" &&
-      "source" in parsed.view &&
-      typeof parsed.view.source === "string"
-        ? parsed.view.source
-        : undefined;
-
-    const newContent = stringifyCodocDocument({
-      ...(parsed.meta ? { meta: parsed.meta } : {}),
-      data: rawData,
-      ...(body ? { body } : {}),
-    });
-
+    const newContent = patchCodocSource(row.content, dataPath, value);
     return updateCodocImpl(repos, workspaceId, path, newContent);
   }
 
@@ -348,7 +363,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     nodeId: string,
     dag: DAG,
   ): Promise<unknown> {
-    const { codocRepo } = repos;
+    const { codocRepo, resolvedFieldRepo } = repos;
     const sorted = topoSort(dag);
 
     // Collect all upstream dependencies of nodeId (including itself)
@@ -361,6 +376,18 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       for (const dep of dag.dependencies.get(cur) ?? []) {
         queue.push(dep);
       }
+    }
+
+    // Cache path → codocId lookups so we don't re-fetch per field.
+    const pathToCodocId = new Map<string, string>();
+    async function getCodocId(codocPath: string): Promise<string | undefined> {
+      let id = pathToCodocId.get(codocPath);
+      if (id) return id;
+      const row = await codocRepo.findByPath(workspaceId, codocPath);
+      if (!row) return undefined;
+      id = row.id;
+      pathToCodocId.set(codocPath, id);
+      return id;
     }
 
     const resolved = new Map<string, unknown>();
@@ -399,26 +426,18 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
       resolved.set(id, value);
 
-      // Persist resolved value — merge with existing to avoid wiping sibling fields,
-      // but drop stale keys that no longer exist in the current DAG.
-      const existing = await codocRepo.findByPath(workspaceId, node.codocPath);
-      const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
-      const current = Object.fromEntries(
-        [...resolved.entries()].filter(([k]) => dag.nodes.get(k)?.codocPath === node.codocPath),
-      );
-      const validKeys = new Set(
-        [...dag.nodes.entries()]
-          .filter(([, n]) => n.codocPath === node.codocPath)
-          .map(([k]) => k),
-      );
-      const cleaned: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries({ ...prev, ...current })) {
-        if (validKeys.has(k)) cleaned[k] = v;
+      // Persist this single field. Sibling fields are untouched — no
+      // read-merge-write glue required.
+      const codocId = await getCodocId(node.codocPath);
+      if (codocId) {
+        await resolvedFieldRepo.upsertField(
+          workspaceId,
+          codocId,
+          id,
+          value,
+          "ready",
+        );
       }
-      await codocRepo.upsert(workspaceId, node.codocPath, {
-        resolvedValue: cleaned,
-        nodeState: "ready",
-      });
     }
 
     return resolved.get(nodeId);
@@ -433,23 +452,39 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   }
 
   async function getStatus(workspaceId: string): Promise<WorkspaceStatus> {
-    const all = await defaultRepos.codocRepo.listByWorkspace(workspaceId);
+    const [all, fields] = await Promise.all([
+      defaultRepos.codocRepo.listByWorkspace(workspaceId),
+      defaultRepos.resolvedFieldRepo.listByWorkspace(workspaceId),
+    ]);
+    const byCodoc = groupFieldsByCodoc(fields);
     const states: Record<string, number> = {};
     for (const c of all) {
-      states[c.nodeState] = (states[c.nodeState] ?? 0) + 1;
+      const state = deriveCodocState(byCodoc.get(c.id) ?? []);
+      states[state] = (states[state] ?? 0) + 1;
     }
     return { codocCount: all.length, states };
   }
 
   async function listCodocs(workspaceId: string): Promise<CodocListItem[]> {
-    const all = await defaultRepos.codocRepo.listByWorkspace(workspaceId);
+    const [all, fields] = await Promise.all([
+      defaultRepos.codocRepo.listByWorkspace(workspaceId),
+      defaultRepos.resolvedFieldRepo.listByWorkspace(workspaceId),
+    ]);
+    const byCodoc = groupFieldsByCodoc(fields);
     return all.map((c) => {
-      const ast = c.ast as CodocAST | null;
-      const meta = ast?.meta as Record<string, unknown> | undefined;
-      const item: CodocListItem = { id: c.id, path: c.path, nodeState: c.nodeState, meta: {} };
-      if (typeof meta?.["title"] === "string") item.meta.title = meta["title"];
-      if (typeof meta?.["description"] === "string") item.meta.description = meta["description"];
-      if (Array.isArray(meta?.["tags"])) item.meta.tags = meta["tags"] as string[];
+      const item: CodocListItem = {
+        id: c.id,
+        path: c.path,
+        nodeState: deriveCodocState(byCodoc.get(c.id) ?? []),
+        meta: {},
+      };
+      const meta = parseCodocMetaSafe(c.content);
+      if (meta) {
+        if (typeof meta.title === "string") item.meta.title = meta.title;
+        if (typeof meta.description === "string")
+          item.meta.description = meta.description;
+        if (Array.isArray(meta.tags)) item.meta.tags = meta.tags;
+      }
       return item;
     });
   }
@@ -469,12 +504,17 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   }
 
   async function getGraph(workspaceId: string): Promise<WorkspaceGraph> {
-    const [codocRows, edgeRows] = await Promise.all([
+    const [codocRows, edgeRows, fields] = await Promise.all([
       defaultRepos.codocRepo.listByWorkspace(workspaceId),
       defaultRepos.edgeRepo.listByWorkspace(workspaceId),
+      defaultRepos.resolvedFieldRepo.listByWorkspace(workspaceId),
     ]);
+    const byCodoc = groupFieldsByCodoc(fields);
     return {
-      nodes: codocRows.map((r) => ({ path: r.path, nodeState: r.nodeState })),
+      nodes: codocRows.map((r) => ({
+        path: r.path,
+        nodeState: deriveCodocState(byCodoc.get(r.id) ?? []),
+      })),
       edges: edgeRows.map((e) => ({ from: e.fromNodeId, to: e.toNodeId })),
     };
   }
@@ -486,12 +526,15 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const row = await defaultRepos.codocRepo.findByPath(workspaceId, path);
     if (!row) return undefined;
 
+    const fields = await defaultRepos.resolvedFieldRepo.listByCodoc(row.id);
+    const resolvedData = fieldsToResolvedData(fields);
     return {
       path: row.path,
       content: row.content,
-      ast: (row.ast as CodocAST) ?? null,
-      resolvedData: (row.resolvedValue as Record<string, unknown>) ?? null,
-      nodeState: row.nodeState,
+      ast: parseCodocAstSafe(row.content),
+      resolvedData:
+        Object.keys(resolvedData).length === 0 ? null : resolvedData,
+      nodeState: deriveCodocState(fields),
     };
   }
 
@@ -637,61 +680,18 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers — content-as-truth: every read re-parses from `content`, and parse
+// errors degrade gracefully so corrupted rows don't crash the read path.
 // ---------------------------------------------------------------------------
 
-/**
- * Set a value at a nested path like "articles[2].readAt".
- * Supports dot notation and bracket indexing.
- */
-const FORBIDDEN_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
-
-function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
-  const segments: (string | number)[] = [];
-  for (const part of path.split(".")) {
-    const match = /^(\w+)\[(\d+)\]$/.exec(part);
-    if (match) {
-      segments.push(match[1]!, Number(match[2]!));
-    } else {
-      segments.push(part);
-    }
+function parseCodocAstSafe(content: string): CodocAST | null {
+  try {
+    return parseCodoc(content);
+  } catch {
+    return null;
   }
-
-  if (segments.some((s) => typeof s === "string" && FORBIDDEN_SEGMENTS.has(s))) {
-    throw new Error(`Forbidden path segment in "${path}"`);
-  }
-
-  let current: unknown = obj;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i]!;
-    if (current == null || typeof current !== "object") {
-      throw new Error(`Cannot traverse path "${path}": missing parent at segment "${seg}"`);
-    }
-    current = (current as Record<string | number, unknown>)[seg];
-  }
-
-  const last = segments[segments.length - 1]!;
-  if (current == null || typeof current !== "object") {
-    throw new Error(`Cannot set value at path "${path}": parent is not an object`);
-  }
-  (current as Record<string | number, unknown>)[last] = value;
 }
 
-function stringifyCodocDocument(doc: {
-  meta?: CodocAST["meta"];
-  data?: Record<string, unknown>;
-  body?: string;
-}): string {
-  const frontmatter: Record<string, unknown> = {};
-  if (doc.meta) frontmatter["meta"] = doc.meta;
-  if (doc.data) frontmatter["data"] = doc.data;
-
-  const yaml = stringifyYaml(frontmatter).trim();
-  const body = doc.body?.trim();
-
-  if (!body) {
-    return `---\n${yaml}\n---\n`;
-  }
-
-  return `---\n${yaml}\n---\n\n${body}\n`;
+function parseCodocMetaSafe(content: string): CodocAST["meta"] | undefined {
+  return parseCodocAstSafe(content)?.meta;
 }

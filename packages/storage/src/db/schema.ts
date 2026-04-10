@@ -32,9 +32,6 @@ export const codocs = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     path: text().notNull(),
     content: text().notNull().default(""),
-    ast: jsonb(),
-    resolvedValue: jsonb("resolved_value"),
-    nodeState: text("node_state").notNull().default("idle"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -42,7 +39,50 @@ export const codocs = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// codoc_resolved_fields
+//
+// One row per resolved DAG node. `state` lives here (not on codocs) so a
+// broken ref can pin an error to a single node without dirtying the whole
+// codoc. The codoc-level state visible to the UI is derived in the service
+// layer by aggregating rows for a given codoc.
+//
+// The unique (workspace_id, node_id) index acts as the natural cache
+// invalidator: `replaceForCodoc` deletes + reinserts per codoc on every
+// build, so stale node_ids are evicted automatically when fields are
+// removed from source.
+// ---------------------------------------------------------------------------
+
+export const codocResolvedFields = pgTable(
+  "codoc_resolved_fields",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    codocId: uuid("codoc_id")
+      .notNull()
+      .references(() => codocs.id, { onDelete: "cascade" }),
+    nodeId: text("node_id").notNull(),
+    value: jsonb(),
+    state: text().notNull(),
+    builtAt: timestamp("built_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("codoc_resolved_fields_ws_node_idx").on(
+      t.workspaceId,
+      t.nodeId,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // edges (field-level dependency graph)
+//
+// Physical materialized view for getGraph — do NOT use for execution.
+// `resolveNode` goes through the in-memory DAG (rebuilt via build()) and
+// never consults this table. Edges are rewritten wholesale on each build
+// and exist solely so the UI can render the dependency graph without
+// recomputing it.
 // ---------------------------------------------------------------------------
 
 export const edges = pgTable(

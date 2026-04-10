@@ -14,6 +14,7 @@ export { createCodocRepository } from "./db/repositories/codoc-repository.js";
 export { createEdgeRepository } from "./db/repositories/edge-repository.js";
 export { createChatRepository } from "./db/repositories/chat-repository.js";
 export { createAgentSessionRepository } from "./db/repositories/agent-session-repository.js";
+export { createResolvedFieldRepository } from "./db/repositories/resolved-field-repository.js";
 
 export type {
   Workspace,
@@ -27,9 +28,12 @@ export type {
   ThreadAgent,
   WorkspaceAgent,
   AgentSession,
+  ResolvedField,
+  ResolvedFieldState,
   WorkspaceRepository,
   CodocRepository,
   EdgeRepository,
   ChatRepository,
   AgentSessionRepository,
+  ResolvedFieldRepository,
 } from "./db/repositories/types.js";

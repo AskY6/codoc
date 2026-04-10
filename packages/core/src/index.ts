@@ -1,5 +1,6 @@
 // Parser
 export { parseCodoc, parseYaml, stringifyYaml } from "./parser/codoc-parser.js";
+export { patchCodocSource } from "./parser/patch.js";
 export type {
   CodocAST,
   CodocMeta,

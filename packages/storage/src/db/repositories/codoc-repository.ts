@@ -12,19 +12,11 @@ export function createCodocRepository(db: DbExecutor): CodocRepository {
           workspaceId,
           path,
           content: data.content ?? "",
-          ast: data.ast ?? null,
-          resolvedValue: data.resolvedValue ?? null,
-          nodeState: data.nodeState ?? "idle",
         })
         .onConflictDoUpdate({
           target: [codocs.workspaceId, codocs.path],
           set: {
             ...(data.content !== undefined && { content: data.content }),
-            ...(data.ast !== undefined && { ast: data.ast }),
-            ...(data.resolvedValue !== undefined && {
-              resolvedValue: data.resolvedValue,
-            }),
-            ...(data.nodeState !== undefined && { nodeState: data.nodeState }),
             updatedAt: new Date(),
           },
         })

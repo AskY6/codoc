@@ -50,6 +50,20 @@
       "when": 1775720466899,
       "tag": "0006_chubby_punisher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775817136208,
+      "tag": "0007_cloudy_sentry",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775817915587,
+      "tag": "0008_fat_molten_man",
+      "breakpoints": true
     }
   ]
 }

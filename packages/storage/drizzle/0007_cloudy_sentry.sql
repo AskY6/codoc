@@ -1,0 +1,1 @@
+ALTER TABLE "codocs" DROP COLUMN "ast";

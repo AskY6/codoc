@@ -15,11 +15,20 @@ export interface Codoc {
   workspaceId: string;
   path: string;
   content: string;
-  ast: unknown;
-  resolvedValue: unknown;
-  nodeState: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type ResolvedFieldState = "ready" | "error";
+
+export interface ResolvedField {
+  id: string;
+  workspaceId: string;
+  codocId: string;
+  nodeId: string;
+  value: unknown;
+  state: ResolvedFieldState;
+  builtAt: Date;
 }
 
 export interface Edge {
@@ -84,12 +93,44 @@ export interface CodocRepository {
   upsert(
     workspaceId: string,
     path: string,
-    data: { content?: string; ast?: unknown; resolvedValue?: unknown; nodeState?: string },
+    data: { content?: string },
   ): Promise<Codoc>;
   findById(id: string): Promise<Codoc | undefined>;
   findByPath(workspaceId: string, path: string): Promise<Codoc | undefined>;
   listByWorkspace(workspaceId: string): Promise<Codoc[]>;
   delete(workspaceId: string, path: string): Promise<void>;
+}
+
+export interface ResolvedFieldRepository {
+  /**
+   * Atomically replace the set of resolved fields for a single codoc.
+   * Deletes all existing rows with matching codocId, then inserts the new
+   * set. The (workspace_id, node_id) unique index guarantees that stale
+   * node_ids from previous builds are evicted even if node_ids have moved
+   * between codocs.
+   */
+  replaceForCodoc(
+    workspaceId: string,
+    codocId: string,
+    fields: { nodeId: string; value: unknown; state: ResolvedFieldState }[],
+  ): Promise<void>;
+  /**
+   * Upsert a single field — used by `resolveNode` when resolving a node
+   * on demand without rewriting the whole codoc's field set.
+   */
+  upsertField(
+    workspaceId: string,
+    codocId: string,
+    nodeId: string,
+    value: unknown,
+    state: ResolvedFieldState,
+  ): Promise<void>;
+  listByCodoc(codocId: string): Promise<ResolvedField[]>;
+  listByWorkspace(workspaceId: string): Promise<ResolvedField[]>;
+  findByNodeId(
+    workspaceId: string,
+    nodeId: string,
+  ): Promise<ResolvedField | undefined>;
 }
 
 export interface EdgeRepository {

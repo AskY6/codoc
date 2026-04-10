@@ -275,6 +275,34 @@ describeDb("WorkspaceService — golden baseline", () => {
       expect(a?.nodeState).toBe("error");
     });
 
+    it("pins error state at field granularity so healthy sibling fields keep their values", async () => {
+      const ws = await service.createWorkspace("per-field");
+
+      // A single codoc with one healthy static field and one broken ref.
+      // Under the per-field model, only the ref field is marked error —
+      // the sibling static field keeps its resolved value.
+      await service.createCodoc(
+        ws.id,
+        "a.codoc",
+        codoc({
+          data: {
+            healthy: "ok",
+            broken: { $ref: "./missing.codoc#data.x" },
+          },
+        }),
+      );
+
+      const diag = await service.build(ws.id);
+      expect(diag.ok).toBe(false);
+      expect(diag.errors.some((e) => e.kind === "broken-ref")).toBe(true);
+
+      const info = await service.getCodoc(ws.id, "a.codoc");
+      // Codoc-level state aggregates: any error field → codoc is "error".
+      expect(info?.nodeState).toBe("error");
+      // But the healthy field still has its value in resolvedData.
+      expect(info?.resolvedData?.["a.codoc#data.healthy"]).toBe("ok");
+    });
+
     it("deleting an upstream codoc breaks dependents' refs on next build", async () => {
       const ws = await service.createWorkspace("del");
 
@@ -438,7 +466,6 @@ describeDb("WorkspaceService — golden baseline", () => {
           const txCodocRepo = createCodocRepository(tx);
           await txCodocRepo.upsert(ws.id, "a.codoc", {
             content: codoc({ data: { val: 1 } }),
-            nodeState: "idle",
           });
           // Sanity: the row is visible *inside* the transaction.
           const insideTx = await txCodocRepo.findByPath(ws.id, "a.codoc");

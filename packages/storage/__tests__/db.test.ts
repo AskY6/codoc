@@ -5,9 +5,11 @@ import { createCodocRepository } from "../src/db/repositories/codoc-repository.j
 import { createEdgeRepository } from "../src/db/repositories/edge-repository.js";
 import { createChatRepository } from "../src/db/repositories/chat-repository.js";
 import { createAgentSessionRepository } from "../src/db/repositories/agent-session-repository.js";
+import { createResolvedFieldRepository } from "../src/db/repositories/resolved-field-repository.js";
 import {
   workspaces,
   codocs,
+  codocResolvedFields,
   edges,
   chatThreads,
   chatMessages,
@@ -35,6 +37,7 @@ describeDb("repositories (PostgreSQL)", () => {
     await db.delete(chatMessages);
     await db.delete(chatThreads);
     await db.delete(edges);
+    await db.delete(codocResolvedFields);
     await db.delete(codocs);
     await db.delete(workspaces);
   });
@@ -84,23 +87,14 @@ describeDb("repositories (PostgreSQL)", () => {
       const repo = createCodocRepository(db);
 
       // Insert
-      const c1 = await repo.upsert(ws.id, "notes/a.codoc", {
-        content: "v1",
-        ast: { meta: {} },
-        nodeState: "idle",
-      });
+      const c1 = await repo.upsert(ws.id, "notes/a.codoc", { content: "v1" });
       expect(c1.content).toBe("v1");
       expect(c1.path).toBe("notes/a.codoc");
 
       // Update (same workspace + path → upsert)
-      const c2 = await repo.upsert(ws.id, "notes/a.codoc", {
-        content: "v2",
-        resolvedValue: { x: 1 },
-        nodeState: "ready",
-      });
+      const c2 = await repo.upsert(ws.id, "notes/a.codoc", { content: "v2" });
       expect(c2.id).toBe(c1.id);
       expect(c2.content).toBe("v2");
-      expect(c2.nodeState).toBe("ready");
     });
 
     it("lists codocs by workspace", async () => {
@@ -124,6 +118,55 @@ describeDb("repositories (PostgreSQL)", () => {
       await repo.delete(ws.id, "del.codoc");
 
       expect(await repo.findByPath(ws.id, "del.codoc")).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // ResolvedFieldRepository
+  // -------------------------------------------------------------------------
+
+  describe("ResolvedFieldRepository", () => {
+    it("replaceForCodoc wipes prior rows and inserts the new set", async () => {
+      const wsRepo = createWorkspaceRepository(db);
+      const codocRepo = createCodocRepository(db);
+      const repo = createResolvedFieldRepository(db);
+
+      const ws = await wsRepo.create({ name: "ws" });
+      const c = await codocRepo.upsert(ws.id, "a.codoc", { content: "x" });
+
+      await repo.replaceForCodoc(ws.id, c.id, [
+        { nodeId: "a.codoc#data.x", value: 1, state: "ready" },
+        { nodeId: "a.codoc#data.y", value: 2, state: "ready" },
+      ]);
+      let rows = await repo.listByCodoc(c.id);
+      expect(rows).toHaveLength(2);
+
+      // Second replace drops y and keeps only x with a new value
+      await repo.replaceForCodoc(ws.id, c.id, [
+        { nodeId: "a.codoc#data.x", value: 99, state: "ready" },
+      ]);
+      rows = await repo.listByCodoc(c.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.nodeId).toBe("a.codoc#data.x");
+      expect(rows[0]!.value).toBe(99);
+    });
+
+    it("upsertField updates on (workspace_id, node_id) conflict", async () => {
+      const wsRepo = createWorkspaceRepository(db);
+      const codocRepo = createCodocRepository(db);
+      const repo = createResolvedFieldRepository(db);
+
+      const ws = await wsRepo.create({ name: "ws" });
+      const c = await codocRepo.upsert(ws.id, "a.codoc", { content: "x" });
+
+      await repo.upsertField(ws.id, c.id, "a.codoc#data.x", 1, "ready");
+      await repo.upsertField(ws.id, c.id, "a.codoc#data.x", 2, "ready");
+
+      const hit = await repo.findByNodeId(ws.id, "a.codoc#data.x");
+      expect(hit?.value).toBe(2);
+
+      const all = await repo.listByWorkspace(ws.id);
+      expect(all).toHaveLength(1);
     });
   });
 
