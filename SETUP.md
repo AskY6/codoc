@@ -97,7 +97,8 @@ If both pass, tell the user: open http://localhost:5173 to get started.
 ## Teardown
 
 ```bash
-# Stop dev services: Ctrl+C the pnpm dev process
+# Stop dev services (Ctrl+C the pnpm dev process, or if it's running detached:)
+pnpm dev:stop
 
 # Stop postgres
 docker compose down

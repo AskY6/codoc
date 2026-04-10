@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:web": "pnpm --filter @cobook/web dev",
     "dev:server": "pnpm --filter @cobook/server dev",
+    "dev:stop": "lsof -ti:3100,5173 | xargs kill 2>/dev/null || true",
     "bootstrap": "node scripts/setup.mjs",
     "setup": "node scripts/setup.mjs",
     "db:up": "docker compose up -d postgres",
