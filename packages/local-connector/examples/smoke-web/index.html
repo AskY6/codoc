@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Connector Smoke Demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f3f5f7;
+        --panel: #ffffff;
+        --text: #15202b;
+        --muted: #5a6877;
+        --border: #d7dde4;
+        --accent: #0d6efd;
+        --accent-soft: #e9f2ff;
+        --success: #1f8f5f;
+        --danger: #c53b2f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #eef3f8 0%, #f8fafc 100%);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 32px 20px 48px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 32px;
+        line-height: 1.1;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .banner {
+        margin-top: 16px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--panel);
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+        margin-top: 20px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 8px 30px rgba(22, 34, 51, 0.04);
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      label {
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        font: inherit;
+      }
+
+      button {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      pre,
+      code,
+      textarea {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 14px;
+        background: #0f1720;
+        color: #dce6f2;
+        border-radius: 12px;
+        min-height: 180px;
+        max-height: 360px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      ul {
+        margin: 12px 0 0;
+        padding-left: 20px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      .hint {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .success {
+        color: var(--success);
+      }
+
+      .danger {
+        color: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Local Connector Smoke Demo</h1>
+      <p>Use this page to validate connect, authorization, readDir, readFile, and watch against the local daemon.</p>
+
+      <section class="banner">
+        <strong>Recommended flow:</strong>
+        Start the daemon, open this page from <code>http://127.0.0.1:5173/examples/smoke-web/index.html</code>, click
+        <code>Connect</code>, approve in the daemon terminal, then try <code>ReadDir(".")</code>.
+      </section>
+
+      <div class="status-row">
+        <div class="badge">Status: <span id="status">idle</span></div>
+        <div class="hint" id="status-detail">Waiting to connect.</div>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Session</h2>
+          <div class="controls">
+            <button id="connect-btn" class="primary">Connect</button>
+            <button id="disconnect-btn">Disconnect</button>
+            <button id="clear-log-btn">Clear Logs</button>
+          </div>
+          <div class="field">
+            <label for="dir-path-input">Directory Path</label>
+            <input id="dir-path-input" value="." />
+            <div class="controls">
+              <button id="read-dir-btn">ReadDir</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="file-path-input">File Path</label>
+            <input id="file-path-input" value="PHASE1_PLAN.md" />
+            <div class="controls">
+              <button id="read-file-btn">ReadFile</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="watch-path-input">Watch Path</label>
+            <input id="watch-path-input" value="." />
+            <div class="controls">
+              <button id="start-watch-btn">Start Watch</button>
+              <button id="stop-watch-btn">Stop Watch</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Directory Entries</h2>
+          <div class="hint">The list below is populated by <code>filesystem.readDir()</code>.</div>
+          <ul id="dir-output"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>File Content</h2>
+          <div class="hint">The preview below is populated by <code>filesystem.readFile()</code>.</div>
+          <pre id="file-output">No file loaded.</pre>
+        </section>
+
+        <section class="panel">
+          <h2>Event Log</h2>
+          <div class="hint">Watch events and action logs appear here.</div>
+          <pre id="log-output"></pre>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

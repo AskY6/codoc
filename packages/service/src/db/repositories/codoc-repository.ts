@@ -1,0 +1,64 @@
+import { and, eq } from "drizzle-orm";
+import type { Database } from "../client.js";
+import { codocs } from "../schema.js";
+import type { Codoc, CodocRepository } from "./types.js";
+
+export function createCodocRepository(db: Database): CodocRepository {
+  return {
+    async upsert(workspaceId, path, data) {
+      const [row] = await db
+        .insert(codocs)
+        .values({
+          workspaceId,
+          path,
+          content: data.content ?? "",
+          ast: data.ast ?? null,
+          resolvedValue: data.resolvedValue ?? null,
+          nodeState: data.nodeState ?? "idle",
+        })
+        .onConflictDoUpdate({
+          target: [codocs.workspaceId, codocs.path],
+          set: {
+            ...(data.content !== undefined && { content: data.content }),
+            ...(data.ast !== undefined && { ast: data.ast }),
+            ...(data.resolvedValue !== undefined && {
+              resolvedValue: data.resolvedValue,
+            }),
+            ...(data.nodeState !== undefined && { nodeState: data.nodeState }),
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return row as Codoc;
+    },
+
+    async findById(id) {
+      const [row] = await db
+        .select()
+        .from(codocs)
+        .where(eq(codocs.id, id));
+      return row as Codoc | undefined;
+    },
+
+    async findByPath(workspaceId, path) {
+      const [row] = await db
+        .select()
+        .from(codocs)
+        .where(and(eq(codocs.workspaceId, workspaceId), eq(codocs.path, path)));
+      return row as Codoc | undefined;
+    },
+
+    async listByWorkspace(workspaceId) {
+      return (await db
+        .select()
+        .from(codocs)
+        .where(eq(codocs.workspaceId, workspaceId))) as Codoc[];
+    },
+
+    async delete(workspaceId, path) {
+      await db
+        .delete(codocs)
+        .where(and(eq(codocs.workspaceId, workspaceId), eq(codocs.path, path)));
+    },
+  };
+}

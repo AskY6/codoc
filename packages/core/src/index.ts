@@ -1,81 +1,41 @@
-// Model — data layer
+// Parser
+export { parseCodoc, parseYaml, stringifyYaml } from "./parser/codoc-parser.js";
 export type {
-  CodataField,
-  CodataMeta,
-  FieldError,
-  FieldState,
-  LoaderDeclaration,
-  PromptDeclaration,
-  SourceConnectorConfig,
-} from "./model/data.js";
-
-// Model — codoc definitions & loader interface
-export type {
-  CodataDefinition,
-  CodocFile,
+  CodocAST,
   CodocMeta,
-  ForceContext,
-  LoaderFn,
-  LLMClient,
-} from "./model/codoc.js";
-export {
-  getDataSchema,
-  getComponentsMeta,
-  getComponentsBody,
-  normalizeCodocFile,
-} from "./model/codoc.js";
+  DataField,
+  StaticField,
+  RefField,
+  SourceField,
+  MdxView,
+} from "./parser/schema.js";
 
-// Model — component types
-export type {
-  PropMeta,
-  ComponentSignature,
-  ComponentsMeta,
-  WorkspaceComponentRef,
-  LocalBundleRef,
-  RegistryBundleRef,
-  ComponentRef,
-  ComponentDeclaration,
-  ComponentsBody,
-} from "./model/component.js";
-export {
-  isWorkspaceRef,
-  isLocalBundleRef,
-  isRegistryBundleRef,
-  parseComponentRef,
-} from "./model/component.js";
+// Ref
+export { parseRef } from "./ref/ref-parser.js";
+export { normalizeRef } from "./ref/ref-normalizer.js";
+export type { Ref } from "./ref/ref-types.js";
 
-// Model — schema / validation types
-export type {
-  ValidationResult,
-  ValidationSuccess,
-  ValidationFailure,
-} from "./model/schema.js";
+// DAG
+export { buildDAG, makeNodeId, getUpstream, getDownstream } from "./dag/dag.js";
+export type { DAG, DAGNode, DAGEdge } from "./dag/dag.js";
+export { topoSort } from "./dag/topo-sort.js";
+export { detectCycles } from "./dag/cycle-detect.js";
+export { invalidate } from "./dag/invalidate.js";
 
-// Model — view types
-export type { ViewTemplate } from "./model/view.js";
+// Validate
+export { validateSchema } from "./validate/schema-validator.js";
+export type { ValidationResult, SchemaEntry } from "./validate/schema-validator.js";
+export { validateRefs } from "./validate/ref-validator.js";
+export type { RefValidationResult } from "./validate/ref-validator.js";
 
-// Model — resolver
-export { isExternalRef, parseExternalRef } from "./model/resolver.js";
-export type { ExternalRef } from "./model/resolver.js";
+// State
+export { NodeState } from "./state/node-state.js";
+export type { State } from "./state/node-state.js";
 
-// Loader
-export type {} from "./loader/interface.js";
-export { literalLoader } from "./loader/literal.js";
-export { refLoader } from "./loader/ref.js";
-export { getLoader, registerLoader } from "./loader/registry.js";
+// Source
+export { isClientSource } from "./source.js";
+export type { SourceProvider, SourceResult } from "./source.js";
 
-// Codata
-export { DataTree } from "./codata/tree.js";
-export { resolveLoaderDeclaration, createField } from "./codata/node.js";
-export { canMarkDirty, needsForce } from "./codata/state.js";
-export { observe } from "./codata/observe.js";
+// Errors
+export { ParseError, RefError, InvalidTransition } from "./errors.js";
 
-// Validation
-export { validate } from "./validation/schema-validator.js";
-export { validateComponents, extractComponentUsages } from "./validation/component-validator.js";
-export type { ComponentValidationResult, ComponentIssue } from "./validation/component-validator.js";
-
-// Runtime
-export { executeForce } from "./runtime/runtime.js";
-export { forceField, wrapError } from "./runtime/force.js";
-export { SubscriptionManager } from "./runtime/subscribe.js";

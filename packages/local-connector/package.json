@@ -1,0 +1,61 @@
+{
+  "name": "@cobook/local-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local daemon and browser SDK for controlled local filesystem access from web apps.",
+  "license": "UNLICENSED",
+  "sideEffects": false,
+  "types": "./dist/client/browser.d.ts",
+  "bin": {
+    "local-connector": "./dist/daemon/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/client/browser.d.ts",
+      "browser": "./dist/client/browser.js",
+      "default": "./dist/client/browser.js"
+    },
+    "./client": {
+      "types": "./dist/client/browser.d.ts",
+      "browser": "./dist/client/browser.js",
+      "default": "./dist/client/browser.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
+    },
+    "./daemon": {
+      "types": "./dist/daemon/main.d.ts",
+      "import": "./dist/daemon/main.js",
+      "default": "./dist/daemon/main.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js",
+      "default": "./dist/shared/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "smoke": "node scripts/start-smoke-demo.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

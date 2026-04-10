@@ -1,5 +1,14 @@
+
+# Claude Code local config
+.claude/
+.codex/
 node_modules/
 dist/
-coverage/
-*.tsbuildinfo
-.output/
+.turbo/
+.DS_Store
+.env
+.env.local
+test-result
+
+# prevent accidental nested .git
+apps/**/.git

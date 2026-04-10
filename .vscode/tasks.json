@@ -1,0 +1,198 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "shell": {
+      "executable": "/bin/zsh",
+      "args": ["-i", "-c"]
+    }
+  },
+  "tasks": [
+    // ── Compound ─────────────────────────────────────────────
+    {
+      "label": "dev",
+      "detail": "Start everything: Docker DB → Server → Web → Daemon",
+      "dependsOn": ["db:up", "server:dev", "web:dev", "daemon:dev"],
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "dev:parallel",
+      "detail": "Start server + web + daemon in parallel (assumes DB is already running)",
+      "dependsOn": ["server:dev", "web:dev", "daemon:dev"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    // ── Docker Database ──────────────────────────────────────
+    {
+      "label": "db:up",
+      "detail": "Start PostgreSQL and run migrations",
+      "type": "shell",
+      "command": "docker compose up -d postgres && until docker compose exec postgres pg_isready -U postgres -d cobook_dev 2>/dev/null; do sleep 1; done && pnpm db:migrate",
+      "isBackground": false,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "close": true
+      }
+    },
+    {
+      "label": "db:down",
+      "detail": "Stop PostgreSQL container",
+      "type": "shell",
+      "command": "docker compose down",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "db:reset",
+      "detail": "Destroy DB volume and recreate (data loss!)",
+      "type": "shell",
+      "command": "docker compose down -v && docker compose up -d postgres",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "db:migrate",
+      "detail": "Run Drizzle migrations against Docker DB",
+      "type": "shell",
+      "command": "cd packages/service && npx drizzle-kit migrate",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "db:studio",
+      "detail": "Open Drizzle Studio (DB GUI)",
+      "type": "shell",
+      "command": "cd packages/service && npx drizzle-kit studio",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      }
+    },
+    // ── Server ───────────────────────────────────────────────
+    {
+      "label": "server:dev",
+      "detail": "Start API server in watch mode (port 3100)",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/server dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "server:build",
+      "detail": "Build server and its dependencies",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/core build && pnpm --filter @cobook/service build && pnpm --filter @cobook/agent build && pnpm --filter @cobook/server build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    // ── Web ──────────────────────────────────────────────────
+    {
+      "label": "web:dev",
+      "detail": "Start Vite dev server (port 5173)",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/web dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "web:build",
+      "detail": "Production build for web",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/web build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    // ── Daemon (local-connector) ─────────────────────────────
+    {
+      "label": "daemon:dev",
+      "detail": "Start local-connector daemon in watch mode",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/local-connector build && node packages/local-connector/dist/daemon/main.js",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "dev"
+      },
+      "runOptions": {
+        "instanceLimit": 1
+      }
+    },
+    {
+      "label": "daemon:build",
+      "detail": "Build local-connector",
+      "type": "shell",
+      "command": "pnpm --filter @cobook/local-connector build",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    // ── Launch helpers ────────────────────────────────────────
+    {
+      "label": "launch:pre",
+      "detail": "Kill stale ports → start DB",
+      "dependsOn": ["kill-ports", "db:up"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    // ── Cleanup ──────────────────────────────────────────────
+    {
+      "label": "kill-ports",
+      "detail": "Kill processes on ports 3100, 5173, 3999",
+      "type": "shell",
+      "command": "for p in 3100 5173 3999; do lsof -ti:$p | xargs kill -9 2>/dev/null; done; echo 'Ports cleared'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "close": true
+      }
+    },
+    // ── Utilities ────────────────────────────────────────────
+    {
+      "label": "typecheck:all",
+      "detail": "Type-check all packages",
+      "type": "shell",
+      "command": "pnpm -r typecheck",
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

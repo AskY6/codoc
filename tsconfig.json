@@ -1,22 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "."
-  },
-  "references": [
-    { "path": "./packages/graph" },
-    { "path": "./packages/core" },
-    { "path": "./packages/source" },
-    { "path": "./packages/render" },
-    { "path": "./packages/workspace" }
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "apps/**/*.ts",
+    "packages/**/*.ts"
   ]
 }
