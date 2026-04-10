@@ -4,18 +4,6 @@
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:web": "pnpm --filter @cobook/web dev",
-    "dev:server": "pnpm --filter @cobook/server dev",
-    "dev:stop": "lsof -ti:3100,5173 | xargs kill 2>/dev/null || true",
-    "bootstrap": "node scripts/setup.mjs",
-    "setup": "node scripts/setup.mjs",
-    "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose stop postgres",
-    "db:logs": "docker compose logs -f postgres",
-    "db:migrate": "node scripts/run-with-env.mjs pnpm --filter @cobook/storage db:migrate",
-    "docker:up": "docker compose --profile full-stack up --build",
-    "docker:down": "docker compose --profile full-stack down",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test"

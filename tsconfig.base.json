@@ -12,14 +12,6 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "exactOptionalPropertyTypes": true,
-    "noUncheckedIndexedAccess": true,
-    "baseUrl": ".",
-    "paths": {
-      "@cobook/core": ["packages/core/src/index.ts"],
-      "@cobook/workspace": ["packages/workspace/src/index.ts"],
-      "@cobook/storage": ["packages/storage/src/index.ts"],
-      "@cobook/service": ["packages/service/src/index.ts"],
-      "@cobook/agent": ["packages/agent/src/index.ts"]
-    }
+    "noUncheckedIndexedAccess": true
   }
 }
