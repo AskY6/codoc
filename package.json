@@ -13,7 +13,6 @@
     "db:down": "docker compose stop postgres",
     "db:logs": "docker compose logs -f postgres",
     "db:migrate": "node scripts/run-with-env.mjs pnpm --filter @cobook/service db:migrate",
-    "db:seed": "node scripts/run-with-env.mjs pnpm --filter @cobook/service db:seed",
     "docker:up": "docker compose --profile full-stack up --build",
     "docker:down": "docker compose --profile full-stack down",
     "build": "turbo build",

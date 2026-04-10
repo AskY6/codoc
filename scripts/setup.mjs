@@ -153,10 +153,4 @@ if (!migrateSucceeded) {
   process.exit(1);
 }
 
-console.log("Seeding demo workspace...");
-const seed = await run("pnpm", ["db:seed"], { env });
-if (seed.code !== 0) {
-  process.exit(seed.code);
-}
-
 console.log("Setup complete. Run `pnpm dev` for local development.");

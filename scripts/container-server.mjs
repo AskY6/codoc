@@ -101,12 +101,6 @@ if (!migrateSucceeded) {
   process.exit(1);
 }
 
-console.log("Seeding demo workspace...");
-const seed = await run("pnpm", ["--filter", "@cobook/service", "db:seed"]);
-if (seed.code !== 0) {
-  process.exit(seed.code);
-}
-
 console.log("Starting server...");
 const server = spawn(resolveCommand("pnpm"), ["--filter", "@cobook/server", "dev"], {
   cwd: process.cwd(),

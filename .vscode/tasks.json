@@ -29,9 +29,9 @@
     // ── Docker Database ──────────────────────────────────────
     {
       "label": "db:up",
-      "detail": "Start PostgreSQL container (port 55432)",
+      "detail": "Start PostgreSQL and run migrations",
       "type": "shell",
-      "command": "docker compose up -d postgres && docker compose exec postgres pg_isready -U postgres -d cobook_dev",
+      "command": "docker compose up -d postgres && until docker compose exec postgres pg_isready -U postgres -d cobook_dev 2>/dev/null; do sleep 1; done && pnpm db:migrate",
       "isBackground": false,
       "problemMatcher": [],
       "presentation": {
