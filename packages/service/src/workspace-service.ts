@@ -242,12 +242,23 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     }
 
     for (const [codocPath, update] of codocUpdates) {
-      // Merge with existing resolved data to preserve previously resolved refs/sources
+      // Merge with existing resolved data to preserve previously resolved refs/sources,
+      // but drop stale keys that no longer exist in the current DAG.
       const existing = await codocRepo.findByPath(workspaceId, codocPath);
       const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
+      const validKeys = new Set(
+        [...dag.nodes.entries()]
+          .filter(([, n]) => n.codocPath === codocPath)
+          .map(([k]) => k),
+      );
+      const merged = { ...prev, ...update.resolved };
+      const cleaned: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(merged)) {
+        if (validKeys.has(k)) cleaned[k] = v;
+      }
       await codocRepo.upsert(workspaceId, codocPath, {
         nodeState: update.state,
-        resolvedValue: { ...prev, ...update.resolved },
+        resolvedValue: cleaned,
       });
     }
 
@@ -324,14 +335,24 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
       resolved.set(id, value);
 
-      // Persist resolved value — merge with existing to avoid wiping sibling fields
+      // Persist resolved value — merge with existing to avoid wiping sibling fields,
+      // but drop stale keys that no longer exist in the current DAG.
       const existing = await codocRepo.findByPath(workspaceId, node.codocPath);
       const prev = (existing?.resolvedValue as Record<string, unknown>) ?? {};
       const current = Object.fromEntries(
         [...resolved.entries()].filter(([k]) => dag!.nodes.get(k)?.codocPath === node.codocPath),
       );
+      const validKeys = new Set(
+        [...dag.nodes.entries()]
+          .filter(([, n]) => n.codocPath === node.codocPath)
+          .map(([k]) => k),
+      );
+      const cleaned: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries({ ...prev, ...current })) {
+        if (validKeys.has(k)) cleaned[k] = v;
+      }
       await codocRepo.upsert(workspaceId, node.codocPath, {
-        resolvedValue: { ...prev, ...current },
+        resolvedValue: cleaned,
         nodeState: "ready",
       });
     }
