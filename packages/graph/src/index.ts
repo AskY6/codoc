@@ -1,22 +1,22 @@
-// @cobook/graph — mini-langgraph runtime for cobook agents.
+// @cobook/graph — mini-langgraph runtime for agent-shaped workloads.
 //
-// Four subtrees, strictly inward-pointing:
+// Three subtrees, strictly inward-pointing:
 //   graph   — pure mini-langgraph (generic over S, E)
-//   cobook  — CobookState / CobookEvent specialization
-//   tools   — Tool contract + registry (bound to CobookState)
-//   agents  — runtime Agent interface (LLM-driven GraphNode)
+//   tools   — Tool<S, E> contract + registry (generic)
+//   agents  — Agent<S, E> runtime interface (generic, id-branded)
 //
 // Import direction inside this package:
-//   agents → tools → cobook → graph
+//   agents → tools → graph
 //
-// Declarative "an agent exists" records (`AgentListing`) live in
-// `@cobook/core` and are NOT re-exported from here.
+// This package is **free of application concepts**. State / event
+// specializations (`ChatState`, `ChatEvent`, reducers) and the
+// `ChatTool` / `ChatAgent` / `ChatGraph` aliases live in
+// `@cobook/chat`. Declarative "an agent exists" records
+// (`AgentListing`) live in `@cobook/core` and are NOT re-exported
+// from here.
 
 // ---- graph (pure mini-langgraph) ---------------------------------------
 export * from "./graph/index.js";
-
-// ---- cobook (state + event specialization) -----------------------------
-export * from "./cobook/index.js";
 
 // ---- tools --------------------------------------------------------------
 export * from "./tools/index.js";

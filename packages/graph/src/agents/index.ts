@@ -1,6 +1,7 @@
 // agents/ — runtime Agent interface and registry. An Agent is a
-// GraphNode specialization bound to CobookState / CobookEvent,
-// driven by an LLM, and composing Tools.
+// GraphNode<S, E, AgentId> specialization, generic over the
+// application's state and event types, driven by an LLM, and
+// composing Tools.
 //
 // The declarative directory record (AgentListing) lives in
 // @cobook/core and is NOT re-exported from here.

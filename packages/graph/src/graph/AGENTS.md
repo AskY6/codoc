@@ -1,14 +1,14 @@
 # graph/
 
-The **pure mini-langgraph** subtree. Generic over state `S` and event `E`. Zero cobook concepts.
+The **pure mini-langgraph** subtree. Generic over state `S` and event `E`. Zero application concepts.
 
 Parent: [`../../AGENTS.md`](../../AGENTS.md) — package-level invariants.
 Reads from: `@cobook/core` for `Brand` and `Result` only.
-Must never import from: `../cobook/`, `../tools/`, `../agents/`.
+Must never import from: [`../tools/`](../tools/AGENTS.md), [`../agents/`](../agents/AGENTS.md).
 
 ## Why this subtree exists
 
-If you removed every other subtree from this package, `graph/` would still compile and still be usable. Its only contract with cobook is that downstream subtrees will pick specific types for `S` and `E`. Don't break this property.
+If you removed every other subtree from this package, `graph/` would still compile and still be usable. Its only contract with the outside world is that downstream consumers will pick specific types for `S` and `E`. Don't break this property.
 
 ## Modules
 
@@ -24,7 +24,7 @@ If you removed every other subtree from this package, `graph/` would still compi
 
 ## Hard invariants
 
-1. **No cobook words.** Not in types, not in comments, not in variable names. If you need to say "message" or "workspace", you are in the wrong subtree.
+1. **No application words.** Not in types, not in comments, not in variable names. If you need to say "message", "workspace", or "chat", you are in the wrong subtree — those concepts live in `@cobook/chat`, not anywhere in `@cobook/graph`.
 2. **`GraphNode.run` is pure w.r.t. its `state` argument.** It returns a `Partial<S>`; the executor merges it. Nodes must not mutate the object they were handed.
 3. **No cycles.** This stage rejects back-edges in `buildGraph`. When cycles become necessary, add them behind an explicit opt-in on `GraphSpec`, not by loosening the validator.
 4. **Errors are ADT variants, not exceptions.** `buildGraph` returns `Result<Graph, BuildGraphError>`; `runGraph` returns `Result<ExecutionResult, RunGraphError>`. Node bodies may throw — the executor wraps thrown errors into `kind: "nodeThrew"`.
@@ -34,4 +34,4 @@ If you removed every other subtree from this package, `graph/` would still compi
 
 - Adding a new edge kind = adding a new variant to `Edge<S>` and teaching `runGraph` + `buildGraph` about it. Do not sneak a new field onto an existing variant.
 - Adding a new executor option = extend `ExecutorOptions`. Do not add a second entry-point function.
-- If you are tempted to reach into `cobook/` "just to get `CobookState`", the logic belongs in `cobook/`, not here.
+- If you are tempted to reach into a sibling subtree "just to get a concrete state shape", the logic belongs one layer up (in `tools/`, `agents/`, or downstream in `@cobook/chat`), not here.

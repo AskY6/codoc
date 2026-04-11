@@ -1,24 +1,24 @@
 import type { AgentId, ChatMessage } from "@cobook/core";
-import type { NodeId } from "../graph/ids.js";
+import type { NodeId } from "@cobook/graph";
 
 /**
- * Events streamed out of a cobook-bound graph execution.
+ * Events streamed out of a single chat turn.
  *
- * The executor pipes every `CobookEvent` from a node's
- * `NodeContext.emit` callback to the caller's `onEvent` handler in
- * emission order. Downstream `@cobook/chat` (or any other consumer)
- * turns these into assistant-message deltas for the UI.
+ * The executor pipes every `ChatEvent` from a node's
+ * `NodeContext.emit` callback to the caller's `onEvent` handler
+ * in emission order. The runner in `../runner/` turns these into
+ * assistant-message deltas for the UI.
  *
  * Design notes:
  * - Tools are identified by a plain `string` here, not by the
- *   `ToolId` brand defined in `../tools/`. This keeps the
- *   dependency direction (`tools → cobook`) clean: `cobook/` never
- *   imports from `tools/`.
+ *   `ToolId` brand from `@cobook/graph`. Rationale: tool ids are
+ *   opaque to this union; we stream them through unchanged, and
+ *   the tool layer owns the brand.
  * - The set of variants is intentionally small. Adding a new event
  *   kind = adding a new ADT variant (same rule as `ChatMessage` in
  *   `@cobook/core`).
  */
-export type CobookEvent =
+export type ChatEvent =
   | {
       readonly kind: "token";
       readonly nodeId: NodeId;

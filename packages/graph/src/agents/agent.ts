@@ -1,6 +1,4 @@
 import type { AgentId } from "@cobook/core";
-import type { CobookEvent } from "../cobook/events.js";
-import type { CobookState } from "../cobook/state.js";
 import type { GraphNode } from "../graph/node.js";
 import type { Tool } from "../tools/tool.js";
 import type { ModelId } from "./ids.js";
@@ -9,6 +7,11 @@ import type { ModelId } from "./ids.js";
  * Runtime `Agent` interface — the one that actually plugs into the
  * graph executor. An Agent is a specific kind of `GraphNode`: one
  * driven by an LLM, with a system prompt and a bound set of tools.
+ *
+ * Generic over the graph's state `S` and event `E`. This package
+ * owns the contract only; it does not pick `S` / `E`. Concrete
+ * applications bind them — e.g. `@cobook/chat` exports
+ * `ChatAgent = Agent<ChatState, ChatEvent>`.
  *
  * This is **not** the declarative directory record. The directory
  * record (`AgentListing`) lives in `@cobook/core/cobook/agent.ts`
@@ -20,8 +23,8 @@ import type { ModelId } from "./ids.js";
  * treats it like any other node while callers keep the
  * type-level guarantee that "agent ids are agents".
  */
-export interface Agent
-  extends GraphNode<CobookState, CobookEvent, AgentId> {
+export interface Agent<S, E>
+  extends GraphNode<S, E, AgentId> {
   /** Human-readable name; matches the `AgentListing.name` in core. */
   readonly name: string;
 
@@ -45,5 +48,5 @@ export interface Agent
    * new Agent instance. A router-style agent with no tools uses
    * `[]`.
    */
-  readonly tools: readonly Tool[];
+  readonly tools: readonly Tool<S, E>[];
 }

@@ -1,11 +1,11 @@
-import type { StateReducers } from "../graph/state.js";
-import type { CobookState } from "./state.js";
+import type { StateReducers } from "@cobook/graph";
+import type { ChatState } from "./state.js";
 
 /**
- * Canonical reducer table for `CobookState`.
+ * Canonical reducer table for `ChatState`.
  *
  * - `messages`: **append**. Every node that emits assistant / tool
- *   messages contributes by returning a `Partial<CobookState>` with
+ *   messages contributes by returning a `Partial<ChatState>` with
  *   a `messages` array of just the new messages; the reducer
  *   concatenates them onto the running history.
  * - `pinnedCodocs`: **append**. Same idea — nodes that pin a new
@@ -17,4 +17,4 @@ import type { CobookState } from "./state.js";
  * Skeleton: implementation TBD. The shape here locks the contract
  * so downstream code can already reference it.
  */
-export declare const cobookReducers: StateReducers<CobookState>;
+export declare const chatReducers: StateReducers<ChatState>;

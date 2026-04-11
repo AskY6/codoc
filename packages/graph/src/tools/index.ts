@@ -1,4 +1,4 @@
-// tools/ — tool contract and registry. Bound to CobookState; no
+// tools/ — tool contract and registry. Generic over S and E; no
 // reverse dependency on agents/.
 
 export { ToolId } from "./ids.js";

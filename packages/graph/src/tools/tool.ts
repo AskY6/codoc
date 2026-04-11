@@ -1,6 +1,4 @@
 import type { Result } from "@cobook/core";
-import type { CobookEvent } from "../cobook/events.js";
-import type { CobookState } from "../cobook/state.js";
 import type { NodeContext } from "../graph/node.js";
 import type { ToolId } from "./ids.js";
 
@@ -32,23 +30,28 @@ export type ToolError =
   | { readonly kind: "execution"; readonly message: string };
 
 /**
- * A runtime tool bound to the cobook state shape.
+ * A runtime tool, generic over the graph's state `S` and event `E`.
+ *
+ * This package owns the contract only; it does not pick `S` / `E`.
+ * Concrete applications bind them — e.g. `@cobook/chat` exports
+ * `ChatTool = Tool<ChatState, ChatEvent>` so downstream code
+ * never has to write the generics out.
  *
  * The tool receives the raw `input` object the LLM produced (still
  * `unknown` — the tool is responsible for parsing it against its
- * own `schema.inputSchema`), the current `CobookState`, and the
- * surrounding `NodeContext` so it can emit progress events.
+ * own `schema.inputSchema`), the current state `S`, and the
+ * surrounding `NodeContext<E>` so it can emit progress events.
  *
  * Tools are **pure w.r.t. state**: they do not mutate the state
  * object, they only return `Result`-wrapped output. Any state
  * delta a tool wants to contribute is applied by the agent node
  * that called it, not by the tool itself.
  */
-export interface Tool {
+export interface Tool<S, E> {
   readonly schema: ToolSchema;
   readonly execute: (
     input: unknown,
-    state: CobookState,
-    ctx: NodeContext<CobookEvent>,
+    state: S,
+    ctx: NodeContext<E>,
   ) => Promise<Result<unknown, ToolError>>;
 }

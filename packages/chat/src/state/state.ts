@@ -7,19 +7,21 @@ import type {
 } from "@cobook/core";
 
 /**
- * The state flowing through a cobook-bound graph execution.
+ * The state flowing through a single chat turn against a
+ * cobook-bound graph.
  *
- * This is the bridge between "generic mini-langgraph" and "cobook
- * runtime". Every agent node and every tool runs against this
- * shape, so the contract is deliberately narrow: just the
- * information needed for a cobook chat turn.
+ * This is the bridge between "generic mini-langgraph" (in
+ * `@cobook/graph`) and the chat runtime in this package. Every
+ * chat agent node and every chat tool runs against this shape,
+ * so the contract is deliberately narrow: just the information
+ * needed for a chat turn.
  *
- * Every field is expected to be treated as immutable — nodes return
- * `Partial<CobookState>` updates which the executor merges via
- * `StateReducers<CobookState>` (see `reducers.ts` for the canonical
- * table).
+ * Every field is expected to be treated as immutable — nodes
+ * return `Partial<ChatState>` updates which the executor merges
+ * via `StateReducers<ChatState>` (see `reducers.ts` for the
+ * canonical table).
  */
-export interface CobookState {
+export interface ChatState {
   /** Tenant boundary. Always set for cobook-bound runs. */
   readonly workspaceId: WorkspaceId;
 
@@ -32,7 +34,7 @@ export interface CobookState {
 
   /**
    * Conversation history visible to the graph. Nodes append to
-   * this via `Partial<CobookState>` updates; the reducer is the
+   * this via `Partial<ChatState>` updates; the reducer is the
    * "append" strategy (see `reducers.ts`).
    */
   readonly messages: readonly ChatMessage[];

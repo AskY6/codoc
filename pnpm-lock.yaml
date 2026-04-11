@@ -18,6 +18,22 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/chat:
+    dependencies:
+      '@cobook/core':
+        specifier: workspace:*
+        version: link:../core
+      '@cobook/graph':
+        specifier: workspace:*
+        version: link:../graph
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.9)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@24.12.0)
+
   packages/core:
     devDependencies:
       tsup:
