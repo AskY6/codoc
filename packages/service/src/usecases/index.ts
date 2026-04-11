@@ -5,4 +5,18 @@
 //
 // New use cases land here as they are written.
 
-export {};
+export {
+  listWorkspaces,
+  type ListWorkspacesError,
+} from "./workspace/list-workspaces.js";
+
+export {
+  createWorkspace,
+  type CreateWorkspaceInput,
+  type CreateWorkspaceError,
+} from "./workspace/create-workspace.js";
+
+export {
+  deleteWorkspace,
+  type DeleteWorkspaceError,
+} from "./workspace/delete-workspace.js";

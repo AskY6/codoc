@@ -89,11 +89,15 @@ export async function attachCodocToThread(
   should not declare that variant in its return type. Unions are
   narrowed per action so the transport layer gets useful exhaustive
   matching.
+- **Create use cases own the id; transports never supply one.** A
+  `create*` use case takes domain input (`{ name, description, ... }`)
+  and mints the primary key via `ctx.idGen.<aggregate>Id()`. Letting an
+  untrusted client choose its own primary key is a security hazard, and
+  funnelling id minting through `IdGenerator` keeps tests deterministic.
+  Add the matching method to `ports/id.ts` the first time a slice needs
+  a new aggregate's id.
 
 ## Testing
 
 Use cases are tested against a real in-memory `Storage` implementation
-(future `@cobook/storage-memory`), not mocks. Each test constructs a
-fresh `ServiceCtx`, runs the use case, and asserts on the resulting
-storage state by calling repo methods — not by peeking at
-implementation internals.
+(`@cobook/storage-memory`), not mocks. See [`../../__tests__/AGENTS.md`](../../__tests__/AGENTS.md) for the helper layout, the `makeTestCtx` entry point, and the deterministic-`IdGenerator` convention.

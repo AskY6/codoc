@@ -1,5 +1,5 @@
 {
-  "name": "@cobook/service",
+  "name": "@cobook/storage-memory",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,13 +16,11 @@
   },
   "dependencies": {
     "@cobook/core": "workspace:*",
-    "@cobook/storage": "workspace:*",
-    "@cobook/graph": "workspace:*",
-    "@cobook/chat": "workspace:*"
+    "@cobook/storage": "workspace:*"
   },
   "devDependencies": {
-    "@cobook/storage-memory": "workspace:*",
     "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
 }

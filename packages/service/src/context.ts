@@ -1,4 +1,5 @@
 import type { Clock, Ctx as StorageCtx, Storage } from "@cobook/storage";
+import type { IdGenerator } from "./ports/id.js";
 
 /**
  * Per-call environment for service use cases and repo modules.
@@ -9,6 +10,9 @@ import type { Clock, Ctx as StorageCtx, Storage } from "@cobook/storage";
  * single-step actions, or the transaction ctx supplied by the caller
  * to `withTransaction`.
  *
+ * `idGen` mints branded ids; use cases call `ctx.idGen.workspaceId()`
+ * instead of touching `crypto.randomUUID()` directly.
+ *
  * Repo methods must always use `ctx.storageCtx` — never call
  * `ctx.storage.ctx()` themselves — so that they transparently enroll in
  * whatever transaction the use case has opened above them.
@@ -17,6 +21,7 @@ export interface ServiceCtx {
   readonly storage: Storage;
   readonly storageCtx: StorageCtx;
   readonly clock: Clock;
+  readonly idGen: IdGenerator;
 }
 
 /**
@@ -33,4 +38,5 @@ export const withStorageCtx = (
   storage: ctx.storage,
   storageCtx,
   clock: ctx.clock,
+  idGen: ctx.idGen,
 });

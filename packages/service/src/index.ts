@@ -9,6 +9,10 @@
 //   repo/     — thin facades over @cobook/storage; no runtime, no tx
 //   usecases/ — business actions; owns tx boundaries and runtime glue
 //
+// Plus two infrastructure subtrees:
+//   ports/    — outbound ports the service needs (id gen, …)
+//   types/    — UI-shaped DTOs returned by use cases
+//
 // Import direction inside this package:
 //   usecases → repo → @cobook/storage
 //   usecases → @cobook/chat / @cobook/graph
@@ -39,6 +43,12 @@ export type {
   ThreadCodocWorkspaceMismatch,
   StorageUnavailable,
 } from "./errors.js";
+
+// ---- ports (outbound dependencies) ------------------------------------
+export type { IdGenerator } from "./ports/id.js";
+
+// ---- DTOs (UI-shaped use case return values) --------------------------
+export type { WorkspaceListItem } from "./types/workspace.js";
 
 // ---- repo (thin facades over storage) ---------------------------------
 export * from "./repo/index.js";
