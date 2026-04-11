@@ -13,7 +13,7 @@ export {
 } from "./ids.js";
 
 export type { Workspace } from "./workspace.js";
-export type { Agent } from "./agent.js";
+export type { AgentListing } from "./agent.js";
 
 export type {
   ChatThread,

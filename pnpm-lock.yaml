@@ -27,6 +27,32 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@24.12.0)
 
+  packages/graph:
+    dependencies:
+      '@cobook/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.9)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@24.12.0)
+
+  packages/storage:
+    dependencies:
+      '@cobook/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.9)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@24.12.0)
+
 packages:
 
   '@esbuild/aix-ppc64@0.27.7':
