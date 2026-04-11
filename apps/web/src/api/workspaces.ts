@@ -7,6 +7,12 @@ export function listWorkspaces(): Promise<WorkspaceListItem[]> {
   return apiFetch<WorkspaceListItem[]>("/api/workspaces");
 }
 
+export function getWorkspace(id: string): Promise<WorkspaceListItem> {
+  return apiFetch<WorkspaceListItem>(
+    `/api/workspaces/${encodeURIComponent(id)}`,
+  );
+}
+
 export interface CreateWorkspaceBody {
   readonly name: string;
   readonly description: string | null;

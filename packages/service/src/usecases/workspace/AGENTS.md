@@ -4,14 +4,15 @@ Use cases that act on the workspace aggregate.
 
 Parent: [`../AGENTS.md`](../AGENTS.md) — full use case rules.
 
-## Slice 1 + 1.5 contents
+## Contents
 
 | File | Purpose |
 |---|---|
-| `list-workspaces.ts` | Return every workspace as a `WorkspaceListItem` DTO (includes `rev`). |
+| `list-workspaces.ts` | Return every workspace as a `WorkspaceListItem` DTO (includes `rev` + `codocCount`). |
+| `get-workspace.ts` | Return a single workspace as a `WorkspaceListItem`. Same envelope as `list-workspaces`, so the detail page header hydrates straight from the list query cache. |
 | `create-workspace.ts` | Mint a workspace from `{ name, description }`. The use case owns the id; transports never supply one. |
-| `update-workspace.ts` | Rename / re-describe a workspace by `{ id, name, description, expectedRev }`. Returns the new `WorkspaceListItem` with refreshed `rev`. |
-| `delete-workspace.ts` | Delete a workspace by id; cascade is enforced by the storage layer. |
+| `update-workspace.ts` | Rename / re-describe a workspace by `{ id, name, description, expectedRev }`. Returns the new `WorkspaceListItem` with refreshed `rev` and current `codocCount`. |
+| `delete-workspace.ts` | Delete a workspace by id; cascade into codocs (and every future dependent store) is enforced by the storage layer. |
 
 ## Locked-in conventions
 
@@ -21,14 +22,15 @@ aggregate is the reference implementation.
 
 ### DTO envelope shape
 
-The list / update use cases return a UI-shaped envelope defined in
-`../../types/workspace.ts`:
+The list / get / update use cases return a UI-shaped envelope
+defined in `../../types/workspace.ts`:
 
 ```ts
 interface WorkspaceListItem {
-  readonly workspace: Workspace;   // canonical core type, nested
-  readonly updatedAt: number;       // peeled Timestamp
-  readonly rev: string;             // peeled Rev, opaque to callers
+  readonly workspace: Workspace;    // canonical core type, nested
+  readonly updatedAt: number;        // peeled Timestamp
+  readonly rev: string;              // peeled Rev, opaque to callers
+  readonly codocCount: number;       // pure-read join on codocs
 }
 ```
 
@@ -38,6 +40,30 @@ interface WorkspaceListItem {
 - **Storage brands stay in storage.** `repo/` is the one place that
   peels `Rev` → `string` and `Timestamp` → `number`. Service callers
   and above only see the raw JS types.
+
+### codocCount on the envelope
+
+`codocCount` is a server-computed pure-read join across the workspace
+and codoc stores, folded in by `workspaceRepo.list` /
+`workspaceRepo.getListItem` via `codocRepo.countByWorkspace`. It
+lands on the envelope for three reasons:
+
+1. **One request per list render.** The UI card wants a "N codocs"
+   badge; a client-side fan-out (one query per workspace) multiplies
+   the round-trips. The list page already pays for a single
+   `GET /api/workspaces`, and folding the count in is free.
+2. **Consistent envelope.** `list` and `update` both return
+   `WorkspaceListItem`; giving the two endpoints different shapes
+   would force UIs to special-case the update path.
+3. **Repo-layer pure-read join is allowed.** `repo/AGENTS.md`
+   explicitly permits compositions across two stores that are
+   logically one query and do not write. This is that composition.
+
+The in-memory impl walks `listByWorkspace` per row. A real DB
+adapter will replace the N+1 with a single `GROUP BY` without
+changing the repo surface. The decision to revisit this if the
+count ever grows expensive stays in the repo layer, not in use
+cases — use cases just consume whatever the repo hands back.
 
 ### Rev / optimistic concurrency
 

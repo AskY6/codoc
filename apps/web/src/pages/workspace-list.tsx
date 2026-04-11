@@ -16,8 +16,9 @@
 // its own visible CTA.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
   createWorkspace,
@@ -180,6 +181,16 @@ export function WorkspaceListPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {workspacesQuery.data.map((item) => (
             <Card key={item.workspace.id} className="group relative">
+              {/*
+                The entire card is a link to the detail page. Edit /
+                delete buttons sit on top with stopPropagation so
+                clicking them doesn't also navigate.
+              */}
+              <Link
+                to={`/workspace/${encodeURIComponent(item.workspace.id)}`}
+                className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                aria-label={`Open ${item.workspace.name}`}
+              />
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -192,12 +203,16 @@ export function WorkspaceListPage() {
                       </CardDescription>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="relative z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label={`Edit ${item.workspace.name}`}
-                      onClick={() => openEditDialog(item)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openEditDialog(item);
+                      }}
                     >
                       <Pencil className="h-4 w-4 text-neutral-500" />
                     </Button>
@@ -205,9 +220,11 @@ export function WorkspaceListPage() {
                       variant="ghost"
                       size="icon"
                       aria-label={`Delete ${item.workspace.name}`}
-                      onClick={() =>
-                        deleteMutation.mutate(item.workspace.id)
-                      }
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteMutation.mutate(item.workspace.id);
+                      }}
                     >
                       <Trash2 className="h-4 w-4 text-neutral-500" />
                     </Button>
@@ -215,9 +232,13 @@ export function WorkspaceListPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-neutral-500">
-                  {relativeTime(item.updatedAt)}
-                </p>
+                <div className="flex items-center justify-between gap-2 text-xs text-neutral-500">
+                  <span className="inline-flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    {item.codocCount} codoc{item.codocCount === 1 ? "" : "s"}
+                  </span>
+                  <span>{relativeTime(item.updatedAt)}</span>
+                </div>
               </CardContent>
             </Card>
           ))}

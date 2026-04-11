@@ -7,3 +7,4 @@
 // per file, matching the shape in ./AGENTS.md.
 
 export { workspaceRepo } from "./workspace.js";
+export { codocRepo } from "./codoc.js";

@@ -8,14 +8,19 @@
 // `fn` with a fresh `Ctx`. The shape of the API still matches the
 // port, so use case code that opens transactions today will keep
 // working unchanged when a real storage adapter lands.
+//
+// Cross-store wiring: dependent stores that need to read sibling state
+// (the codoc store checking "does this workspace exist?") or that
+// participate in the workspace cascade close over each other here, via
+// lazy callbacks so the construction order stays unambiguous.
 
 import type { Result } from "@cobook/core";
 import type { Clock, Ctx, Storage, TxAborted } from "@cobook/storage";
 import { SystemClock } from "./clock.js";
 import { memoryCtx } from "./ctx.js";
+import { createMemoryCodocStore } from "./stores/codoc.js";
 import {
   agentStub,
-  codocStub,
   sessionStub,
   threadAgentStub,
   threadCodocStub,
@@ -32,11 +37,29 @@ export function createMemoryStorage(
   options: CreateMemoryStorageOptions = {},
 ): Storage {
   const clock = options.clock ?? new SystemClock();
-  const workspaces = createMemoryWorkspaceStore({ clock });
+
+  // Two-phase construction so the two real stores can close over each
+  // other. `workspaces` needs to know how to cascade into codocs;
+  // `codocs` needs to know whether a workspace id is live. Each store
+  // reads the other through a function reference that is populated
+  // below, so declaration order does not matter.
+  let codocCascadeRef: ((id: Parameters<typeof workspaces.delete>[1]) => void) | null =
+    null;
+
+  const workspaces = createMemoryWorkspaceStore({
+    clock,
+    cascadeDeleteCodocs: (id) => codocCascadeRef?.(id),
+  });
+
+  const codocs = createMemoryCodocStore({
+    clock,
+    workspaceExists: (id) => workspaces.__hasWorkspace(id),
+  });
+  codocCascadeRef = (id) => codocs.__cascadeDeleteByWorkspace(id);
 
   return {
     workspaces,
-    codocs: codocStub,
+    codocs,
     agents: agentStub,
     threads: threadStub,
     threadCodocs: threadCodocStub,

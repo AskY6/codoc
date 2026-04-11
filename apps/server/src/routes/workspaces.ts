@@ -1,4 +1,5 @@
-// /api/workspaces — list / create / delete
+// /api/workspaces — list / get / create / update / delete, plus the
+// nested /:id/codocs collection used by the detail page.
 //
 // The router is parameterised over a base `ServiceCtx` so the
 // composition root in `index.ts` is the only place that picks a
@@ -8,8 +9,11 @@
 import type { WorkspaceId } from "@cobook/core";
 import type { ServiceCtx } from "@cobook/service";
 import {
+  createCodoc,
   createWorkspace,
   deleteWorkspace,
+  getWorkspace,
+  listCodocsByWorkspace,
   listWorkspaces,
   updateWorkspace,
 } from "@cobook/service";
@@ -27,6 +31,11 @@ interface UpdateWorkspaceBody {
   readonly expectedRev?: unknown;
 }
 
+interface CreateCodocBody {
+  readonly path?: unknown;
+  readonly title?: unknown;
+}
+
 export function workspaceRoutes(baseCtx: ServiceCtx) {
   const app = new Hono();
 
@@ -37,6 +46,76 @@ export function workspaceRoutes(baseCtx: ServiceCtx) {
       return respondError(c, result.error);
     }
     return c.json(result.value);
+  });
+
+  // GET /api/workspaces/:id — single row as a WorkspaceListItem DTO
+  app.get("/:id", async (c) => {
+    const id = c.req.param("id") as WorkspaceId;
+    const result = await getWorkspace(baseCtx, id);
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value);
+  });
+
+  // GET /api/workspaces/:id/codocs — every codoc in the workspace
+  app.get("/:id/codocs", async (c) => {
+    const id = c.req.param("id") as WorkspaceId;
+    const result = await listCodocsByWorkspace(baseCtx, id);
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value);
+  });
+
+  // POST /api/workspaces/:id/codocs — { path, title? }
+  app.post("/:id/codocs", async (c) => {
+    const workspaceId = c.req.param("id") as WorkspaceId;
+    let body: CreateCodocBody;
+    try {
+      body = (await c.req.json()) as CreateCodocBody;
+    } catch {
+      return c.json(
+        { error: { kind: "bad-request", reason: "invalid JSON body" } },
+        400,
+      );
+    }
+
+    if (typeof body.path !== "string" || body.path.trim() === "") {
+      return c.json(
+        { error: { kind: "bad-request", reason: "path is required" } },
+        400,
+      );
+    }
+    if (
+      body.title !== undefined &&
+      body.title !== null &&
+      typeof body.title !== "string"
+    ) {
+      return c.json(
+        {
+          error: {
+            kind: "bad-request",
+            reason: "title must be a string or null",
+          },
+        },
+        400,
+      );
+    }
+
+    const result = await createCodoc(baseCtx, {
+      workspaceId,
+      path: body.path.trim(),
+      title:
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title.trim()
+          : null,
+    });
+
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value, 201);
   });
 
   // POST /api/workspaces — { name, description? }

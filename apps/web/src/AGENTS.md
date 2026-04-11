@@ -8,21 +8,25 @@ Must never import from: anything in `packages/`.
 
 ## Why no shared types with the backend
 
-Sharing types across the wire couples UI builds to backend internals (brands, package boundaries, build pipelines). Slice 1 mirrors the wire shapes manually in `src/types.ts` — three interfaces, no logic. The cost is low and the freedom is high. If the wire ever drifts the api client tests will catch it, not the type system.
+Sharing types across the wire couples UI builds to backend internals (brands, package boundaries, build pipelines). `src/types.ts` mirrors the wire shapes manually. The cost is low and the freedom is high. If the wire ever drifts the api client tests will catch it, not the type system.
+
+`WorkspaceListItem` nests the canonical `Workspace` object while `CodocListItem` is flattened — that asymmetry is deliberate and comes from the backend (see `packages/service/src/types/codoc.ts`). `Codoc.ast` holds `ReadonlyMap`s that JSON-serialise to `{}`, so nesting would lose data. This side of the wire mirrors that shape rather than inventing its own.
 
 ## Layout
 
 ```
 src/
   main.tsx                React root + QueryClientProvider + BrowserRouter
-  app.tsx                 routes (single route in slice 1)
+  app.tsx                 routes: / (list) and /workspace/:id (detail)
   index.css               tailwind base
   types.ts                wire-level DTO mirrors
   api/
     client.ts             apiFetch + ApiError envelope parsing
-    workspaces.ts         listWorkspaces / createWorkspace / deleteWorkspace
+    workspaces.ts         listWorkspaces / getWorkspace / create / update / delete
+    codocs.ts             listCodocsByWorkspace / createCodoc / deleteCodoc
   pages/
-    workspace-list.tsx    THE page; uses react-query for data flow
+    workspace-list.tsx    / — cards link to the detail route
+    workspace-detail.tsx  /workspace/:id — header + codoc list with create / delete
   components/
     ui/
       button.tsx

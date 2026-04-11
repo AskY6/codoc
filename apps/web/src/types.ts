@@ -15,6 +15,19 @@ export interface WorkspaceListItem {
   // Opaque optimistic-concurrency token. Echo back in `expectedRev`
   // on update; never parse or compare beyond equality.
   readonly rev: string;
+  readonly codocCount: number;
+}
+
+// Flattened on the wire (unlike WorkspaceListItem) because the
+// backend's canonical Codoc type holds `ReadonlyMap`s that JSON
+// serialise to `{}` — nesting would silently lose data. See the
+// backend's packages/service/src/types/codoc.ts for the rationale.
+export interface CodocListItem {
+  readonly id: string;
+  readonly path: string;
+  readonly title: string | null;
+  readonly updatedAt: number;
+  readonly rev: string;
 }
 
 export interface ServiceErrorBody {

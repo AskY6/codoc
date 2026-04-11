@@ -7,9 +7,11 @@
 // `expectedRev` returns `Conflict<"workspace">` and leaves the row
 // untouched.
 //
-// Cascading deletes (codocs, threads, …) are documented on the storage
-// port but a no-op here for slice 1 — the dependent stores are still
-// stubs and have no rows to clean up.
+// Cascading delete: the workspace store is the cascade root — deleting a
+// workspace must atomically wipe every row owned by it. Each dependent
+// store that has a real in-memory impl supplies a `cascade*` callback
+// via `MemoryWorkspaceStoreDeps`; the stubs contribute no-ops. Slice 2
+// wires `cascadeDeleteCodocs`.
 
 import type { Result, Workspace, WorkspaceId } from "@cobook/core";
 import { err, ok } from "@cobook/core";
@@ -27,11 +29,28 @@ import type {
 
 export interface MemoryWorkspaceStoreDeps {
   readonly clock: Clock;
+  /**
+   * Cascade hooks supplied by dependent stores that have real impls.
+   * Each hook removes every row owned by the given workspace. Stubs
+   * contribute nothing here.
+   */
+  readonly cascadeDeleteCodocs?: (workspaceId: WorkspaceId) => void;
+}
+
+export interface MemoryWorkspaceStore extends WorkspaceStore {
+  /**
+   * Escape hatch for peer stores that need to validate cross-store
+   * invariants (e.g. `CodocStore.create` checking that the owning
+   * workspace exists). Stays on the memory impl only — the port itself
+   * exposes `get` for the same purpose, but peer stores avoid a
+   * `Result`-shaped round-trip by reading this directly.
+   */
+  readonly __hasWorkspace: (id: WorkspaceId) => boolean;
 }
 
 export function createMemoryWorkspaceStore(
   deps: MemoryWorkspaceStoreDeps,
-): WorkspaceStore {
+): MemoryWorkspaceStore {
   const rows = new Map<WorkspaceId, StoredWorkspace>();
   let revCounter = 0;
   const nextRev = (): Rev => `r${++revCounter}` as Rev;
@@ -94,10 +113,16 @@ export function createMemoryWorkspaceStore(
       id: WorkspaceId,
     ): Promise<Result<void, NotFound<"workspace">>> {
       if (!rows.has(id)) return err({ kind: "workspace-not-found" });
+      // Cascade across every dependent store that has a real impl.
+      // Stubs contribute nothing — the slice that stops stubbing each
+      // store wires its cascade hook here.
+      deps.cascadeDeleteCodocs?.(id);
       rows.delete(id);
-      // NOTE: cascade across codocs / threads / agents lands when those
-      // stores stop being stubs.
       return ok(undefined);
+    },
+
+    __hasWorkspace(id: WorkspaceId): boolean {
+      return rows.has(id);
     },
   };
 }

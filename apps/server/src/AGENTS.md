@@ -26,7 +26,9 @@ src/
   http/
     error.ts           mapServiceError — single source of truth for HTTP status + envelope
   routes/
-    workspaces.ts      GET / POST / DELETE for the workspace aggregate
+    workspaces.ts      GET / POST / PATCH / DELETE for the workspace aggregate
+                       + nested GET/POST /:id/codocs
+    codocs.ts          DELETE /:id (slice 2); GET + PATCH arrive in slice 3
 ```
 
 ## Conventions

@@ -46,7 +46,10 @@ describe("createWorkspace", () => {
     // Force an id collision by using an idGen that always returns the same id.
     const fixedCtx = {
       ...ctx,
-      idGen: { workspaceId: () => "ws_fixed" as never },
+      idGen: {
+        workspaceId: () => "ws_fixed" as never,
+        codocId: () => "codoc_unused" as never,
+      },
     };
 
     const first = await createWorkspace(fixedCtx, {

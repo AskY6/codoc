@@ -15,6 +15,7 @@ import type { ServiceCtx } from "@cobook/service";
 import { SystemClock, createMemoryStorage } from "@cobook/storage-memory";
 import { Hono } from "hono";
 import { UuidIdGenerator } from "./ports/id.js";
+import { codocRoutes } from "./routes/codocs.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
 
 const storage = createMemoryStorage();
@@ -29,6 +30,7 @@ const app = new Hono();
 
 app.get("/", (c) => c.json({ name: "cobook", status: "ok" }));
 app.route("/api/workspaces", workspaceRoutes(baseCtx));
+app.route("/api/codocs", codocRoutes(baseCtx));
 
 const port = Number(process.env["PORT"] ?? 3100);
 serve({ fetch: app.fetch, port }, (info) => {

@@ -36,6 +36,7 @@ describe("updateWorkspace", () => {
     expect(updated.value.workspace.description).toBe("renamed");
     expect(typeof updated.value.rev).toBe("string");
     expect(updated.value.rev).not.toBe(originalRev);
+    expect(updated.value.codocCount).toBe(0);
   });
 
   it("accepts a null description on update", async () => {

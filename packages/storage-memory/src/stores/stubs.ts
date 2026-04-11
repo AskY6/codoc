@@ -1,13 +1,11 @@
-// Throwing stand-ins for every storage store other than `workspaces`.
-//
-// Each property is a Proxy whose every method raises
+// Throwing stand-ins for every storage store other than the real
+// in-memory impls. Each property is a Proxy whose every method raises
 // `NotImplementedError`. Future vertical slices replace these one at
 // a time as the slice needs them.
 
 import type {
   AgentSessionStore,
   AgentStore,
-  CodocStore,
   ThreadAgentStore,
   ThreadCodocStore,
   ThreadStore,
@@ -15,7 +13,6 @@ import type {
 } from "@cobook/storage";
 import { notImplementedStore } from "../not-implemented.js";
 
-export const codocStub: CodocStore = notImplementedStore<CodocStore>("codocs");
 export const agentStub: AgentStore = notImplementedStore<AgentStore>("agents");
 export const threadStub: ThreadStore = notImplementedStore<ThreadStore>("threads");
 export const threadCodocStub: ThreadCodocStore =

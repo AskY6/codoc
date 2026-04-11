@@ -9,10 +9,11 @@
 // implementation; tests provide a deterministic counter.
 //
 // New id types are added one method at a time, as each vertical slice
-// needs them — slice 1 only mints `WorkspaceId`.
+// needs them.
 
-import type { WorkspaceId } from "@cobook/core";
+import type { CodocId, WorkspaceId } from "@cobook/core";
 
 export interface IdGenerator {
   workspaceId(): WorkspaceId;
+  codocId(): CodocId;
 }
