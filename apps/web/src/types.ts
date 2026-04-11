@@ -12,6 +12,9 @@ export interface Workspace {
 export interface WorkspaceListItem {
   readonly workspace: Workspace;
   readonly updatedAt: number;
+  // Opaque optimistic-concurrency token. Echo back in `expectedRev`
+  // on update; never parse or compare beyond equality.
+  readonly rev: string;
 }
 
 export interface ServiceErrorBody {

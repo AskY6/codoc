@@ -11,6 +11,7 @@ import {
   createWorkspace,
   deleteWorkspace,
   listWorkspaces,
+  updateWorkspace,
 } from "@cobook/service";
 import { Hono } from "hono";
 import { respondError } from "../http/error.js";
@@ -18,6 +19,12 @@ import { respondError } from "../http/error.js";
 interface CreateWorkspaceBody {
   readonly name?: unknown;
   readonly description?: unknown;
+}
+
+interface UpdateWorkspaceBody {
+  readonly name?: unknown;
+  readonly description?: unknown;
+  readonly expectedRev?: unknown;
 }
 
 export function workspaceRoutes(baseCtx: ServiceCtx) {
@@ -76,6 +83,63 @@ export function workspaceRoutes(baseCtx: ServiceCtx) {
       return respondError(c, result.error);
     }
     return c.json(result.value, 201);
+  });
+
+  // PATCH /api/workspaces/:id — { name, description?, expectedRev }
+  app.patch("/:id", async (c) => {
+    const id = c.req.param("id") as WorkspaceId;
+    let body: UpdateWorkspaceBody;
+    try {
+      body = (await c.req.json()) as UpdateWorkspaceBody;
+    } catch {
+      return c.json(
+        { error: { kind: "bad-request", reason: "invalid JSON body" } },
+        400,
+      );
+    }
+
+    if (typeof body.name !== "string" || body.name.trim() === "") {
+      return c.json(
+        { error: { kind: "bad-request", reason: "name is required" } },
+        400,
+      );
+    }
+    if (
+      body.description !== undefined &&
+      body.description !== null &&
+      typeof body.description !== "string"
+    ) {
+      return c.json(
+        {
+          error: {
+            kind: "bad-request",
+            reason: "description must be a string or null",
+          },
+        },
+        400,
+      );
+    }
+    if (typeof body.expectedRev !== "string" || body.expectedRev === "") {
+      return c.json(
+        {
+          error: { kind: "bad-request", reason: "expectedRev is required" },
+        },
+        400,
+      );
+    }
+
+    const result = await updateWorkspace(baseCtx, {
+      id,
+      name: body.name.trim(),
+      description:
+        typeof body.description === "string" ? body.description : null,
+      expectedRev: body.expectedRev,
+    });
+
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value);
   });
 
   // DELETE /api/workspaces/:id

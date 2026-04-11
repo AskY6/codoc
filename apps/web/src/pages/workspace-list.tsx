@@ -4,21 +4,28 @@
 //   - presets
 //   - codoc / agent counts
 //   - SSE preset apply
-//   - workspace edit / detail navigation
+//   - workspace detail navigation
 //
-// What stays: a card grid of workspaces with name, description and a
-// relative timestamp; a "create workspace" dialog (name + description);
-// per-card delete. The empty-state path doubles as the slice's smoke
-// test, so it has its own visible CTA.
+// Slice 1.5 adds: per-card edit (name + description) with optimistic
+// concurrency via `rev`. On WorkspaceConflict, the mutation invalidates
+// the workspaces query (refetching the fresh rev) and surfaces an
+// inline "someone else edited this" message inside the dialog — the
+// user has to re-confirm. Silent replay is deliberately avoided.
+//
+// The empty-state path doubles as the slice's smoke test, so it has
+// its own visible CTA.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { ApiError } from "../api/client";
 import {
   createWorkspace,
   deleteWorkspace,
   listWorkspaces,
+  updateWorkspace,
 } from "../api/workspaces";
+import type { WorkspaceListItem } from "../types";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -73,13 +80,40 @@ export function WorkspaceListPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: updateWorkspace,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: WORKSPACES_KEY });
+    },
+    onError: (error) => {
+      // On conflict, refetch the list so the next save sees a fresh
+      // rev. The inline error message in the dialog tells the user.
+      if (error instanceof ApiError && error.kind === "workspace-conflict") {
+        void queryClient.invalidateQueries({ queryKey: WORKSPACES_KEY });
+      }
+    },
+  });
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // `editing` is null when the dialog is in "create" mode; otherwise
+  // it holds the list item whose rev we're about to echo back.
+  const [editing, setEditing] = useState<WorkspaceListItem | null>(null);
 
-  function openDialog() {
+  function openCreateDialog() {
+    setEditing(null);
     setName("");
     setDescription("");
+    createMutation.reset();
+    setDialogOpen(true);
+  }
+
+  function openEditDialog(item: WorkspaceListItem) {
+    setEditing(item);
+    setName(item.workspace.name);
+    setDescription(item.workspace.description ?? "");
+    updateMutation.reset();
     setDialogOpen(true);
   }
 
@@ -94,11 +128,42 @@ export function WorkspaceListPage() {
     setDialogOpen(false);
   }
 
+  async function handleEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    // Always read the freshest rev from the cache: if a previous
+    // conflict triggered an invalidate, the query has refetched and
+    // the card we opened against may now be stale.
+    const fresh = queryClient
+      .getQueryData<readonly WorkspaceListItem[]>(WORKSPACES_KEY)
+      ?.find((it) => it.workspace.id === editing.workspace.id);
+    const expectedRev = fresh?.rev ?? editing.rev;
+
+    try {
+      await updateMutation.mutateAsync({
+        id: editing.workspace.id,
+        name: trimmed,
+        description: description.trim() === "" ? null : description.trim(),
+        expectedRev,
+      });
+      setDialogOpen(false);
+    } catch {
+      // Error surface is handled by updateMutation.isError below.
+    }
+  }
+
+  const updateConflict =
+    updateMutation.error instanceof ApiError &&
+    updateMutation.error.kind === "workspace-conflict";
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-10">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-medium text-neutral-900">Workspaces</h1>
-        <Button onClick={openDialog}>
+        <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4" />
           New workspace
         </Button>
@@ -127,17 +192,26 @@ export function WorkspaceListPage() {
                       </CardDescription>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Delete ${item.workspace.name}`}
-                    onClick={() =>
-                      deleteMutation.mutate(item.workspace.id)
-                    }
-                    className="opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-4 w-4 text-neutral-500" />
-                  </Button>
+                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Edit ${item.workspace.name}`}
+                      onClick={() => openEditDialog(item)}
+                    >
+                      <Pencil className="h-4 w-4 text-neutral-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Delete ${item.workspace.name}`}
+                      onClick={() =>
+                        deleteMutation.mutate(item.workspace.id)
+                      }
+                    >
+                      <Trash2 className="h-4 w-4 text-neutral-500" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -156,7 +230,7 @@ export function WorkspaceListPage() {
           <p className="max-w-sm text-sm text-neutral-500">
             Create your first workspace to start collecting codocs and chats.
           </p>
-          <Button onClick={openDialog}>
+          <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             New workspace
           </Button>
@@ -166,9 +240,14 @@ export function WorkspaceListPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New workspace</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit workspace" : "New workspace"}
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form
+            onSubmit={editing ? handleEdit : handleCreate}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <label
                 htmlFor="workspace-name"
@@ -201,9 +280,21 @@ export function WorkspaceListPage() {
                 placeholder="What's this workspace for?"
               />
             </div>
-            {createMutation.isError && (
+            {!editing && createMutation.isError && (
               <p className="text-sm text-red-600">
                 {(createMutation.error as Error).message}
+              </p>
+            )}
+            {editing && updateConflict && (
+              <p className="text-sm text-amber-700">
+                Someone else just edited this workspace — the list has
+                been reloaded. Review your changes and click Save again
+                to overwrite.
+              </p>
+            )}
+            {editing && updateMutation.isError && !updateConflict && (
+              <p className="text-sm text-red-600">
+                {(updateMutation.error as Error).message}
               </p>
             )}
             <DialogFooter>
@@ -214,12 +305,21 @@ export function WorkspaceListPage() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={!name.trim() || createMutation.isPending}
-              >
-                {createMutation.isPending ? "Creating…" : "Create"}
-              </Button>
+              {editing ? (
+                <Button
+                  type="submit"
+                  disabled={!name.trim() || updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? "Saving…" : "Save"}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={!name.trim() || createMutation.isPending}
+                >
+                  {createMutation.isPending ? "Creating…" : "Create"}
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </DialogContent>

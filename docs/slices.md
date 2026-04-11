@@ -39,36 +39,58 @@ Verified via `/verify-fix` browser run.
 
 ---
 
-## Slice 1.5 — workspace edit (PATCH)
+## Slice 1.5 — workspace edit (PATCH) — DONE
 
-**Why this exists:** the optimistic-concurrency path (`Rev` /
+**Why this existed:** the optimistic-concurrency path (`Rev` /
 `expectedRev` / `Conflict`) is the most subtle thing in the storage
-contract. It is much cheaper to debug it on the simplest possible
-field-level edit (a workspace name) than on a 2 000-line codoc
-document. This slice's only job is to put `Rev` end-to-end on the
-table — every later update flow copies it.
+contract. Debugging it on a field-level edit (workspace name +
+description) is much cheaper than on a 2 000-line codoc document.
+This slice's only job was to put `Rev` end-to-end on the table —
+every later update flow copies it.
 
 **Page:** in-place name + description edit on the slice-1 list cards
-(no new page).
-**Stores upgraded:** `WorkspaceStore.update` already exists from
-slice 1; the slice exercises it from a real consumer for the first
-time.
-**New conventions to lock in:**
-- where `Rev` lives in the DTO envelope (almost certainly inside the
-  `WorkspaceListItem` shape, surfaced as opaque opaque-typed `string`
-  on the wire)
-- how `Conflict<*>` shows up in the HTTP envelope and how the UI
-  reacts (refetch + replay edit, or surface a "someone else changed
-  this" toast — pick one and document it)
-- how the create-vs-update split surfaces in `IdGenerator`-style
-  ports (it doesn't — update takes the id, but the slice should still
-  prove that out)
+(no new page). Pencil button on each card opens a reusable dialog
+pre-filled with the card's current values; Save issues a PATCH with
+the card's `rev` as `expectedRev`.
 
 **Use cases:** `updateWorkspace`.
 **Routes:** `PATCH /api/workspaces/:id`.
-**Verification:** `/verify-fix` — edit a workspace, refresh, edit
-again with a stale `expectedRev` from devtools and confirm the UI
-recovers.
+
+**Conventions locked in** (documented in
+`packages/service/src/usecases/workspace/AGENTS.md` — this file is
+the reference for slices 2 / 3 / 5):
+
+- **`Rev` lives on `WorkspaceListItem`** as an opaque `rev: string`
+  alongside the existing `{ workspace, updatedAt }`. The repo layer
+  is the one place that peels the storage `Rev` brand to `string`;
+  service callers and the wire treat it as write-once / read-equal.
+- **HTTP conflict envelope** is `{ error: { kind: "workspace-conflict" } }`
+  at status **409**, via the existing `mapServiceError`. No payload
+  yet — when a slice needs the fresh rev for a smarter recovery
+  path, extend the variant rather than adding a parallel error kind.
+- **UI conflict recovery is "refetch + require re-save"**, not silent
+  replay. On 409 the mutation invalidates the workspaces query and
+  surfaces an inline amber message inside the dialog; the user
+  re-confirms against the (now visible) concurrent values. Silent
+  replay would hide real conflicts and can overwrite legitimate
+  concurrent edits. Slice 3 may reopen this for codoc content where
+  re-typing isn't acceptable.
+- **Create vs update / `IdGenerator`**: `updateWorkspace` takes
+  `{ id, name, description, expectedRev }` and does NOT call
+  `ctx.idGen`. Only `create*` use cases mint ids — `IdGenerator`
+  stays create-only, and every future `update*` copies this shape.
+- **Fresh-rev read pattern**: after a 409, the UI reads the refetched
+  rev from the react-query cache (`queryClient.getQueryData`) inside
+  `handleEdit` before issuing the retry. The dialog holds the list
+  item as a "sticky" reference but always re-reads the rev at submit
+  time.
+
+**Verification:** `/verify-fix` browser run exercised three paths:
+(1) create → edit → save happy path, (2) stale-rev conflict forced
+via a concurrent `curl` PATCH while the dialog was open (UI shows
+the amber message, background card reflects the concurrent writer's
+values), (3) second Save reads the refetched rev from the cache and
+succeeds. API confirmed `rev` monotonicity r1 → r2 → r3 → r4.
 
 ---
 

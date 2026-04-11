@@ -20,3 +20,9 @@ export {
   deleteWorkspace,
   type DeleteWorkspaceError,
 } from "./workspace/delete-workspace.js";
+
+export {
+  updateWorkspace,
+  type UpdateWorkspaceInput,
+  type UpdateWorkspaceError,
+} from "./workspace/update-workspace.js";

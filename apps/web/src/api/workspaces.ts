@@ -19,6 +19,26 @@ export function createWorkspace(body: CreateWorkspaceBody): Promise<Workspace> {
   });
 }
 
+export interface UpdateWorkspaceBody {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly expectedRev: string;
+}
+
+export function updateWorkspace(
+  body: UpdateWorkspaceBody,
+): Promise<WorkspaceListItem> {
+  const { id, ...rest } = body;
+  return apiFetch<WorkspaceListItem>(
+    `/api/workspaces/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(rest),
+    },
+  );
+}
+
 export function deleteWorkspace(id: string): Promise<void> {
   return apiFetch<void>(`/api/workspaces/${encodeURIComponent(id)}`, {
     method: "DELETE",
