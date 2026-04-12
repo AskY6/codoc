@@ -7,3 +7,16 @@
 // directly.
 
 export { runChatTurn } from "./runner.js";
+export type {
+  LlmClient,
+  LlmMessage,
+  LlmContentBlock,
+  LlmToolDef,
+  LlmResponseBlock,
+  LlmResponse,
+  ChatRunContext,
+} from "./context.js";
+export {
+  createAnthropicLlmClient,
+  type AnthropicLlmConfig,
+} from "./llm-adapter.js";

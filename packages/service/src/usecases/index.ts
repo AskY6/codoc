@@ -108,3 +108,10 @@ export {
   type SetThreadCodocsInput,
   type SetThreadCodocsError,
 } from "./agent/set-thread-codocs.js";
+
+export {
+  runAgentTurn,
+  type RunAgentTurnInput,
+  type RunAgentTurnOutput,
+  type RunAgentTurnError,
+} from "./agent/run-agent-turn.js";

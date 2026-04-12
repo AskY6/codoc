@@ -5,10 +5,8 @@
 // Letting an untrusted client choose its own primary key is a
 // security hazard — see `../AGENTS.md`.
 //
-// Slice 4 creates threads with a null title by default; the first
-// user message is what gives a thread its identity in the UI. A
-// later slice that adds "auto-title from first message" will do so
-// on append, not on create.
+// After creating the thread, inherits the workspace's linked agents
+// so the thread starts with the same agent set as the workspace.
 
 import type {
   ChatThread,
@@ -21,7 +19,9 @@ import type {
   ThreadAlreadyExists,
   WorkspaceNotFound,
 } from "../../errors.js";
+import { threadAgentRepo } from "../../repo/thread-agent.js";
 import { threadRepo } from "../../repo/thread.js";
+import { workspaceAgentRepo } from "../../repo/workspace-agent.js";
 import type { ThreadListItem } from "../../types/thread.js";
 
 export interface CreateThreadInput {
@@ -41,5 +41,17 @@ export async function createThread(
     workspaceId: input.workspaceId,
     title: input.title,
   };
-  return threadRepo.create(ctx, thread);
+  const result = await threadRepo.create(ctx, thread);
+  if (!result.ok) return result;
+
+  // Inherit workspace agents into the new thread.
+  const wsAgentIds = await workspaceAgentRepo.listByWorkspace(
+    ctx,
+    input.workspaceId,
+  );
+  for (const agentId of wsAgentIds) {
+    await threadAgentRepo.link(ctx, id, agentId);
+  }
+
+  return result;
 }

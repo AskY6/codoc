@@ -64,6 +64,7 @@ export function makeTestCtx(): TestCtxBundle {
     storageCtx: storage.ctx(),
     clock,
     idGen: counterIdGenerator(),
+    llmConfig: {},
   };
   return { ctx };
 }

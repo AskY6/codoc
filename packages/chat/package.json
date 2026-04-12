@@ -15,8 +15,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
     "@cobook/core": "workspace:*",
-    "@cobook/graph": "workspace:*"
+    "@cobook/graph": "workspace:*",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

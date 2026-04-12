@@ -47,6 +47,7 @@ export type {
 
 // ---- ports (outbound dependencies) ------------------------------------
 export type { IdGenerator } from "./ports/id.js";
+export type { LlmConfig } from "./ports/llm.js";
 
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";
