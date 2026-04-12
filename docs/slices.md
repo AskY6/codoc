@@ -140,46 +140,77 @@ badge decrement.
 
 ---
 
-## Slice 3 — codoc detail + edit page
+## Slice 3 — codoc detail + edit page — DONE
 
-**Page:** `/workspace/:id/codoc/*` — view a codoc, edit its content,
-save with optimistic concurrency.
+**Why this slice existed:** first heavyweight `Rev`/`Conflict`
+workflow on a non-trivial document. The editor binds to raw
+`content` and saves with optimistic concurrency, so the conflict
+recovery UX can't just throw the user's buffer away the way the
+slice-1.5 field-level dialog does.
 
-**Why this slice:** first heavyweight `Rev`/`Conflict` workflow on a
-non-trivial document. Also the first slice to exercise `@cobook/core`'s
-`dag/` module from a real consumer — saving a codoc must
-recompute the dag and reflect the new node state in the UI.
+**Page:** `/workspace/:workspaceId/codoc/:codocId` — header, path,
+"last edited", textarea-backed content editor, Save button with
+inline conflict warning. Codoc cards on the workspace detail page
+upgraded to link into this route.
 
-**Stores upgraded:** `CodocStore.update` (was already typed in slice
-2 but unused). No new stubs replaced.
+**Stores upgraded:** `CodocStore.update` started being used (its
+storage-memory impl already existed from slice 2).
 
-**New use cases:**
-- `getCodoc`
-- `updateCodocContent` — takes `{ id, content, expectedRev }`,
-  returns the new `StoredCodoc` (with refreshed `Rev`)
-- `patchCodocData` — JSON patch path, only if the legacy page actually
-  needs it for slice 3's verification (otherwise defer)
-- dag rebuild logic — moved into the use case via a pure helper from
-  `@cobook/core/dag`
+**Use cases:** `getCodoc`, `updateCodocContent`.
+**Routes:** `GET /api/codocs/:id`, `PUT /api/codocs/:id`.
 
-**New conventions to lock in:**
-- how `Conflict<"codoc">` is surfaced to the UI (toast + refetch +
-  re-apply local edits, or hard-stop with a diff view — pick one)
-- where dag computation lives (use case orchestrates;
-  `@cobook/core/dag` is the pure function)
-- how `nodeState` is exposed in the DTO
+**Conventions locked in** (documented in
+`packages/service/src/usecases/codoc/AGENTS.md`):
 
-**New routes:**
-- `GET /api/codocs/:id`
-- `PUT /api/codocs/:id` (full content replace)
-- `PATCH /api/codocs/:id/data` *(only if needed for verification)*
+- **`CodocDetail` DTO is flat** like `CodocListItem`, adding only
+  `content: string`. The ast stays server-side — same `ReadonlyMap`
+  JSON-serialisation problem that kept it off `CodocListItem`.
+- **Content-only updates preserve the ast.** `updateCodocContent`
+  reads the current `Codoc`, spreads `content` onto it, and writes
+  it back. `ast.meta` / `ast.data` / `ast.view` round-trip
+  unchanged. There is no MDX / YAML parser in the service layer yet
+  (core forbids parsing at that layer); re-derivation from source
+  is deferred to the slice that introduces a dedicated parser
+  helper.
+- **Long-form conflict recovery keeps the editor buffer.** On 409
+  the detail query is invalidated so the cache holds the fresh
+  `rev`, but the textarea state is **not** reset. The page shows an
+  inline amber warning with two choices: Save again (deliberate
+  overwrite, uses the fresh rev from the cache) or Reload from
+  server (explicit opt-in to discard the draft). Slice 1.5's
+  force-refetch recovery is still the rule for small dialog edits;
+  this adds a parallel pattern for long-form content.
+- **URL addresses the codoc by opaque id**, not by `CodocPath`
+  splat. Ids are stable across path rename and already sit on the
+  `CodocListItem` the workspace detail page renders, so the path
+  splat the original slice plan called for would be redundant
+  indirection.
+
+**Deferred** (recorded in `usecases/codoc/AGENTS.md`):
+
+- **`PATCH /api/codocs/:id/data`** — no UI need yet.
+- **dag rebuild inside the use case + `nodeState` on the DTO.**
+  Without a parser populating `ast.data`, every codoc has zero
+  data fields; calling `buildDAG` would produce an empty DAG every
+  time and every `nodeState` projection would be uniformly empty.
+  Wiring dead code through the stack for the sake of "locking in
+  the pattern" violates the "only what's clearly necessary" rule.
+  The slice that introduces the MDX parser is the natural place to
+  thread dag through `updateCodocContent` — signatures don't need
+  to change for that to land.
+
+**Verification:** `/verify-fix` browser run — opened a workspace,
+created a codoc, edited its content, saved, confirmed the detail
+page and the workspace list both reflected the new `updatedAt`.
+Forced a 409 via a concurrent `curl` PUT against the same id while
+the editor held an unsaved draft; confirmed the amber warning
+appeared, the draft survived, and the next Save wrote the draft
+against the fresh rev. Also confirmed Reload-from-server discards
+the draft.
 
 **Legacy reference:** `legacy/apps/web/src/pages/codoc-detail.tsx`
-plus the `CodocViewer` component for the visual.
-
-**Verification:** `/verify-fix` — edit a codoc, save, reload, edit
-twice in two browser tabs and confirm the second save reports a
-conflict and recovers.
+(stripped — no MDX rendering, no view actions, no status badge,
+no chat integration; those are slices 4–6).
 
 ---
 

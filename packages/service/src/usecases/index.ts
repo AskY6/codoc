@@ -47,3 +47,14 @@ export {
   deleteCodoc,
   type DeleteCodocError,
 } from "./codoc/delete-codoc.js";
+
+export {
+  getCodoc,
+  type GetCodocError,
+} from "./codoc/get-codoc.js";
+
+export {
+  updateCodocContent,
+  type UpdateCodocContentInput,
+  type UpdateCodocContentError,
+} from "./codoc/update-codoc-content.js";

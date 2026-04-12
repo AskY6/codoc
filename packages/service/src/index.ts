@@ -49,7 +49,7 @@ export type { IdGenerator } from "./ports/id.js";
 
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";
-export type { CodocListItem } from "./types/codoc.js";
+export type { CodocDetail, CodocListItem } from "./types/codoc.js";
 
 // ---- repo (thin facades over storage) ---------------------------------
 export * from "./repo/index.js";

@@ -28,7 +28,7 @@ src/
   routes/
     workspaces.ts      GET / POST / PATCH / DELETE for the workspace aggregate
                        + nested GET/POST /:id/codocs
-    codocs.ts          DELETE /:id (slice 2); GET + PATCH arrive in slice 3
+    codocs.ts          GET / PUT / DELETE /:id for the codoc aggregate
 ```
 
 ## Conventions

@@ -30,6 +30,17 @@ export interface CodocListItem {
   readonly rev: string;
 }
 
+// Detail DTO returned by GET /api/codocs/:id. Adds raw `content` on
+// top of the list item; the ast is deliberately server-side only.
+export interface CodocDetail {
+  readonly id: string;
+  readonly path: string;
+  readonly title: string | null;
+  readonly content: string;
+  readonly updatedAt: number;
+  readonly rev: string;
+}
+
 export interface ServiceErrorBody {
   readonly error: { readonly kind: string; readonly [k: string]: unknown };
 }

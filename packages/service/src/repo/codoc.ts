@@ -2,8 +2,19 @@
 //
 // Follows the shape documented in ./AGENTS.md: forward to one store,
 // peel `StoredCodoc` envelopes into UI-shaped DTOs, map storage error
-// variants to service variants. Slice 2 ships `get / list / create /
-// delete`; `update` lands in slice 3 alongside the codoc detail page.
+// variants to service variants.
+//
+// Two peels live here, mirroring `workspaceRepo`:
+//   - `toListItem` — flat row used on the workspace detail list.
+//   - `toDetail`   — list item + `content`, used by the detail page
+//                    and by the content update use case.
+// Both drop the ast intentionally: it holds `ReadonlyMap`s which do
+// not survive `JSON.stringify`. See `../types/codoc.ts`.
+//
+// `getCodoc` is the odd one out — it returns the full core `Codoc`,
+// not a DTO. The `updateCodocContent` use case needs the existing ast
+// to preserve meta / data when only content changes, and the repo is
+// the single place allowed to touch the storage port.
 
 import type { Codoc, CodocId, Result, WorkspaceId } from "@cobook/core";
 import { err, ok } from "@cobook/core";
@@ -16,7 +27,7 @@ import type {
   CodocReferenced,
   WorkspaceNotFound,
 } from "../errors.js";
-import type { CodocListItem } from "../types/codoc.js";
+import type { CodocDetail, CodocListItem } from "../types/codoc.js";
 
 export interface CreateCodocRepoInput {
   readonly codoc: Codoc;
@@ -28,13 +39,6 @@ export interface UpdateCodocRepoInput {
   readonly expectedRev: string;
 }
 
-/**
- * Peel a `StoredCodoc` envelope into the flattened `CodocListItem`
- * DTO. The title is pulled from `codoc.ast.meta.title`; the data /
- * schema maps that would not survive `JSON.stringify` are dropped
- * here. Slice 3 adds a `CodocDetail` DTO with a proper wire-safe ast
- * shape when the detail page needs the parsed structure.
- */
 function toListItem(row: StoredCodoc): CodocListItem {
   return {
     id: row.codoc.id as string,
@@ -45,7 +49,23 @@ function toListItem(row: StoredCodoc): CodocListItem {
   };
 }
 
+function toDetail(row: StoredCodoc): CodocDetail {
+  return {
+    id: row.codoc.id as string,
+    path: row.codoc.path as string,
+    title: row.codoc.ast.meta.title,
+    content: row.codoc.content,
+    updatedAt: row.updatedAt as number,
+    rev: row.rev as string,
+  };
+}
+
 export const codocRepo = {
+  /**
+   * Read a codoc as a flat list item. Kept for symmetry with
+   * `workspaceRepo.getListItem`; slice 3's read path uses `getDetail`
+   * instead because the detail page needs `content`.
+   */
   async get(
     ctx: ServiceCtx,
     id: CodocId,
@@ -53,6 +73,35 @@ export const codocRepo = {
     const r = await ctx.storage.codocs.get(ctx.storageCtx, id);
     if (!r.ok) return err({ kind: "codoc-not-found", id });
     return ok(toListItem(r.value));
+  },
+
+  /**
+   * Read a codoc as a detail DTO (list item + raw `content`). Powers
+   * the `getCodoc` use case that hydrates the detail page.
+   */
+  async getDetail(
+    ctx: ServiceCtx,
+    id: CodocId,
+  ): Promise<Result<CodocDetail, CodocNotFound>> {
+    const r = await ctx.storage.codocs.get(ctx.storageCtx, id);
+    if (!r.ok) return err({ kind: "codoc-not-found", id });
+    return ok(toDetail(r.value));
+  },
+
+  /**
+   * Read the full core `Codoc` (ast included). Used by
+   * `updateCodocContent` to preserve `ast.meta` / `ast.data` /
+   * `ast.view` when only `content` changes. Returns the canonical
+   * core type, not a DTO, because its only caller is another piece
+   * of the service layer — not a transport.
+   */
+  async getCodoc(
+    ctx: ServiceCtx,
+    id: CodocId,
+  ): Promise<Result<Codoc, CodocNotFound>> {
+    const r = await ctx.storage.codocs.get(ctx.storageCtx, id);
+    if (!r.ok) return err({ kind: "codoc-not-found", id });
+    return ok(r.value.codoc);
   },
 
   async listByWorkspace(
@@ -105,17 +154,16 @@ export const codocRepo = {
   },
 
   /**
-   * Optimistic update. Symmetry with `workspaceRepo.update`: caller
-   * hands back the opaque `rev` string it previously received, the
-   * repo re-applies the `Rev` brand internally, and the store bumps
-   * the rev on success. Slice 3 (codoc detail edit) is the first
-   * caller — the method exists on the repo already so the wire shape
-   * and error mapping are locked in alongside the slice 2 code.
+   * Optimistic update. Caller hands back the opaque `rev` string it
+   * previously received; the repo re-applies the `Rev` brand
+   * internally and the store bumps the rev on success. Returns a
+   * `CodocDetail` because slice 3's only caller (the content editor)
+   * wants `content` back in the response.
    */
   async update(
     ctx: ServiceCtx,
     input: UpdateCodocRepoInput,
-  ): Promise<Result<CodocListItem, CodocNotFound | CodocConflict>> {
+  ): Promise<Result<CodocDetail, CodocNotFound | CodocConflict>> {
     const r = await ctx.storage.codocs.update(ctx.storageCtx, {
       codoc: input.codoc,
       expectedRev: input.expectedRev as Rev,
@@ -126,7 +174,7 @@ export const codocRepo = {
       }
       return err({ kind: "codoc-conflict" });
     }
-    return ok(toListItem(r.value));
+    return ok(toDetail(r.value));
   },
 
   async delete(
