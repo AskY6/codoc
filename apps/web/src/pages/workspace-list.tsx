@@ -16,7 +16,7 @@
 // its own visible CTA.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -28,13 +28,6 @@ import {
 } from "../api/workspaces";
 import type { WorkspaceListItem } from "../types";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -161,9 +154,11 @@ export function WorkspaceListPage() {
     updateMutation.error.kind === "workspace-conflict";
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-medium text-neutral-900">Workspaces</h1>
+    <div className="mx-auto max-w-2xl px-6 py-16">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+          Workspaces
+        </h1>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4" />
           New workspace
@@ -171,84 +166,74 @@ export function WorkspaceListPage() {
       </div>
 
       {workspacesQuery.isLoading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workspacesQuery.isError ? (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-destructive">
           Failed to load workspaces:{" "}
           {(workspacesQuery.error as Error).message}
         </p>
       ) : workspacesQuery.data && workspacesQuery.data.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="divide-y divide-border rounded-lg border border-border">
           {workspacesQuery.data.map((item) => (
-            <Card key={item.workspace.id} className="group relative">
-              {/*
-                The entire card is a link to the detail page. Edit /
-                delete buttons sit on top with stopPropagation so
-                clicking them doesn't also navigate.
-              */}
+            <div key={item.workspace.id} className="group relative">
               <Link
                 to={`/workspace/${encodeURIComponent(item.workspace.id)}`}
-                className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-                aria-label={`Open ${item.workspace.name}`}
-              />
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="truncate">
-                      {item.workspace.name}
-                    </CardTitle>
-                    {item.workspace.description && (
-                      <CardDescription className="line-clamp-2">
-                        {item.workspace.description}
-                      </CardDescription>
-                    )}
-                  </div>
-                  <div className="relative z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Edit ${item.workspace.name}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openEditDialog(item);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 text-neutral-500" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${item.workspace.name}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteMutation.mutate(item.workspace.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-neutral-500" />
-                    </Button>
-                  </div>
+                className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {item.workspace.name}
+                  </p>
+                  {item.workspace.description && (
+                    <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+                      {item.workspace.description}
+                    </p>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between gap-2 text-xs text-neutral-500">
-                  <span className="inline-flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5" />
-                    {item.codocCount} codoc{item.codocCount === 1 ? "" : "s"}
-                  </span>
-                  <span>{relativeTime(item.updatedAt)}</span>
-                </div>
-              </CardContent>
-            </Card>
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <FileText className="h-3 w-3" />
+                  {item.codocCount}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {relativeTime(item.updatedAt)}
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+              </Link>
+              <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Edit ${item.workspace.name}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openEditDialog(item);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete ${item.workspace.name}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteMutation.mutate(item.workspace.id);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center">
-          <p className="text-base font-medium text-neutral-900">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
+          <p className="text-sm font-medium text-foreground">
             No workspaces yet
           </p>
-          <p className="max-w-sm text-sm text-neutral-500">
+          <p className="text-sm text-muted-foreground">
             Create your first workspace to start collecting codocs and chats.
           </p>
           <Button onClick={openCreateDialog}>
@@ -272,7 +257,7 @@ export function WorkspaceListPage() {
             <div className="space-y-2">
               <label
                 htmlFor="workspace-name"
-                className="text-sm font-medium text-neutral-700"
+                className="text-sm font-medium text-foreground"
               >
                 Name
               </label>
@@ -287,10 +272,10 @@ export function WorkspaceListPage() {
             <div className="space-y-2">
               <label
                 htmlFor="workspace-description"
-                className="text-sm font-medium text-neutral-700"
+                className="text-sm font-medium text-foreground"
               >
                 Description
-                <span className="ml-1 font-normal text-neutral-400">
+                <span className="ml-1 font-normal text-muted-foreground">
                   (optional)
                 </span>
               </label>
@@ -302,19 +287,19 @@ export function WorkspaceListPage() {
               />
             </div>
             {!editing && createMutation.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-destructive">
                 {(createMutation.error as Error).message}
               </p>
             )}
             {editing && updateConflict && (
-              <p className="text-sm text-amber-700">
+              <p className="text-sm text-warning-foreground">
                 Someone else just edited this workspace — the list has
                 been reloaded. Review your changes and click Save again
                 to overwrite.
               </p>
             )}
             {editing && updateMutation.isError && !updateConflict && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-destructive">
                 {(updateMutation.error as Error).message}
               </p>
             )}

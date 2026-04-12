@@ -134,23 +134,23 @@ export function CodocDetailPage() {
 
   if (codocQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <p className="text-sm text-neutral-500">Loading…</p>
+      <div className="mx-auto max-w-2xl px-6 py-16">
+        <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     );
   }
 
   if (codocQuery.isError) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-2xl px-6 py-16">
         <Link
           to={`/workspace/${encodeURIComponent(workspaceId)}`}
-          className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to workspace
         </Link>
-        <p className="mt-6 text-sm text-red-600">
+        <p className="mt-6 text-sm text-destructive">
           Failed to load codoc: {(codocQuery.error as Error).message}
         </p>
       </div>
@@ -163,32 +163,35 @@ export function CodocDetailPage() {
   const dirty = editorContent !== codoc.content;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-2xl px-6 py-16">
       <Link
         to={`/workspace/${encodeURIComponent(workspaceId)}`}
-        className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to workspace
       </Link>
 
-      <header className="mt-6 mb-8">
-        <h1 className="text-2xl font-medium text-neutral-900">
+      <header className="mt-8 mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           {codoc.title ?? codoc.path}
         </h1>
-        <p className="mt-1 text-xs text-neutral-500">{codoc.path}</p>
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-1 text-sm text-muted-foreground">{codoc.path}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
           Last edited {relativeTime(codoc.updatedAt)}
         </p>
       </header>
 
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-neutral-900">Content</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Content
+        </h2>
         <div className="flex items-center gap-2">
           {dirty && (
-            <span className="text-xs text-neutral-500">Unsaved changes</span>
+            <span className="text-xs text-muted-foreground">Unsaved changes</span>
           )}
           <Button
+            size="sm"
             onClick={handleSave}
             disabled={!dirty || updateMutation.isPending}
           >
@@ -200,13 +203,13 @@ export function CodocDetailPage() {
       <textarea
         value={editorContent}
         onChange={(e) => setEditorContent(e.target.value)}
-        className="min-h-[24rem] w-full rounded-lg border border-neutral-300 bg-white p-4 font-mono text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
+        className="min-h-[24rem] w-full rounded-lg border border-border bg-background p-4 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
         placeholder="Start typing…"
         spellCheck={false}
       />
 
       {conflict && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="mt-4 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm text-warning-foreground">
           <p className="font-medium">This codoc has moved on.</p>
           <p className="mt-1">
             Someone else saved changes while you were editing. Your draft
@@ -215,7 +218,7 @@ export function CodocDetailPage() {
             <button
               type="button"
               onClick={handleReloadFromServer}
-              className="underline hover:text-amber-900"
+              className="underline hover:opacity-80"
             >
               reload from server
             </button>{" "}
@@ -224,7 +227,7 @@ export function CodocDetailPage() {
         </div>
       )}
       {updateMutation.isError && !conflict && (
-        <p className="mt-4 text-sm text-red-600">
+        <p className="mt-4 text-sm text-destructive">
           {(updateMutation.error as Error).message}
         </p>
       )}

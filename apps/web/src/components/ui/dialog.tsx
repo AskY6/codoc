@@ -32,7 +32,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onOpenChange(false);
       }}
@@ -53,7 +53,7 @@ export function DialogContent({ className, children }: DialogContentProps) {
       role="dialog"
       aria-modal="true"
       className={cn(
-        "w-full max-w-md rounded-lg border border-neutral-200 bg-white p-6 shadow-xl",
+        "w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg",
         className,
       )}
     >
@@ -67,7 +67,7 @@ export function DialogHeader({ children }: { children: ReactNode }) {
 }
 
 export function DialogTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-lg font-medium text-neutral-900">{children}</h2>;
+  return <h2 className="text-lg font-medium text-foreground">{children}</h2>;
 }
 
 export function DialogFooter({ children }: { children: ReactNode }) {

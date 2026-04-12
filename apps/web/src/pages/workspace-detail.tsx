@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bot,
+  ChevronRight,
   FileText,
   MessageSquare,
   Plus,
@@ -39,12 +40,6 @@ import {
   setWorkspaceAgents,
 } from "../api/workspaces";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -222,23 +217,23 @@ export function WorkspaceDetailPage() {
 
   if (workspaceQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <p className="text-sm text-neutral-500">Loading…</p>
+      <div className="mx-auto max-w-2xl px-6 py-16">
+        <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     );
   }
 
   if (workspaceQuery.isError) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-2xl px-6 py-16">
         <Link
           to="/"
-          className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           All workspaces
         </Link>
-        <p className="mt-6 text-sm text-red-600">
+        <p className="mt-6 text-sm text-destructive">
           Failed to load workspace: {(workspaceQuery.error as Error).message}
         </p>
       </div>
@@ -249,35 +244,36 @@ export function WorkspaceDetailPage() {
   if (!item) return null;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-2xl px-6 py-16">
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         All workspaces
       </Link>
 
-      <header className="mt-6 mb-8">
-        <h1 className="text-2xl font-medium text-neutral-900">
+      <header className="mt-8 mb-12">
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           {item.workspace.name}
         </h1>
         {item.workspace.description && (
-          <p className="mt-2 text-sm text-neutral-600">
+          <p className="mt-2 text-muted-foreground">
             {item.workspace.description}
           </p>
         )}
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-3 text-xs text-muted-foreground">
           Last edited {relativeTime(item.updatedAt)}
         </p>
       </header>
 
+      {/* Agents */}
       {(agentsQuery.data ?? []).length > 0 && (
-        <>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-medium text-neutral-900">Agents</h2>
-          </div>
-          <div className="mb-8 flex flex-wrap gap-2">
+        <section className="mb-12">
+          <h2 className="mb-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Agents
+          </h2>
+          <div className="flex flex-wrap gap-2">
             {(agentsQuery.data ?? []).map((a) => {
               const enabled = (
                 workspaceAgentsQuery.data?.agentIds ?? []
@@ -287,10 +283,10 @@ export function WorkspaceDetailPage() {
                   key={a.listing.id}
                   type="button"
                   onClick={() => toggleWorkspaceAgent(a.listing.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors ${
                     enabled
-                      ? "border-blue-300 bg-blue-50 text-blue-700"
-                      : "border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50"
+                      ? "bg-foreground text-background"
+                      : "border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
                   }`}
                 >
                   <Bot className="h-3.5 w-3.5" />
@@ -299,166 +295,167 @@ export function WorkspaceDetailPage() {
               );
             })}
           </div>
-        </>
+        </section>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-neutral-900">Codocs</h2>
-        <Button onClick={openCreateDialog}>
-          <Plus className="h-4 w-4" />
-          New codoc
-        </Button>
-      </div>
-
-      {codocsQuery.isLoading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
-      ) : codocsQuery.isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load codocs: {(codocsQuery.error as Error).message}
-        </p>
-      ) : codocsQuery.data && codocsQuery.data.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {codocsQuery.data.map((codoc) => (
-            <Card key={codoc.id} className="group relative">
-              {/*
-                Card-wide link to the codoc detail page. Delete sits on
-                top with stopPropagation so clicking it doesn't navigate.
-              */}
-              <Link
-                to={`/workspace/${encodeURIComponent(workspaceId)}/codoc/${encodeURIComponent(codoc.id)}`}
-                className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-                aria-label={`Open ${codoc.title ?? codoc.path}`}
-              />
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <CardTitle className="flex items-center gap-2 truncate">
-                      <FileText className="h-4 w-4 flex-shrink-0 text-neutral-400" />
-                      <span className="truncate">
-                        {codoc.title ?? codoc.path}
-                      </span>
-                    </CardTitle>
-                    <p className="mt-1 truncate text-xs text-neutral-500">
-                      {codoc.path}
-                    </p>
-                  </div>
-                  <div className="relative z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${codoc.title ?? codoc.path}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteMutation.mutate(codoc.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-neutral-500" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-neutral-500">
-                  {relativeTime(codoc.updatedAt)}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center">
-          <p className="text-base font-medium text-neutral-900">
-            No codocs yet
-          </p>
-          <p className="max-w-sm text-sm text-neutral-500">
-            Create your first codoc to start capturing knowledge in this
-            workspace.
-          </p>
-          <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" />
-            New codoc
+      {/* Codocs */}
+      <section className="mb-12">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Codocs
+          </h2>
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus className="h-3.5 w-3.5" />
+            New
           </Button>
         </div>
-      )}
 
-      <div className="mt-10 mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-medium text-neutral-900">Chats</h2>
-        <Button
-          onClick={handleNewChat}
-          disabled={createThreadMutation.isPending}
-        >
-          <Plus className="h-4 w-4" />
-          {createThreadMutation.isPending ? "Creating…" : "New chat"}
-        </Button>
-      </div>
-
-      {threadsQuery.isLoading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
-      ) : threadsQuery.isError ? (
-        <p className="text-sm text-red-600">
-          Failed to load chats: {(threadsQuery.error as Error).message}
-        </p>
-      ) : threadsQuery.data && threadsQuery.data.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {threadsQuery.data.map((item) => (
-            <Card key={item.thread.id} className="group relative">
-              <Link
-                to={`/workspace/${encodeURIComponent(workspaceId)}/chat/${encodeURIComponent(item.thread.id)}`}
-                className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
-                aria-label={`Open ${item.thread.title ?? "Untitled"}`}
-              />
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
+        {codocsQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : codocsQuery.isError ? (
+          <p className="text-sm text-destructive">
+            Failed to load codocs: {(codocsQuery.error as Error).message}
+          </p>
+        ) : codocsQuery.data && codocsQuery.data.length > 0 ? (
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {codocsQuery.data.map((codoc) => (
+              <div key={codoc.id} className="group relative">
+                <Link
+                  to={`/workspace/${encodeURIComponent(workspaceId)}/codoc/${encodeURIComponent(codoc.id)}`}
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <FileText className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <CardTitle className="flex items-center gap-2 truncate">
-                      <MessageSquare className="h-4 w-4 flex-shrink-0 text-neutral-400" />
-                      <span className="truncate">
-                        {item.thread.title ?? "Untitled"}
-                      </span>
-                    </CardTitle>
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {codoc.title ?? codoc.path}
+                    </p>
+                    {codoc.title && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {codoc.path}
+                      </p>
+                    )}
                   </div>
-                  <div className="relative z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${item.thread.title ?? "Untitled"}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteThreadMutation.mutate(item.thread.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-neutral-500" />
-                    </Button>
-                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {relativeTime(codoc.updatedAt)}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                </Link>
+                <div className="absolute right-12 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${codoc.title ?? codoc.path}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deleteMutation.mutate(codoc.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-neutral-500">
-                  {relativeTime(item.updatedAt)}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center">
-          <p className="text-base font-medium text-neutral-900">
-            No chats yet
-          </p>
-          <p className="max-w-sm text-sm text-neutral-500">
-            Start a new chat to explore this workspace.
-          </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-12 text-center">
+            <FileText className="h-6 w-6 text-muted-foreground/50" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                No codocs yet
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Create your first codoc to start capturing knowledge.
+              </p>
+            </div>
+            <Button size="sm" onClick={openCreateDialog}>
+              <Plus className="h-3.5 w-3.5" />
+              New codoc
+            </Button>
+          </div>
+        )}
+      </section>
+
+      {/* Chats */}
+      <section className="mb-12">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Chats
+          </h2>
           <Button
+            size="sm"
             onClick={handleNewChat}
             disabled={createThreadMutation.isPending}
           >
-            <Plus className="h-4 w-4" />
-            {createThreadMutation.isPending ? "Creating…" : "New chat"}
+            <Plus className="h-3.5 w-3.5" />
+            {createThreadMutation.isPending ? "Creating…" : "New"}
           </Button>
         </div>
-      )}
+
+        {threadsQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : threadsQuery.isError ? (
+          <p className="text-sm text-destructive">
+            Failed to load chats: {(threadsQuery.error as Error).message}
+          </p>
+        ) : threadsQuery.data && threadsQuery.data.length > 0 ? (
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {threadsQuery.data.map((item) => (
+              <div key={item.thread.id} className="group relative">
+                <Link
+                  to={`/workspace/${encodeURIComponent(workspaceId)}/chat/${encodeURIComponent(item.thread.id)}`}
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <MessageSquare className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {item.thread.title ?? "Untitled"}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {relativeTime(item.updatedAt)}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                </Link>
+                <div className="absolute right-12 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${item.thread.title ?? "Untitled"}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deleteThreadMutation.mutate(item.thread.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-12 text-center">
+            <MessageSquare className="h-6 w-6 text-muted-foreground/50" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                No chats yet
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Start a new chat to explore this workspace.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleNewChat}
+              disabled={createThreadMutation.isPending}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {createThreadMutation.isPending ? "Creating…" : "New chat"}
+            </Button>
+          </div>
+        )}
+      </section>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
@@ -469,7 +466,7 @@ export function WorkspaceDetailPage() {
             <div className="space-y-2">
               <label
                 htmlFor="codoc-path"
-                className="text-sm font-medium text-neutral-700"
+                className="text-sm font-medium text-foreground"
               >
                 Path
               </label>
@@ -484,10 +481,10 @@ export function WorkspaceDetailPage() {
             <div className="space-y-2">
               <label
                 htmlFor="codoc-title"
-                className="text-sm font-medium text-neutral-700"
+                className="text-sm font-medium text-foreground"
               >
                 Title
-                <span className="ml-1 font-normal text-neutral-400">
+                <span className="ml-1 font-normal text-muted-foreground">
                   (optional)
                 </span>
               </label>
@@ -499,7 +496,7 @@ export function WorkspaceDetailPage() {
               />
             </div>
             {createMutation.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-destructive">
                 {(createMutation.error as Error).message}
               </p>
             )}

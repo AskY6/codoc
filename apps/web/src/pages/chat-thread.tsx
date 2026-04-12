@@ -21,6 +21,7 @@ import {
   ChevronRight,
   FileText,
   Loader2,
+  MessageSquare,
   Send,
   Square,
   User,
@@ -83,7 +84,7 @@ function ToolCallIndicator({ toolCalls }: { toolCalls: readonly ToolCall[] }) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <Wrench className="h-3 w-3" />
         {toolCalls.length} tool call{toolCalls.length > 1 ? "s" : ""}
@@ -98,7 +99,7 @@ function ToolCallIndicator({ toolCalls }: { toolCalls: readonly ToolCall[] }) {
           {toolCalls.map((tc, i) => (
             <li
               key={i}
-              className="rounded bg-neutral-50 px-2 py-1 font-mono text-xs text-neutral-600"
+              className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground"
             >
               {tc.name}({JSON.stringify(tc.input)})
             </li>
@@ -123,11 +124,11 @@ function MessageBubble({
   if (msg.kind === "user") {
     return (
       <li className="flex flex-col items-end">
-        <span className="mb-1 flex items-center gap-1 text-xs font-medium text-neutral-500">
+        <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
           <User className="h-3 w-3" />
           You
         </span>
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-900">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
           {msg.content}
         </div>
       </li>
@@ -137,11 +138,11 @@ function MessageBubble({
   if (msg.kind === "assistant") {
     return (
       <li className="flex flex-col items-start">
-        <span className="mb-1 flex items-center gap-1 text-xs font-medium text-blue-600">
+        <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
           <Bot className="h-3 w-3" />
           {agentName ?? msg.agentId}
         </span>
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-blue-50 px-4 py-2 text-sm text-neutral-900">
+        <div className="max-w-[80%] whitespace-pre-wrap text-sm text-foreground">
           {msg.content}
           <ToolCallIndicator toolCalls={msg.metadata.toolCalls} />
         </div>
@@ -152,7 +153,7 @@ function MessageBubble({
   // system
   return (
     <li className="flex justify-center">
-      <div className="rounded bg-neutral-50 px-3 py-1 text-xs text-neutral-500">
+      <div className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
         {msg.content}
       </div>
     </li>
@@ -172,20 +173,20 @@ function StreamingBubble({
 }) {
   return (
     <li className="flex flex-col items-start">
-      <span className="mb-1 flex items-center gap-1 text-xs font-medium text-blue-600">
+      <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
         <Bot className="h-3 w-3" />
         {agentName ?? "Assistant"}
       </span>
-      <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-blue-50 px-4 py-2 text-sm text-neutral-900">
+      <div className="max-w-[80%] whitespace-pre-wrap text-sm text-foreground">
         {text || (
-          <span className="inline-flex items-center gap-1 text-neutral-400">
+          <span className="inline-flex items-center gap-1 text-muted-foreground animate-pulse">
             <Loader2 className="h-3 w-3 animate-spin" />
             Thinking...
           </span>
         )}
         {toolCalls.length > 0 && (
           <div className="mt-2">
-            <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Wrench className="h-3 w-3" />
               {toolCalls.length} tool call{toolCalls.length > 1 ? "s" : ""}
             </span>
@@ -244,28 +245,28 @@ function AgentPicker({
         type="button"
         onClick={() => setOpen(!open)}
         disabled={pending}
-        className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <Bot className="h-3 w-3" />
         Agents ({currentAgentIds.length})
         <ChevronDown className="h-3 w-3" />
       </button>
       {open && (
-        <div className="absolute left-0 z-20 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+        <div className="absolute left-0 z-20 mt-1 w-56 rounded-lg border border-border bg-background p-1 shadow-lg">
           {allAgents.map((a) => {
             const checked = currentAgentIds.includes(a.listing.id);
             return (
               <label
                 key={a.listing.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-neutral-50"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(a.listing.id)}
-                  className="h-3.5 w-3.5 rounded border-neutral-300"
+                  className="h-3.5 w-3.5 rounded border-border"
                 />
-                <span className="flex-1 truncate">{a.listing.name}</span>
+                <span className="flex-1 truncate text-foreground">{a.listing.name}</span>
               </label>
             );
           })}
@@ -323,28 +324,28 @@ function CodocPicker({
         type="button"
         onClick={() => setOpen(!open)}
         disabled={pending}
-        className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <FileText className="h-3 w-3" />
         Codocs ({currentCodocIds.length})
         <ChevronDown className="h-3 w-3" />
       </button>
       {open && (
-        <div className="absolute left-0 z-20 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+        <div className="absolute left-0 z-20 mt-1 w-56 rounded-lg border border-border bg-background p-1 shadow-lg">
           {allCodocs.map((c) => {
             const checked = currentCodocIds.includes(c.id);
             return (
               <label
                 key={c.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-neutral-50"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
               >
                 <input
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(c.id)}
-                  className="h-3.5 w-3.5 rounded border-neutral-300"
+                  className="h-3.5 w-3.5 rounded border-border"
                 />
-                <span className="flex-1 truncate">
+                <span className="flex-1 truncate text-foreground">
                   {c.title ?? c.path}
                 </span>
               </label>
@@ -490,23 +491,23 @@ export function ChatThreadPage() {
 
   if (threadQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <p className="text-sm text-neutral-500">Loading...</p>
+      <div className="mx-auto max-w-2xl px-6 py-16">
+        <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (threadQuery.isError) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-2xl px-6 py-16">
         <Link
           to={`/workspace/${encodeURIComponent(workspaceId)}`}
-          className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to workspace
         </Link>
-        <p className="mt-6 text-sm text-red-600">
+        <p className="mt-6 text-sm text-destructive">
           Failed to load chat: {(threadQuery.error as Error).message}
         </p>
       </div>
@@ -517,20 +518,20 @@ export function ChatThreadPage() {
   if (!detail) return null;
 
   return (
-    <div className="mx-auto flex h-screen max-w-4xl flex-col px-6 py-10">
+    <div className="mx-auto flex h-screen max-w-2xl flex-col px-6 py-10">
       <Link
         to={`/workspace/${encodeURIComponent(workspaceId)}`}
-        className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to workspace
       </Link>
 
       <header className="mt-6 mb-4">
-        <h1 className="text-2xl font-medium text-neutral-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           {detail.thread.thread.title ?? "Untitled"}
         </h1>
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           Last edited {relativeTime(detail.thread.updatedAt)}
         </p>
         <div className="mt-3 flex items-center gap-2">
@@ -549,14 +550,17 @@ export function ChatThreadPage() {
 
       <div
         ref={scrollRef}
-        className="mb-4 flex-1 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4"
+        className="mb-4 flex-1 overflow-y-auto p-4"
       >
         {detail.messages.length === 0 && !optimisticUserMsg ? (
-          <p className="py-8 text-center text-sm text-neutral-500">
-            No messages yet. Say something to start the conversation.
-          </p>
+          <div className="flex h-full flex-col items-center justify-center gap-2">
+            <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              No messages yet. Say something to start the conversation.
+            </p>
+          </div>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-6">
             {detail.messages.map((item) => (
               <MessageBubble
                 key={item.message.id}
@@ -570,11 +574,11 @@ export function ChatThreadPage() {
             ))}
             {optimisticUserMsg && (
               <li className="flex flex-col items-end">
-                <span className="mb-1 flex items-center gap-1 text-xs font-medium text-neutral-500">
+                <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
                   <User className="h-3 w-3" />
                   You
                 </span>
-                <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-900">
+                <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
                   {optimisticUserMsg}
                 </div>
               </li>
@@ -590,20 +594,19 @@ export function ChatThreadPage() {
         )}
       </div>
 
-      <form onSubmit={handleSend} className="flex items-end gap-2">
+      <form onSubmit={handleSend} className="flex items-end gap-2 pb-4">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
-          rows={3}
+          rows={1}
           disabled={streaming}
-          className="flex-1 resize-none rounded-lg border border-neutral-300 bg-white p-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none disabled:opacity-50"
+          className="flex-1 resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-50"
         />
         {streaming ? (
-          <Button type="button" onClick={handleStop} variant="destructive">
+          <Button type="button" onClick={handleStop} variant="outline">
             <Square className="h-4 w-4" />
-            Stop
           </Button>
         ) : (
           <Button
@@ -611,13 +614,13 @@ export function ChatThreadPage() {
             disabled={draft.trim() === ""}
           >
             <Send className="h-4 w-4" />
-            Send
           </Button>
         )}
       </form>
       {streamError && (
-        <p className="mt-2 text-sm text-red-600">{streamError}</p>
+        <p className="pb-4 text-sm text-destructive">{streamError}</p>
       )}
     </div>
   );
 }
+
