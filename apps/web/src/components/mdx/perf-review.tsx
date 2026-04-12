@@ -1,10 +1,39 @@
-// Perf-review MDX components.
+// Perf-review MDX components — AI Elements–inspired style.
 //
-// These semantic components are provided to the MDX renderer when
-// displaying codocs tagged with "review" or "calibration". They
-// render structured perf-review data with visual hierarchy.
+// Design language:
+// - Monochrome base, color only on score values
+// - border-l-2 indent for hierarchical nesting (no heavy cards)
+// - text-sm body, text-xs metadata
+// - Badge: inline-flex rounded-md border bg-secondary px-1.5 py-0.5 text-xs
+// - Breathing room via gap-2/gap-3, not excessive mb-8
 
 import type { ReactNode } from "react";
+
+// ---------------------------------------------------------------------------
+// MaterialHeader — raw material intake banner
+// ---------------------------------------------------------------------------
+
+export function MaterialHeader({
+  subject,
+  period,
+  count,
+}: {
+  subject: string;
+  period: string;
+  count?: number;
+}) {
+  return (
+    <div className="flex items-baseline justify-between pb-3 mb-4 border-b border-border">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-base font-semibold tracking-tight">{subject}</h2>
+        <span className="text-xs text-muted-foreground">{period}</span>
+      </div>
+      {count != null && (
+        <span className="text-xs text-muted-foreground">{count} 条</span>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // ReviewHeader
@@ -19,27 +48,24 @@ export function ReviewHeader({
   period: string;
   total: number;
 }) {
-  const color =
-    total >= 4 ? "text-green-700 bg-green-50 border-green-200"
-    : total >= 3 ? "text-yellow-700 bg-yellow-50 border-yellow-200"
-    : "text-red-700 bg-red-50 border-red-200";
+  const scoreColor =
+    total >= 4 ? "text-green-600" : total >= 3 ? "text-yellow-600" : "text-red-600";
 
   return (
-    <div className="mb-8 flex items-baseline justify-between border-b border-border pb-4">
-      <div>
-        <h1 className="text-2xl font-semibold">{subject}</h1>
-        <p className="text-sm text-muted-foreground">{period}</p>
+    <div className="flex items-baseline justify-between pb-3 mb-4 border-b border-border">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-base font-semibold tracking-tight">{subject}</h2>
+        <span className="text-xs text-muted-foreground">{period}</span>
       </div>
-      <div className={`rounded-lg border px-4 py-2 text-center ${color}`}>
-        <div className="text-2xl font-bold">{total?.toFixed?.(2) ?? "—"}</div>
-        <div className="text-xs">加权总分</div>
-      </div>
+      <span className={`font-mono text-lg font-bold ${scoreColor}`}>
+        {total?.toFixed?.(2) ?? "—"}
+      </span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ScoreCard
+// ScoreCard — dimension row with left-border nested details
 // ---------------------------------------------------------------------------
 
 export function ScoreCard({
@@ -53,40 +79,37 @@ export function ScoreCard({
   score: number;
   children?: ReactNode;
 }) {
-  const pct = ((score / 5) * 100).toFixed(0);
-  const barColor =
-    score >= 4 ? "bg-green-500" : score >= 3 ? "bg-yellow-500" : "bg-red-500";
+  const scoreColor =
+    score >= 4 ? "text-green-600" : score >= 3 ? "text-yellow-600" : "text-red-600";
 
   return (
-    <div className="mb-4 rounded-lg border border-border p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium">{dimension}</h3>
-          <span className="text-xs text-muted-foreground">
-            (权重 {(weight * 100).toFixed(0)}%)
-          </span>
+    <div className="mb-3">
+      <div className="flex items-baseline gap-3">
+        <span className="text-sm font-medium">{dimension}</span>
+        <span className="text-xs text-muted-foreground">
+          {(weight * 100).toFixed(0)}%
+        </span>
+        <span className={`ml-auto font-mono text-sm font-bold ${scoreColor}`}>
+          {score}/5
+        </span>
+      </div>
+      {children && (
+        <div className="mt-1.5 border-l-2 border-muted pl-4 space-y-1">
+          {children}
         </div>
-        <span className="text-lg font-bold">{score}/5</span>
-      </div>
-      <div className="h-2 rounded-full bg-muted mb-3">
-        <div
-          className={`h-2 rounded-full ${barColor} transition-all`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="space-y-2 text-sm">{children}</div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ScoreCard children
+// Highlight / Improvement
 // ---------------------------------------------------------------------------
 
 export function Highlight({ children }: { children?: ReactNode }) {
   return (
-    <div className="flex gap-2 text-green-700">
-      <span className="shrink-0">+</span>
+    <div className="text-sm text-foreground flex gap-1.5">
+      <span className="shrink-0 text-muted-foreground">+</span>
       <span>{children}</span>
     </div>
   );
@@ -94,12 +117,16 @@ export function Highlight({ children }: { children?: ReactNode }) {
 
 export function Improvement({ children }: { children?: ReactNode }) {
   return (
-    <div className="flex gap-2 text-yellow-700">
-      <span className="shrink-0">△</span>
+    <div className="text-sm text-foreground flex gap-1.5">
+      <span className="shrink-0 text-muted-foreground">△</span>
       <span>{children}</span>
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Evidence — subtle inline citation
+// ---------------------------------------------------------------------------
 
 export function Evidence({
   strength,
@@ -110,22 +137,26 @@ export function Evidence({
   quote?: string;
   children?: ReactNode;
 }) {
-  const icon =
-    strength === "verified" ? "✅"
-    : strength === "unconfirmed" ? "⚠️"
-    : strength === "unverifiable" ? "❌"
-    : "📎";
+  const label =
+    strength === "verified" ? "已验证"
+    : strength === "unconfirmed" ? "待确认"
+    : strength === "unverifiable" ? "无法验证"
+    : null;
 
   return (
-    <div className="flex gap-2 text-muted-foreground text-xs mt-1">
-      <span className="shrink-0">{icon}</span>
+    <div className="text-xs text-muted-foreground flex items-baseline gap-1.5 pl-4">
+      {label && (
+        <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px]">
+          {label}
+        </span>
+      )}
       <span className="italic">{quote ?? children}</span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// ExtractedFact
+// ExtractedFact — two-line: badge + action, then result/scope indented
 // ---------------------------------------------------------------------------
 
 export function ExtractedFact({
@@ -133,7 +164,7 @@ export function ExtractedFact({
   result,
   scope,
   strength,
-  children,
+  children: _children,
 }: {
   action: string;
   result?: string;
@@ -141,30 +172,23 @@ export function ExtractedFact({
   strength?: string;
   children?: ReactNode;
 }) {
-  const badge =
-    strength === "verified" ? { label: "可验证", cls: "bg-green-100 text-green-700" }
-    : strength === "unconfirmed" ? { label: "需确认", cls: "bg-yellow-100 text-yellow-700" }
-    : { label: "无法验证", cls: "bg-red-100 text-red-700" };
+  const badgeLabel =
+    strength === "verified" ? "可验证"
+    : strength === "unconfirmed" ? "待确认"
+    : "无法验证";
 
   return (
-    <div className="rounded border border-border p-3 mb-2 text-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="font-medium">{action}</div>
-        <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${badge.cls}`}>
-          {badge.label}
+    <div className="py-1.5 border-b border-border/30 last:border-0">
+      <div className="flex items-center gap-2 text-sm">
+        <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+          {badgeLabel}
         </span>
+        <span className="font-medium">{action}</span>
       </div>
-      {result && (
-        <div className="text-muted-foreground mt-1">
-          量化结果: {result}
-        </div>
-      )}
-      {scope && (
-        <div className="text-muted-foreground">影响范围: {scope}</div>
-      )}
-      {children && (
-        <div className="text-xs text-muted-foreground mt-1 italic border-l-2 border-border pl-2">
-          {children}
+      {(result || scope) && (
+        <div className="mt-0.5 pl-12 flex items-baseline gap-3 text-xs text-muted-foreground">
+          {result && <span>→ {result}</span>}
+          {scope && <span>[{scope}]</span>}
         </div>
       )}
     </div>
@@ -172,47 +196,35 @@ export function ExtractedFact({
 }
 
 // ---------------------------------------------------------------------------
-// WeightedTotal
+// WeightedTotal — compact formula
 // ---------------------------------------------------------------------------
 
 export function WeightedTotal({ scores }: { scores?: Record<string, unknown> }) {
   if (!scores) return null;
   const dims = [
-    { key: "score_business", label: "业务成果", weight: 0.3 },
-    { key: "score_technical", label: "技术深度", weight: 0.25 },
-    { key: "score_impact", label: "影响力", weight: 0.2 },
-    { key: "score_growth", label: "成长性", weight: 0.15 },
-    { key: "score_ownership", label: "主动性", weight: 0.1 },
+    { key: "score_business", label: "业务", weight: 0.3 },
+    { key: "score_technical", label: "技术", weight: 0.25 },
+    { key: "score_impact", label: "影响", weight: 0.2 },
+    { key: "score_growth", label: "成长", weight: 0.15 },
+    { key: "score_ownership", label: "主动", weight: 0.1 },
   ];
 
+  const total = typeof scores.weighted_total === "number"
+    ? scores.weighted_total.toFixed(2)
+    : dims.reduce((s, d) => s + (Number(scores[d.key]) || 0) * d.weight, 0).toFixed(2);
+
   return (
-    <div className="rounded-lg border border-border p-4 mt-4">
-      <h3 className="font-medium mb-3">加权计算</h3>
-      <div className="space-y-1 text-sm">
-        {dims.map((d) => {
-          const val = Number(scores[d.key]) || 0;
-          return (
-            <div key={d.key} className="flex justify-between text-muted-foreground">
-              <span>
-                {d.label} ({(d.weight * 100).toFixed(0)}%)
-              </span>
-              <span>
-                {val} × {d.weight} = {(val * d.weight).toFixed(2)}
-              </span>
-            </div>
-          );
-        })}
-        <div className="flex justify-between font-medium text-foreground border-t border-border pt-1 mt-1">
-          <span>总分</span>
-          <span>
-            {typeof scores.weighted_total === "number"
-              ? scores.weighted_total.toFixed(2)
-              : dims
-                  .reduce((sum, d) => sum + (Number(scores[d.key]) || 0) * d.weight, 0)
-                  .toFixed(2)}
+    <div className="mt-3 pt-3 border-t border-border flex items-baseline gap-3 text-sm">
+      <span className="text-muted-foreground">加权总分</span>
+      <div className="flex items-baseline gap-1 font-mono text-xs text-muted-foreground">
+        {dims.map((d, i) => (
+          <span key={d.key}>
+            {i > 0 && " + "}
+            {Number(scores[d.key]) || 0}×{(d.weight * 100).toFixed(0)}%
           </span>
-        </div>
+        ))}
       </div>
+      <span className="ml-auto font-mono font-bold">{total}</span>
     </div>
   );
 }
@@ -223,30 +235,30 @@ export function WeightedTotal({ scores }: { scores?: Record<string, unknown> }) 
 
 export function Summary({ children }: { children?: ReactNode }) {
   return (
-    <div className="mt-4 rounded-lg bg-muted p-4 text-sm">
-      <p className="font-medium mb-1">总体评语</p>
-      <p className="text-muted-foreground">{children}</p>
+    <div className="mt-4 border-l-2 border-muted pl-4">
+      <p className="text-xs text-muted-foreground mb-1">总体评语</p>
+      <p className="text-sm">{children}</p>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Calibration components
+// Calibration
 // ---------------------------------------------------------------------------
 
 export function CalibrationMatrix({ children }: { children?: ReactNode }) {
   return (
-    <div className="mb-6 overflow-x-auto">
+    <div className="mb-4 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="border-b border-border text-left">
-            <th className="py-2 pr-4 font-medium">姓名</th>
-            <th className="py-2 pr-4 font-medium text-right">业务</th>
-            <th className="py-2 pr-4 font-medium text-right">技术</th>
-            <th className="py-2 pr-4 font-medium text-right">影响力</th>
-            <th className="py-2 pr-4 font-medium text-right">成长</th>
-            <th className="py-2 pr-4 font-medium text-right">主动性</th>
-            <th className="py-2 font-medium text-right">总分</th>
+          <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            <th className="pb-2 pr-4 font-medium">姓名</th>
+            <th className="pb-2 pr-3 font-medium text-right">业务</th>
+            <th className="pb-2 pr-3 font-medium text-right">技术</th>
+            <th className="pb-2 pr-3 font-medium text-right">影响</th>
+            <th className="pb-2 pr-3 font-medium text-right">成长</th>
+            <th className="pb-2 pr-3 font-medium text-right">主动</th>
+            <th className="pb-2 font-medium text-right">总分</th>
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -260,24 +272,30 @@ export function PersonRow({
   scores,
 }: {
   name: string;
-  scores: Record<string, number>;
+  scores: Record<string, unknown>;
 }) {
-  const cell = (v: number) => {
+  const num = (v: unknown): number =>
+    typeof v === "number" ? v : 0;
+
+  const cell = (v: unknown) => {
+    const n = num(v);
     const color =
-      v >= 4 ? "text-green-700" : v >= 3 ? "text-yellow-700" : "text-red-700";
-    return <td className={`py-2 pr-4 text-right font-mono ${color}`}>{v}</td>;
+      n >= 4 ? "text-green-600" : n >= 3 ? "text-yellow-600" : "text-red-600";
+    return <td className={`py-1.5 pr-3 text-right font-mono ${color}`}>{n}</td>;
   };
+
+  const total = num(scores.total);
 
   return (
     <tr className="border-b border-border/50">
-      <td className="py-2 pr-4 font-medium">{name}</td>
-      {cell(scores.business ?? 0)}
-      {cell(scores.technical ?? 0)}
-      {cell(scores.impact ?? 0)}
-      {cell(scores.growth ?? 0)}
-      {cell(scores.ownership ?? 0)}
-      <td className="py-2 text-right font-mono font-bold">
-        {(scores.total ?? 0).toFixed?.(2) ?? scores.total}
+      <td className="py-1.5 pr-4 font-medium">{name}</td>
+      {cell(scores.business)}
+      {cell(scores.technical)}
+      {cell(scores.impact)}
+      {cell(scores.growth)}
+      {cell(scores.ownership)}
+      <td className="py-1.5 text-right font-mono font-bold">
+        {total.toFixed(2)}
       </td>
     </tr>
   );
@@ -285,7 +303,10 @@ export function PersonRow({
 
 export function AnomalyList({ children }: { children?: ReactNode }) {
   return (
-    <div className="space-y-2 mb-6">{children}</div>
+    <div className="space-y-2 mb-4">
+      <p className="text-xs text-muted-foreground font-medium">异常检测</p>
+      {children}
+    </div>
   );
 }
 
@@ -300,23 +321,18 @@ export function Anomaly({
   persons?: string[];
   note: string;
 }) {
-  const badge =
-    type === "同分异质" ? "bg-yellow-100 text-yellow-700"
-    : type === "分布偏移" ? "bg-blue-100 text-blue-700"
-    : "bg-red-100 text-red-700";
-
   return (
-    <div className="rounded border border-border p-3 text-sm">
-      <div className="flex items-center gap-2 mb-1">
-        <span className={`rounded px-1.5 py-0.5 text-xs ${badge}`}>{type}</span>
-        {dimension && <span className="text-muted-foreground">{dimension}</span>}
-        {persons && (
-          <span className="text-muted-foreground">
-            — {persons.join(", ")}
-          </span>
-        )}
-      </div>
-      <p className="text-muted-foreground">{note}</p>
+    <div className="flex items-baseline gap-2 text-sm border-l-2 border-muted pl-4">
+      <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+        {type}
+      </span>
+      {dimension && <span className="text-muted-foreground text-xs">{dimension}</span>}
+      {persons && (
+        <span className="text-xs text-muted-foreground">
+          ({persons.join(", ")})
+        </span>
+      )}
+      <span className="text-sm">{note}</span>
     </div>
   );
 }
@@ -335,24 +351,21 @@ export function AdjustmentSuggestion({
   reason: string;
 }) {
   return (
-    <div className="rounded border border-border p-3 mb-2 text-sm">
-      <div className="flex items-center gap-2">
-        <span className="font-medium">{person}</span>
-        <span className="text-muted-foreground">{dimension}</span>
-        <span className="font-mono text-red-600">{from}</span>
-        <span className="text-muted-foreground">→</span>
-        <span className="font-mono text-green-600">{to}</span>
-      </div>
-      <p className="text-muted-foreground mt-1">{reason}</p>
+    <div className="flex items-baseline gap-2 text-sm py-1.5 border-l-2 border-muted pl-4">
+      <span className="font-medium">{person}</span>
+      <span className="text-xs text-muted-foreground">{dimension}</span>
+      <span className="font-mono text-red-600">{from}</span>
+      <span className="text-muted-foreground">→</span>
+      <span className="font-mono text-green-600">{to}</span>
+      <span className="text-muted-foreground text-xs ml-1">{reason}</span>
     </div>
   );
 }
 
 export function RankingSuggestion({ data: _data }: { data?: Record<string, unknown> }) {
   return (
-    <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-      <p className="font-medium text-foreground mb-1">排序建议</p>
-      <p>基于校准后分数的参考排序，见上方矩阵。</p>
+    <div className="border-l-2 border-muted pl-4 text-sm text-muted-foreground mt-2">
+      排序建议：基于校准后分数，见上方矩阵。
     </div>
   );
 }

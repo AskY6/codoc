@@ -16,6 +16,7 @@ export interface PlatformToolDeps {
   listCodocs(): Promise<unknown>;
   getCodoc(id: string): Promise<unknown>;
   createCodoc(input: {
+    path?: string;
     title: string;
     content: string;
   }): Promise<unknown>;
@@ -83,6 +84,11 @@ function createCodocTool(deps: PlatformToolDeps): ChatTool {
       inputSchema: {
         type: "object",
         properties: {
+          path: {
+            type: "string",
+            description:
+              "File path for the codoc, e.g. 'reviews/zhangsan-q2'. Use '/' to organize into directories. If omitted, derived from title.",
+          },
           title: {
             type: "string",
             description: "Title for the new codoc",
@@ -96,8 +102,18 @@ function createCodocTool(deps: PlatformToolDeps): ChatTool {
       },
     },
     async execute(input): Promise<Result<unknown, never>> {
-      const { title, content } = input as { title: string; content: string };
-      return ok(await deps.createCodoc({ title, content }));
+      const { path, title, content } = input as {
+        path?: string;
+        title: string;
+        content: string;
+      };
+      return ok(
+        await deps.createCodoc({
+          ...(path ? { path } : {}),
+          title,
+          content,
+        }),
+      );
     },
   };
 }

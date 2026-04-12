@@ -146,17 +146,17 @@ export async function runAgentTurn(
       const r = await codocRepo.getDetail(ctx, id as CodocId);
       return r.ok ? r.value : { error: `Codoc not found: ${id}` };
     },
-    async createCodoc(inp: { title: string; content: string }) {
+    async createCodoc(inp: { path?: string; title: string; content: string }) {
       const { createCodoc: create } = await import(
         "../codoc/create-codoc.js"
       );
-      const path = inp.title
+      const path = inp.path?.trim() || inp.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+        .replace(/^-|-$/g, "") || "untitled";
       const r = await create(ctx, {
         workspaceId,
-        path: path || "untitled",
+        path,
         title: inp.title,
       });
       if (!r.ok) return { error: `Failed to create codoc` };

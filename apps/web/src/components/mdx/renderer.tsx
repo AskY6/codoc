@@ -16,30 +16,18 @@ export interface MdxRendererProps {
 }
 
 /**
- * Pre-resolve `{data.xxx}` and `{data}` expressions in MDX source
- * with literal values from the data record. This avoids needing to
- * inject data into the MDX module scope.
+ * Inject `data` into the MDX module scope as a top-level export.
+ *
+ * Previous approach used regex to replace `{data.xxx}` patterns, but
+ * that broke on complex expressions like `scores={{ key: data.xxx }}`.
+ * Exporting `data` as a const makes all reference patterns work:
+ *   - {data.xxx}, {data}, scores={data}, data.xxx inside {{ }}
  */
-function resolveDataExpressions(
+function injectDataExport(
   source: string,
   data: Record<string, unknown>,
 ): string {
-  // Replace {data.key} with the literal value.
-  let result = source.replace(/\{data\.(\w+)\}/g, (_match, key: string) => {
-    const val = data[key];
-    if (val === undefined) return "{undefined}";
-    if (typeof val === "number") return `{${val}}`;
-    if (typeof val === "string") return `{"${val}"}`;
-    return `{${JSON.stringify(val)}}`;
-  });
-
-  // Replace {data} (whole object reference) with a JSON literal.
-  result = result.replace(/\{data\}/g, `{${JSON.stringify(data)}}`);
-
-  // Replace scores={data} or similar prop={data} patterns.
-  result = result.replace(/=\{data\}/g, `={${JSON.stringify(data)}}`);
-
-  return result;
+  return `export const data = ${JSON.stringify(data)};\n\n${source}`;
 }
 
 export function MdxRenderer({ source, data, components }: MdxRendererProps) {
@@ -52,7 +40,7 @@ export function MdxRenderer({ source, data, components }: MdxRendererProps) {
     async function compileMdx() {
       try {
         const resolvedSource = data
-          ? resolveDataExpressions(source, data)
+          ? injectDataExport(source, data)
           : source;
 
         const mod = await evaluate(resolvedSource, {

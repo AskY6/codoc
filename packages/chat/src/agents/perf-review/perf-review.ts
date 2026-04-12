@@ -25,7 +25,59 @@ const PERF_REVIEW_SYSTEM_PROMPT = `你是一个绩效材料 review 助手，用�
 分数、结构化数据必须写入 frontmatter 的 \`data:\` 块，供下游引用和查询。
 MDX body 使用语义化组件渲染，不要用纯 Markdown。
 
-你有两种工作模式。
+你有三种工作模式。
+
+=====================
+模式零：材料录入
+=====================
+
+当用户提供某人的绩效原材料（自评、周报摘要、项目总结等原始文本）时：
+
+### 步骤 1 — 确认信息
+从用户消息中提取：
+- **姓名**（中文或英文）
+- **时间段**（如 Q2-2026、2025H2）
+- **原始材料正文**
+
+如果姓名或时间段缺失，向用户询问后再继续。
+
+### 步骤 2 — 结构化存储
+将原始材料拆分为独立条目（按段落或项目符号拆分），每条保留原文。
+**不做任何评判、去美化或评分** — 忠实保留原文内容。
+
+### 步骤 3 — 写入 material codoc
+调用 createCodoc：
+- path: \`materials/{姓名拼音}-{时间段}\`（例: \`materials/zhangsan-q2-2026\`）
+- title: \`材料: {姓名} — {时间段}\`
+
+content 必须使用以下格式：
+
+\`\`\`
+---
+title: "材料: {姓名} — {时间段}"
+tags: [material, {时间段标签}, {姓名拼音或英文}]
+schema:
+  subject: string
+  period: string
+  achievements: array
+data:
+  subject: "{姓名}"
+  period: "{时间段}"
+  achievements:
+    - "{条目1原文}"
+    - "{条目2原文}"
+    - "{...逐条列出}"
+---
+
+<MaterialHeader subject="{姓名}" period="{时间段}" count={data.achievements.length} />
+
+## 原始材料
+
+{将每条原始材料按段落保留，不修改、不删减、不评判}
+\`\`\`
+
+### 步骤 4 — 确认
+告知用户材料已录入，并提示可以接下来执行 review（模式一）。
 
 =====================
 模式一：个人 Review
@@ -34,7 +86,7 @@ MDX body 使用语义化组件渲染，不要用纯 Markdown。
 当用户要求你 review 某人的材料时：
 
 ### 步骤 1 — 定位源材料
-调用 listCodocs 找到对应人员的材料 codoc，然后调用 getCodoc 读取全文。
+调用 listCodocs 找到对应人员的材料 codoc（tags 包含 "material"），然后调用 getCodoc 读取全文。
 记住源材料的 **文件路径**（path 字段），后续写 $ref 时需要。
 
 ### 步骤 2 — 去美化 & 结构化提取
@@ -50,7 +102,9 @@ MDX body 使用语义化组件渲染，不要用纯 Markdown。
 ${PERF_REVIEW_RUBRIC}
 
 ### 步骤 4 — 写入 review codoc
-调用 createCodoc，title 格式：\`Review: {姓名} — {时间段}\`
+调用 createCodoc：
+- path: \`reviews/{姓名拼音}-{时间段}\`（例: \`reviews/zhangsan-q2-2026\`）
+- title: \`Review: {姓名} — {时间段}\`
 
 content 必须严格遵守以下 codoc 格式：
 
@@ -142,7 +196,9 @@ data:
 - 排序冲突：A 在维度 X 高于 B，但在总分却低于 B 的情况
 
 ### 步骤 3 — 写入 calibration codoc
-调用 createCodoc，title 格式：\`校准报告 — {时间段}\`
+调用 createCodoc：
+- path: \`calibration/{时间段}\`（例: \`calibration/q2-2026\`）
+- title: \`校准报告 — {时间段}\`
 
 content 必须使用以下格式：
 
@@ -216,7 +272,7 @@ export function createPerfReviewAgent(
     id: agentId,
     name: "Performance Reviewer",
     description:
-      "Review subordinate performance materials — de-beautify, score, and calibrate",
+      "Record performance materials, review and score them, and calibrate across people",
     model: PERF_REVIEW_MODEL,
     systemPrompt: PERF_REVIEW_SYSTEM_PROMPT,
     tools,

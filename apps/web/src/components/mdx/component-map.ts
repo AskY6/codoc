@@ -11,6 +11,7 @@ import {
   ExtractedFact,
   Highlight,
   Improvement,
+  MaterialHeader,
   PersonRow,
   RankingSuggestion,
   ReviewHeader,
@@ -20,6 +21,7 @@ import {
 } from "./perf-review.js";
 
 export const codocComponents: Record<string, ComponentType<any>> = {
+  MaterialHeader,
   ReviewHeader,
   ScoreCard,
   Highlight,
