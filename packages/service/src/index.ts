@@ -41,9 +41,14 @@ export type {
   ThreadConflict,
   SessionConflict,
   CodocReferenced,
+  CodocParseFailure,
   ThreadCodocWorkspaceMismatch,
   StorageUnavailable,
 } from "./errors.js";
+
+// ---- parser (boundary helper) -------------------------------------------
+export { parseCodoc } from "./parser/index.js";
+export type { ParseError } from "./parser/index.js";
 
 // ---- ports (outbound dependencies) ------------------------------------
 export type { IdGenerator } from "./ports/id.js";

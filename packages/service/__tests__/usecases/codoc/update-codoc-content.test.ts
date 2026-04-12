@@ -19,25 +19,26 @@ describe("updateCodocContent", () => {
     });
     if (!created.ok) throw new Error("setup failed");
 
+    const newContent = "---\ntitle: A\n---\n# Hello world";
     const updated = await updateCodocContent(ctx, {
       id: created.value.id as CodocId,
-      content: "# Hello world",
+      content: newContent,
       expectedRev: created.value.rev,
     });
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
 
-    expect(updated.value.content).toBe("# Hello world");
+    expect(updated.value.content).toBe(newContent);
     expect(updated.value.id).toBe(created.value.id);
     expect(updated.value.path).toBe("a.codoc");
-    // Title comes from ast.meta, which must be preserved on update.
+    // Title now comes from parsed content frontmatter.
     expect(updated.value.title).toBe("A");
     expect(typeof updated.value.rev).toBe("string");
     expect(updated.value.rev).not.toBe(created.value.rev);
   });
 
-  it("preserves the ast (title + schema) on a content-only update", async () => {
+  it("re-parses the ast from updated content", async () => {
     const { ctx } = makeTestCtx();
     const ws = await createWorkspace(ctx, { name: "Alpha", description: null });
     if (!ws.ok) throw new Error("setup failed");
@@ -49,19 +50,20 @@ describe("updateCodocContent", () => {
     });
     if (!created.ok) throw new Error("setup failed");
 
+    const newContent = "---\ntitle: Updated Title\n---\nbody";
     const updated = await updateCodocContent(ctx, {
       id: created.value.id as CodocId,
-      content: "body",
+      content: newContent,
       expectedRev: created.value.rev,
     });
     if (!updated.ok) throw new Error("update failed");
 
-    // Re-read through getCodoc to confirm the ast survived the round trip.
+    // Re-read through getCodoc to confirm the ast was re-parsed.
     const refetched = await getCodoc(ctx, created.value.id as CodocId);
     expect(refetched.ok).toBe(true);
     if (!refetched.ok) return;
-    expect(refetched.value.title).toBe("Original Title");
-    expect(refetched.value.content).toBe("body");
+    expect(refetched.value.title).toBe("Updated Title");
+    expect(refetched.value.content).toBe(newContent);
   });
 
   it("returns codoc-conflict when expectedRev is stale", async () => {

@@ -15,10 +15,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@cobook/chat": "workspace:*",
     "@cobook/core": "workspace:*",
-    "@cobook/storage": "workspace:*",
     "@cobook/graph": "workspace:*",
-    "@cobook/chat": "workspace:*"
+    "@cobook/storage": "workspace:*",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@cobook/storage-memory": "workspace:*",

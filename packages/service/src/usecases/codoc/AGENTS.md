@@ -37,22 +37,19 @@ inside `repo/` — matches the workspace aggregate. Read
 `../workspace/AGENTS.md` for the rationale; this file does not
 restate it.
 
-### Empty-AST codocs on create
+### Parser integration on create and update
 
-`createCodoc` takes `{ workspaceId, path, title }` and builds a
-minimal `Codoc` with:
+`createCodoc` accepts an optional `content` field. When present,
+the content is parsed via `parseCodoc` (from `../../parser/`) into
+a full AST with meta, data fields, and MDX view. When omitted, an
+empty AST is built from the `title` alone (backward-compatible with
+title-only entries).
 
-- `content: ""`
-- `ast.meta`: the supplied `title`, `description: null`, `tags: []`,
-  `schema: new Map()`
-- `ast.data`: `new Map()`
-- `ast.view: { kind: "empty" }`
+`updateCodocContent` always re-parses the AST from the new content.
+The AST is the derived form; content is the source of truth.
 
-This keeps the parser out of the service layer. Codocs start life
-as "title-only" entries and pick up real content when the slice 3
-editor lands. Until then there is no MDX → AST step inside a
-create use case — the day that changes, the parser will live in a
-dedicated service helper, not in `createCodoc` itself.
+Parse failures surface as `codoc-parse-failure` (→ 400 at the
+transport layer).
 
 ### Workspace existence check on read
 
@@ -74,23 +71,12 @@ wire shape, and ADT exhaustiveness check are frozen now. The slice
 that ships the real thread-codoc store only needs to wire the
 storage-side referrer check — no use case signatures change.
 
-### Content-only updates preserve the ast
+### Content updates re-parse the ast
 
-`updateCodocContent` reads the current `Codoc` via
-`codocRepo.getCodoc`, spreads the new `content` onto it, and writes
-the result back. Crucially it does **not** touch `ast.meta`,
-`ast.data`, or `ast.view`. The rationale:
-
-- The editor binds to `content` (raw source), not to a parsed ast.
-- There is no MDX / YAML parser inside the service layer yet; core's
-  `codoc/AGENTS.md` explicitly forbids parsing at this layer.
-- Re-deriving the ast from `content` at update time would require a
-  parser running in the service — deferred until a later slice
-  introduces one as a dedicated helper.
-
-When the parser lands, `updateCodocContent` (or a replacement) will
-re-parse the ast inside the same use case before the write. No
-caller or wire shape has to change.
+`updateCodocContent` reads the current `Codoc`, re-parses the new
+`content` via `parseCodoc`, and writes the result with the fresh
+AST. The ast is always derived from content — there is no
+independent ast mutation path.
 
 ### `Conflict<"codoc">` recovery keeps the editor buffer
 
@@ -117,21 +103,13 @@ slice-1.5 "force refetch, require re-confirm" shape.
 
 ### Deferred: nodeState and the dag
 
-The original slice-3 plan called for exercising `@cobook/core/dag`
-from the use case and exposing `nodeState` on the DTO. Slice 3 as
-shipped does **neither**, and the reason is mechanical: until a
-parser populates `ast.data`, every codoc has zero data fields, every
-build produces an empty DAG, and every `nodeState` projection is
-uniformly empty. Wiring a no-op through the stack would be dead
-code that exercises nothing.
-
-The slice that introduces the parser is the natural place to:
-- add the dag rebuild call inside `updateCodocContent`
+The parser now populates `ast.data`, so codocs can have real data
+fields and refs. The next step is to:
+- add the dag rebuild call inside `updateCodocContent` (after the
+  parse, before the write)
 - decide where the DAG lives across requests (rebuilt per save?
   cached on the workspace repo?)
 - extend `CodocDetail` (or a sibling DTO) with a wire-safe
   `nodeState` projection
 
-This deferral is recorded here rather than in `docs/slices.md` so
-the next slice's planning session has it on hand without having to
-re-discover it.
+This is deferred to a dedicated DAG-integration slice.

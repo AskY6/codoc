@@ -123,6 +123,17 @@ export type ThreadCodocWorkspaceMismatch = {
   readonly codocWorkspaceId: WorkspaceId;
 };
 
+// ---- parse failures -----------------------------------------------------
+
+/**
+ * The codoc content could not be parsed into a valid AST. Surfaced as
+ * a 400 by transports. `message` describes the parse failure.
+ */
+export type CodocParseFailure = {
+  readonly kind: "codoc-parse-failure";
+  readonly message: string;
+};
+
 // ---- infrastructure ----------------------------------------------------
 
 /**
@@ -154,5 +165,6 @@ export type ServiceError =
   | ThreadConflict
   | SessionConflict
   | CodocReferenced
+  | CodocParseFailure
   | ThreadCodocWorkspaceMismatch
   | StorageUnavailable;

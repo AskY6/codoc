@@ -51,6 +51,10 @@ function statusFor(error: ServiceError): ContentfulStatusCode {
     case "session-not-found":
       return 404;
 
+    // 400 — bad request (parse / validation failures)
+    case "codoc-parse-failure":
+      return 400;
+
     // 409 — already exists / optimistic conflict / structural refusal
     case "workspace-already-exists":
     case "agent-already-exists":
