@@ -54,6 +54,15 @@ export interface RunAgentTurnInput {
   readonly content: string;
   /** Optional LLM client override for testing. */
   readonly llmClient?: import("@cobook/chat").LlmClient | undefined;
+  /**
+   * Optional streaming callback. Called for every `ChatEvent` emitted
+   * by the graph run, in emission order. The use case still collects
+   * events internally for persistence; this callback lets callers
+   * (e.g. an SSE route) forward them in real-time.
+   */
+  readonly onEvent?: ((event: ChatEvent) => void) | undefined;
+  /** Cooperative cancellation signal (e.g. client disconnect). */
+  readonly signal?: AbortSignal | undefined;
 }
 
 export interface RunAgentTurnOutput {
@@ -268,8 +277,11 @@ export async function runAgentTurn(
   // 10. Run the graph.
   const events: ChatEvent[] = [];
   const chatCtx: ChatRunContext = {
-    emit: (e) => events.push(e),
-    signal: AbortSignal.timeout(120_000),
+    emit: (e) => {
+      events.push(e);
+      input.onEvent?.(e);
+    },
+    signal: input.signal ?? AbortSignal.timeout(120_000),
     llm,
     mintMessageId: () => ctx.idGen.messageId(),
   };

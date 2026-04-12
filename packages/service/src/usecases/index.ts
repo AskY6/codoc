@@ -87,6 +87,12 @@ export {
 } from "./thread/append-user-message.js";
 
 export {
+  updateThread,
+  type UpdateThreadInput,
+  type UpdateThreadError,
+} from "./thread/update-thread.js";
+
+export {
   listAgents,
   type ListAgentsError,
 } from "./agent/list-agents.js";

@@ -1,13 +1,11 @@
 // /api/threads — thread-scoped actions that don't fit under the
 // workspace path. Listing + creating threads live on
 // /api/workspaces/:id/threads (see ./workspaces.ts); this router owns
-// the detail page bundle, delete, and user-message append.
-//
-// The router is parameterised over a base `ServiceCtx` so the
-// composition root in `index.ts` is the only place that picks a
-// concrete `Storage` impl.
+// the detail page bundle, delete, user-message append, agent turn
+// (SSE streaming), and stream reconnect.
 
 import type { AgentId, CodocId, ThreadId } from "@cobook/core";
+import { createAnthropicLlmClient, type LlmClient } from "@cobook/chat";
 import type { ServiceCtx } from "@cobook/service";
 import {
   appendUserMessage,
@@ -16,9 +14,19 @@ import {
   runAgentTurn,
   setThreadAgents,
   setThreadCodocs,
+  updateThread,
 } from "@cobook/service";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { respondError } from "../http/error.js";
+import {
+  closeActiveStream,
+  createActiveStream,
+  emitToStream,
+  getActiveStream,
+  hasActiveStream,
+  type SSEEvent,
+} from "../streaming.js";
 
 interface AppendMessageBody {
   readonly content?: unknown;
@@ -35,6 +43,32 @@ interface SetThreadCodocsBody {
 interface RunAgentTurnBody {
   readonly content?: unknown;
 }
+
+// ---- Auto-title generation ------------------------------------------------
+
+async function generateTitle(
+  llm: LlmClient,
+  model: string,
+  userMsg: string,
+  assistantMsg: string,
+): Promise<string> {
+  const res = await llm.createMessage({
+    model,
+    maxTokens: 40,
+    system: "",
+    messages: [
+      {
+        role: "user",
+        content: `Generate a very short title (max 6 words, no quotes) for this conversation:\n\nUser: ${userMsg}\n\nAssistant: ${assistantMsg.slice(0, 300)}`,
+      },
+    ],
+  });
+  const block = res.content[0];
+  if (block?.type === "text") return block.text.trim();
+  return "";
+}
+
+// ---- Route factory --------------------------------------------------------
 
 export function threadRoutes(baseCtx: ServiceCtx) {
   const app = new Hono();
@@ -171,11 +205,51 @@ export function threadRoutes(baseCtx: ServiceCtx) {
     return c.json({ codocIds: result.value });
   });
 
+  // GET /api/threads/:id/stream — reconnect to an in-progress SSE response
+  app.get("/:id/stream", async (c) => {
+    const threadId = c.req.param("id");
+    const active = getActiveStream(threadId);
+    if (!active || active.done) {
+      return new Response(null, { status: 204 });
+    }
+
+    return streamSSE(c, async (stream) => {
+      // 1. Replay buffered events.
+      for (const evt of active.events) {
+        await stream.writeSSE(evt);
+      }
+
+      if (active.done) return;
+
+      // 2. Listen for new events.
+      await new Promise<void>((resolve) => {
+        const listener = (evt: SSEEvent) => {
+          stream.writeSSE(evt).catch(() => {
+            active.listeners.delete(listener);
+            resolve();
+          });
+          if (evt.event === "done" || evt.event === "error") {
+            setTimeout(() => {
+              active.listeners.delete(listener);
+              resolve();
+            }, 3000);
+          }
+        };
+        active.listeners.add(listener);
+
+        c.req.raw.signal.addEventListener("abort", () => {
+          active.listeners.delete(listener);
+          resolve();
+        });
+      });
+    });
+  });
+
   // POST /api/threads/:id/turn — { content }
   //
-  // Synchronous agent turn (5a). Runs the router → specialist graph
-  // and returns the user message + assistant messages as JSON.
-  // Slice 5b will upgrade this to SSE streaming.
+  // SSE streaming agent turn (5b). Runs the router → specialist graph
+  // and streams ChatEvents as SSE. After the graph completes, persists
+  // assistant messages and optionally auto-generates a title.
   app.post("/:id/turn", async (c) => {
     const threadId = c.req.param("id") as ThreadId;
     let body: RunAgentTurnBody;
@@ -195,25 +269,153 @@ export function threadRoutes(baseCtx: ServiceCtx) {
       );
     }
 
-    const result = await runAgentTurn(baseCtx, {
-      threadId,
-      content: body.content,
-    });
-
-    if (!result.ok) {
-      const e = result.error;
-      if (e.kind === "thread-not-found") {
-        return respondError(c, e);
-      }
-      // graph-build-failed / graph-run-failed — internal server error
-      return c.json({ error: { kind: e.kind, message: e.message } }, 500);
+    // Reject concurrent streams on the same thread.
+    if (hasActiveStream(threadId)) {
+      return c.json(
+        { error: { kind: "conflict", reason: "Thread has an active response in progress" } },
+        409,
+      );
     }
 
-    return c.json({
-      userMessage: result.value.userMessage,
-      assistantMessages: result.value.assistantMessages,
+    // Check if this thread needs an auto-generated title.
+    const threadResult = await getThread(baseCtx, threadId);
+    if (!threadResult.ok) {
+      return respondError(c, threadResult.error);
+    }
+    const needsTitle = threadResult.value.thread.thread.title == null;
+    const threadRev = threadResult.value.thread.rev;
+
+    const active = createActiveStream(threadId);
+
+    return streamSSE(c, async (stream) => {
+      function emit(evt: SSEEvent) {
+        emitToStream(active, evt);
+        return stream.writeSSE(evt);
+      }
+
+      let titlePromise: Promise<void> | undefined;
+
+      try {
+        const result = await runAgentTurn(baseCtx, {
+          threadId,
+          content: body.content as string,
+          signal: c.req.raw.signal,
+          onEvent: (event) => {
+            // Map ChatEvent to SSE events. Fire-and-forget write;
+            // errors are swallowed — the client may have disconnected.
+            const sseEvent = chatEventToSSE(event);
+            if (sseEvent) {
+              emit(sseEvent).catch(() => {});
+            }
+          },
+        });
+
+        if (!result.ok) {
+          await emit({
+            event: "error",
+            data: JSON.stringify({ message: result.error.message ?? result.error.kind }),
+          });
+        } else {
+          // Emit done with all assistant messages.
+          await emit({
+            event: "done",
+            data: JSON.stringify({
+              userMessage: result.value.userMessage,
+              assistantMessages: result.value.assistantMessages,
+            }),
+          });
+
+          // Auto-title on first exchange.
+          if (needsTitle && result.value.assistantMessages.length > 0) {
+            const assistantText = result.value.assistantMessages
+              .map((m) => m.message.kind === "assistant" ? m.message.content : "")
+              .join("\n");
+
+            titlePromise = (async () => {
+              try {
+                const llm = createAnthropicLlmClient({
+                  apiKey: baseCtx.llmConfig.apiKey,
+                  baseURL: baseCtx.llmConfig.baseURL,
+                });
+                const model = baseCtx.llmConfig.routerModel ?? "claude-haiku-4-5-20251001";
+                const title = await generateTitle(
+                  llm,
+                  model,
+                  body.content as string,
+                  assistantText,
+                );
+                if (title) {
+                  const updateResult = await updateThread(baseCtx, {
+                    id: threadId,
+                    title,
+                    expectedRev: threadRev,
+                  });
+                  if (updateResult.ok) {
+                    await emit({
+                      event: "title-update",
+                      data: JSON.stringify({ title }),
+                    });
+                  }
+                }
+              } catch {
+                // Fire-and-forget — title generation failure is non-critical.
+              }
+            })();
+          }
+        }
+      } catch (error) {
+        await emit({
+          event: "error",
+          data: JSON.stringify({ message: String(error) }),
+        });
+      }
+
+      // Wait for title generation before closing the stream.
+      if (titlePromise) await titlePromise;
+      closeActiveStream(threadId, active);
     });
   });
 
   return app;
+}
+
+// ---- Helpers --------------------------------------------------------------
+
+function chatEventToSSE(
+  event: import("@cobook/chat").ChatEvent,
+): SSEEvent | null {
+  switch (event.kind) {
+    case "token":
+      return {
+        event: "token",
+        data: JSON.stringify({ delta: event.delta, nodeId: event.nodeId }),
+      };
+    case "toolCall":
+      return {
+        event: "toolCall",
+        data: JSON.stringify({
+          tool: event.tool,
+          input: event.input,
+          nodeId: event.nodeId,
+        }),
+      };
+    case "toolResult":
+      return {
+        event: "toolResult",
+        data: JSON.stringify({
+          tool: event.tool,
+          output: event.output,
+          nodeId: event.nodeId,
+        }),
+      };
+    case "agentHandoff":
+      return {
+        event: "agentHandoff",
+        data: JSON.stringify({ from: event.from, to: event.to }),
+      };
+    case "done":
+      // The "done" ChatEvent is per-agent-node; the SSE "done" is
+      // emitted separately with full persisted messages. Skip here.
+      return null;
+  }
 }

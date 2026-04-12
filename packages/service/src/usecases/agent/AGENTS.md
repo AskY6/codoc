@@ -15,7 +15,7 @@ Must never import from: `../workspace/`, `../codoc/`, `../thread/` (sibling aggr
 | `set-workspace-agents.ts` | `setWorkspaceAgents` — reconcile desired vs. current agent set for a workspace. Transactional diff (read → link new → unlink removed). |
 | `set-thread-agents.ts` | `setThreadAgents` — same diff pattern, scoped to a thread. |
 | `set-thread-codocs.ts` | `setThreadCodocs` — same diff pattern for codoc links; error includes `ThreadCodocWorkspaceMismatch`. |
-| `run-agent-turn.ts` | `runAgentTurn` — the composite use case that drives a full agent turn: read thread → persist user msg → build graph (router + specialists) → run turn via `@cobook/chat` → persist assistant msgs. Accepts optional `llmClient` for test DI. |
+| `run-agent-turn.ts` | `runAgentTurn` — the composite use case that drives a full agent turn: read thread → persist user msg → build graph (router + specialists) → run turn via `@cobook/chat` → persist assistant msgs. Accepts optional `llmClient` for test DI and optional `onEvent` callback for SSE streaming. |
 
 ## `runAgentTurn` specifics
 
@@ -26,3 +26,5 @@ This is the largest use case in the codebase. Key design decisions:
 3. **Dynamic imports for codoc use cases.** `createCodoc`, `updateCodocContent`, and `deleteCodoc` are dynamically imported inside the tool deps to avoid circular dependency between agent and codoc use case barrels.
 4. **Optional `llmClient` on input.** Tests inject a mock `LlmClient` to exercise the full flow without hitting the Anthropic API. Production uses `createAnthropicLlmClient` from `@cobook/chat`.
 5. **No transaction wrapping the LLM call.** The LLM round-trip can take seconds; holding a DB transaction across it would be problematic. Reads and writes are sequential but not atomic. For in-memory storage this is fine; a future slice may add compensating logic.
+6. **Streaming via `onEvent` callback.** The `onEvent` optional input lets callers (e.g. the SSE route) receive `ChatEvent`s in real-time as the graph runs. The use case still collects events internally for persistence (`eventsToAssistantMessages`); `onEvent` is an additive side-channel, not a replacement.
+7. **Caller-controlled abort.** The optional `signal` input replaces the hardcoded 120s timeout when present, enabling SSE routes to wire `c.req.raw.signal` for client-disconnect cancellation.

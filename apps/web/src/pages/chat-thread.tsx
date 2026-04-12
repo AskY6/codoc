@@ -1,17 +1,19 @@
 // Chat thread page.
 //
-// Slice 5a surface: full chat with agent turns. Header shows thread
-// title, agent picker, and codoc context picker. Transcript renders
-// both user and assistant messages. Send button calls runAgentTurn
-// (synchronous in 5a; slice 5b will upgrade to SSE streaming).
+// Slice 5b surface: full chat with SSE-streamed agent turns. Header
+// shows thread title, agent picker, and codoc context picker. Transcript
+// renders both user and assistant messages with real-time token
+// streaming from the SSE transport.
 //
 // Data flow:
 //   1. Single `getThread` query hydrates the page (page-bundle DTO).
-//   2. `runAgentTurn` mutation invalidates the thread detail query on
-//      success; react-query refetches to pick up new messages.
+//   2. Send triggers `runAgentTurnStream` which opens an SSE connection.
+//      Tokens accumulate in local state as an optimistic assistant
+//      message; on `done` the thread detail query is invalidated and
+//      the canonical messages from the server replace the optimistic one.
 //   3. Agent/codoc pickers call set* endpoints and invalidate.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bot,
@@ -20,16 +22,24 @@ import {
   FileText,
   Loader2,
   Send,
+  Square,
   User,
   Wrench,
 } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Link, useParams } from "react-router-dom";
 import { listAgents } from "../api/agents";
 import { listCodocsByWorkspace } from "../api/codocs";
+import { runAgentTurnStream, type StreamControl } from "../api/sse";
 import {
   getThread,
-  runAgentTurn,
   setThreadAgents,
   setThreadCodocs,
 } from "../api/threads";
@@ -38,6 +48,7 @@ import type {
   AgentListItem,
   ChatMessage,
   CodocListItem,
+  SSEToolCallEvent,
   ThreadMessage,
   ToolCall,
 } from "../types";
@@ -148,6 +159,43 @@ function MessageBubble({
   );
 }
 
+// ---- Streaming assistant bubble (optimistic, in-progress) ---------------
+
+function StreamingBubble({
+  text,
+  toolCalls,
+  agentName,
+}: {
+  text: string;
+  toolCalls: readonly SSEToolCallEvent[];
+  agentName: string | null;
+}) {
+  return (
+    <li className="flex flex-col items-start">
+      <span className="mb-1 flex items-center gap-1 text-xs font-medium text-blue-600">
+        <Bot className="h-3 w-3" />
+        {agentName ?? "Assistant"}
+      </span>
+      <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-blue-50 px-4 py-2 text-sm text-neutral-900">
+        {text || (
+          <span className="inline-flex items-center gap-1 text-neutral-400">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Thinking...
+          </span>
+        )}
+        {toolCalls.length > 0 && (
+          <div className="mt-2">
+            <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
+              <Wrench className="h-3 w-3" />
+              {toolCalls.length} tool call{toolCalls.length > 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
 // ---- Agent picker (multi-select toggle) ---------------------------------
 
 function AgentPicker({
@@ -162,6 +210,7 @@ function AgentPicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -174,13 +223,6 @@ function AgentPicker({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const mutation = useMutation({
-    mutationFn: setThreadAgents,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
-    },
-  });
-
   function toggle(agentId: string) {
     const current = new Set(currentAgentIds);
     if (current.has(agentId)) {
@@ -188,7 +230,10 @@ function AgentPicker({
     } else {
       current.add(agentId);
     }
-    mutation.mutate({ threadId, agentIds: [...current] });
+    setPending(true);
+    setThreadAgents({ threadId, agentIds: [...current] })
+      .then(() => queryClient.invalidateQueries({ queryKey: threadKey(threadId) }))
+      .finally(() => setPending(false));
   }
 
   if (allAgents.length === 0) return null;
@@ -198,6 +243,7 @@ function AgentPicker({
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        disabled={pending}
         className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
       >
         <Bot className="h-3 w-3" />
@@ -243,6 +289,7 @@ function CodocPicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -255,13 +302,6 @@ function CodocPicker({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
-  const mutation = useMutation({
-    mutationFn: setThreadCodocs,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
-    },
-  });
-
   function toggle(codocId: string) {
     const current = new Set(currentCodocIds);
     if (current.has(codocId)) {
@@ -269,7 +309,10 @@ function CodocPicker({
     } else {
       current.add(codocId);
     }
-    mutation.mutate({ threadId, codocIds: [...current] });
+    setPending(true);
+    setThreadCodocs({ threadId, codocIds: [...current] })
+      .then(() => queryClient.invalidateQueries({ queryKey: threadKey(threadId) }))
+      .finally(() => setPending(false));
   }
 
   if (allCodocs.length === 0) return null;
@@ -279,6 +322,7 @@ function CodocPicker({
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        disabled={pending}
         className="inline-flex items-center gap-1 rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
       >
         <FileText className="h-3 w-3" />
@@ -342,19 +386,86 @@ export function ChatThreadPage() {
 
   const [draft, setDraft] = useState("");
 
-  const sendMutation = useMutation({
-    mutationFn: runAgentTurn,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
-      setDraft("");
-    },
-  });
+  // ---- Streaming state --------------------------------------------------
 
-  async function handleSend(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = draft.trim();
-    if (!trimmed) return;
-    await sendMutation.mutateAsync({ threadId, content: trimmed });
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState("");
+  const [streamToolCalls, setStreamToolCalls] = useState<SSEToolCallEvent[]>([]);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [optimisticUserMsg, setOptimisticUserMsg] = useState<string | null>(null);
+  const streamRef = useRef<StreamControl | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom on new content.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [
+    threadQuery.data?.messages.length,
+    streamText,
+    streaming,
+    optimisticUserMsg,
+  ]);
+
+  const handleSend = useCallback(
+    (e: FormEvent) => {
+      e.preventDefault();
+      const trimmed = draft.trim();
+      if (!trimmed || streaming) return;
+
+      setDraft("");
+      setStreaming(true);
+      setStreamText("");
+      setStreamToolCalls([]);
+      setStreamError(null);
+      setOptimisticUserMsg(trimmed);
+
+      streamRef.current = runAgentTurnStream(threadId, trimmed, {
+        onToken: (event) => {
+          setStreamText((prev) => prev + event.delta);
+        },
+        onToolCall: (event) => {
+          setStreamToolCalls((prev) => [...prev, event]);
+        },
+        onDone: () => {
+          setStreaming(false);
+          setStreamText("");
+          setStreamToolCalls([]);
+          setOptimisticUserMsg(null);
+          streamRef.current = null;
+          void queryClient.invalidateQueries({
+            queryKey: threadKey(threadId),
+          });
+        },
+        onTitleUpdate: () => {
+          void queryClient.invalidateQueries({
+            queryKey: threadKey(threadId),
+          });
+        },
+        onError: (event) => {
+          setStreamError(event.message);
+          setStreaming(false);
+          setOptimisticUserMsg(null);
+          streamRef.current = null;
+          // Still invalidate to pick up any persisted messages.
+          void queryClient.invalidateQueries({
+            queryKey: threadKey(threadId),
+          });
+        },
+      });
+    },
+    [draft, streaming, threadId, queryClient],
+  );
+
+  function handleStop() {
+    streamRef.current?.abort();
+    setStreaming(false);
+    setStreamText("");
+    setStreamToolCalls([]);
+    setOptimisticUserMsg(null);
+    streamRef.current = null;
+    void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -364,7 +475,14 @@ export function ChatThreadPage() {
     }
   }
 
-  // Build agent id → name map for display.
+  // Clean up stream on unmount.
+  useEffect(() => {
+    return () => {
+      streamRef.current?.abort();
+    };
+  }, []);
+
+  // Build agent id -> name map for display.
   const agentNameMap = new Map<string, string>();
   for (const a of agentsQuery.data ?? []) {
     agentNameMap.set(a.listing.id, a.listing.name);
@@ -429,8 +547,11 @@ export function ChatThreadPage() {
         </div>
       </header>
 
-      <div className="mb-4 flex-1 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
-        {detail.messages.length === 0 ? (
+      <div
+        ref={scrollRef}
+        className="mb-4 flex-1 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4"
+      >
+        {detail.messages.length === 0 && !optimisticUserMsg ? (
           <p className="py-8 text-center text-sm text-neutral-500">
             No messages yet. Say something to start the conversation.
           </p>
@@ -447,6 +568,24 @@ export function ChatThreadPage() {
                 }
               />
             ))}
+            {optimisticUserMsg && (
+              <li className="flex flex-col items-end">
+                <span className="mb-1 flex items-center gap-1 text-xs font-medium text-neutral-500">
+                  <User className="h-3 w-3" />
+                  You
+                </span>
+                <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-neutral-100 px-4 py-2 text-sm text-neutral-900">
+                  {optimisticUserMsg}
+                </div>
+              </li>
+            )}
+            {streaming && (
+              <StreamingBubble
+                text={streamText}
+                toolCalls={streamToolCalls}
+                agentName={null}
+              />
+            )}
           </ul>
         )}
       </div>
@@ -458,24 +597,26 @@ export function ChatThreadPage() {
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           rows={3}
-          className="flex-1 resize-none rounded-lg border border-neutral-300 bg-white p-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
+          disabled={streaming}
+          className="flex-1 resize-none rounded-lg border border-neutral-300 bg-white p-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none disabled:opacity-50"
         />
-        <Button
-          type="submit"
-          disabled={draft.trim() === "" || sendMutation.isPending}
-        >
-          {sendMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+        {streaming ? (
+          <Button type="button" onClick={handleStop} variant="destructive">
+            <Square className="h-4 w-4" />
+            Stop
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            disabled={draft.trim() === ""}
+          >
             <Send className="h-4 w-4" />
-          )}
-          {sendMutation.isPending ? "Thinking..." : "Send"}
-        </Button>
+            Send
+          </Button>
+        )}
       </form>
-      {sendMutation.isError && (
-        <p className="mt-2 text-sm text-red-600">
-          {(sendMutation.error as Error).message}
-        </p>
+      {streamError && (
+        <p className="mt-2 text-sm text-red-600">{streamError}</p>
       )}
     </div>
   );

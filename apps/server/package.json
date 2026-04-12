@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@cobook/chat": "workspace:*",
     "@cobook/core": "workspace:*",
     "@cobook/service": "workspace:*",
     "@cobook/storage": "workspace:*",

@@ -16,6 +16,7 @@ whose envelope / rev / error conventions the thread aggregate copies.
 | `delete-thread.ts` | Delete a thread by id. Storage wipes the message log atomically as part of the same call. |
 | `get-thread.ts` | Return a "page bundle" — the thread envelope plus its full message log — in one use case. |
 | `append-user-message.ts` | Append a `kind: "user"` message to a thread. Use case mints the `MessageId`; storage assigns `seq` atomically. |
+| `update-thread.ts` | Update a thread's mutable fields (title) with optimistic concurrency. Used by SSE auto-title and future manual renames. |
 
 ## Locked-in conventions
 
@@ -102,18 +103,6 @@ runtime session replay).
 
 ## Deferred
 
-- **`updateThread` use case.** `ThreadStore.update` is shipped in
-  the full in-memory impl (the port requires it), but slice 4 has
-  no UI path that renames a thread. The slice that adds inline
-  rename to the chat page (slice 5 or later) will add the use case
-  + the `PATCH /api/threads/:id` route. It should follow the
-  slice-1.5 short-field pattern: force refetch on conflict, require
-  re-save. No long-form recovery.
-- **Auto-title from first message.** Slice 4 creates threads with
-  `title: null`; the UI shows "Untitled". A later slice may
-  auto-populate the title from the first user message, but that
-  belongs on append, not on create, so that an empty thread that's
-  never posted to stays "Untitled".
 - **Pagination on `listMessages`.** `ListMessagesOptions` already
   defines `afterSeq` and `limit` on the port, and the in-memory
   store honours them, but no use case exposes them yet. The slice

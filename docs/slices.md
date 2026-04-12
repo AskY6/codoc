@@ -325,84 +325,72 @@ slices 5–6).
 
 ---
 
-## Slice 5 — agent activation + agent turn (the big one)
-
-**Page:** the slice-4 thread page gains a real chat surface — agent
-picker, codoc context picker, and a **streaming agent turn** when the
-user sends a message.
+## Slice 5 — agent activation + agent turn — DONE
 
 **Why this slice:** this is where the rewrite earns its keep. It
 exercises the entire runtime stack: `@cobook/graph` (agents,
 runtime, tool execution), `@cobook/chat` (chat-specific
-specialisation), the SSE transport, all four chat-related stores
-(`AgentStore`, `WorkspaceAgentStore`, `ThreadAgentStore`,
-`ThreadCodocStore`), session state on `AgentSessionStore`, and the
-"use cases are the only place that imports `@cobook/graph` /
-`@cobook/chat`" rule from `usecases/AGENTS.md`. If anything in the
-service-layer ports / framework-contract design is wrong, this is
-the slice that finds out.
+specialisation), the SSE transport, all five remaining stores, and
+the "use cases are the only place that imports `@cobook/graph` /
+`@cobook/chat`" rule.
+
+Split into **5a** (static activation + synchronous turn) and **5b**
+(SSE streaming + reconnect + auto-title). Full plan in
+`docs/slice-5-plan.md`.
 
 **Stores replaced:** `AgentStore`, `WorkspaceAgentStore`,
-`ThreadAgentStore`, `ThreadCodocStore`, `AgentSessionStore`. After
-this slice, the only stub left is whatever `@cobook/storage-memory`
-hasn't needed yet (probably nothing).
+`ThreadAgentStore`, `ThreadCodocStore`, `AgentSessionStore`. No stubs
+remain after this slice.
 
-**New use cases (rough — refine in slice planning):**
-- `listAgents` (global agent listings)
-- `setWorkspaceAgents` (idempotent link/unlink)
-- `setThreadAgents` (idempotent link/unlink)
-- `setThreadCodocs` (idempotent link/unlink with workspace mismatch
-  check from the store)
-- `runAgentTurn` — composite use case. Opens a single transaction,
-  reads thread / context / agents, hands off to `@cobook/chat`'s
-  runtime, persists the assistant message + any session state
-  updates, emits SSE events to the caller. **First slice to use
-  `withTransaction` non-trivially.**
-- adds an `agentCount` badge on the slice-1 list page (mirrors the
-  slice-2 `codocCount` upgrade)
+**Use cases:**
+- `listAgents`, `listWorkspaceAgents`
+- `setWorkspaceAgents`, `setThreadAgents`, `setThreadCodocs`
+  (idempotent diff reconciliation)
+- `runAgentTurn` — composite use case: reads thread + agents + codocs,
+  persists user msg, builds graph (router + specialists), runs turn
+  via `@cobook/chat`, persists assistant msgs. Optional `onEvent`
+  callback for SSE streaming; optional `signal` for abort.
+- `updateThread` — update thread title with optimistic concurrency
+  (used by auto-title)
 
-**New conventions to lock in:**
-- how the SSE transport wraps the runtime's event stream (event
-  envelope shape, error events, abort handling)
-- how the runtime gets a `ServiceCtx`-shaped scope without
-  `@cobook/graph` knowing what `ServiceCtx` is (the framework
-  contract from `memory/project_framework_contracts_stay_generic.md`
-  meets reality here)
-- how aborted streams are reflected in `AgentSessionStore` so
-  reconnection works
-- how `Conflict<"session">` is surfaced (probably retry-with-fresh-rev
-  inside the use case; agent turns are not user-facing optimistic
-  concurrency)
-
-**New routes:**
+**Routes:**
 - `GET /api/agents`
 - `PUT /api/workspaces/:id/agents`
 - `PUT /api/threads/:id/agents`
 - `PUT /api/threads/:id/codocs`
-- `POST /api/threads/:id/messages` *(now SSE; supersedes the
-  synchronous variant from slice 4 — slice 4's route either becomes
-  the fallback or goes away, decided in this slice)*
-- `GET /api/threads/:id/stream` *(reconnect)*
+- `POST /api/threads/:id/turn` — SSE streaming agent turn
+- `GET /api/threads/:id/stream` — reconnect to in-progress stream
 
-**Legacy reference:** `legacy/apps/web/src/pages/chat-page.tsx`,
-`legacy/apps/web/src/components/chat/*`,
-`legacy/apps/web/src/api/chat.ts`. AI Elements arrives in the UI
-**here** (per `memory/project_ai_elements_adoption.md`) — slice 5 is
-where the chat surface is built and is the right time to take the
-dependency.
+**Conventions locked in:**
+- **SSE event envelope:** `event: token|toolCall|toolResult|done|title-update|error`,
+  `data: JSON`. At most one active stream per thread; concurrent
+  requests rejected with 409. Active stream tracking with event
+  buffering for reconnect.
+- **`onEvent` streaming callback on use cases.** The use case both
+  collects events internally (for persistence) and forwards to the
+  optional callback in real-time. Callers (SSE route) wire the
+  callback; the use case stays transport-agnostic.
+- **Auto-title.** After first assistant response on a title-less
+  thread, Haiku generates a short title (max 6 words). Fire-and-forget
+  — failure is silently ignored. Emits `title-update` SSE event.
+- **`@cobook/chat` dependency on server.** The server imports from
+  `@cobook/chat` for `createAnthropicLlmClient` (used in auto-title
+  route) and the `ChatEvent` type (for SSE mapping). This is the only
+  place besides `@cobook/service` that touches `@cobook/chat`.
+- **Web SSE client uses `fetch` + `ReadableStream`**, not `EventSource`
+  (because the turn endpoint is POST). Token accumulation in local
+  React state for optimistic streaming bubble; on `done`, invalidate
+  the thread query to swap in canonical server messages. Stop button
+  aborts the fetch controller.
+- **CodocStore.delete referrer check.** Already wired via
+  `threadCodocs.__threadIdsForCodoc` in `createMemoryStorage`. Codoc
+  delete returns `codoc-referenced` when threads still pin it.
 
-**Verification:** `/verify-fix` — activate agents in a workspace,
-attach codoc context to a thread, send a message, watch the streaming
-response, abort mid-stream, reconnect, send another. Run a multi-turn
-conversation that exercises tool calls if any agent in the seed
-catalog has them.
+**Legacy reference:** `legacy/apps/server/src/routes/chat-routes.ts`
+(SSE streaming, active stream tracking, auto-title).
 
-This slice is intentionally large because the cost of splitting it is
-mocking the runtime against a fake transport, which is the exact
-thing vertical slicing exists to avoid. If it turns out unmanageable
-during planning, the split will be **(5a) static activation + manual
-synchronous turn** and **(5b) streaming + reconnect**, not a
-horizontal split.
+**Verification:** typecheck + build clean across all packages. Browser
+verification for streaming UI, stop button, auto-title, reconnect.
 
 ---
 

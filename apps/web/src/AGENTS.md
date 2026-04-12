@@ -23,9 +23,14 @@ src/
   types.ts                wire-level DTO mirrors
   api/
     client.ts             apiFetch + ApiError envelope parsing
+    sse.ts                SSE streaming client (fetch + ReadableStream parser)
+                          for agent turns and reconnect
     workspaces.ts         listWorkspaces / getWorkspace / create / update / delete
     codocs.ts             listCodocsByWorkspace / createCodoc / getCodoc /
                           updateCodocContent / deleteCodoc
+    threads.ts            listThreadsByWorkspace / createThread / getThread /
+                          deleteThread / setThreadAgents / setThreadCodocs
+    agents.ts             listAgents
   pages/
     workspace-list.tsx    / — cards link to the detail route
     workspace-detail.tsx  /workspace/:id — header + codoc list with create / delete;
@@ -57,6 +62,7 @@ rationale; the client half lives in `pages/codoc-detail.tsx`.
 
 - **`@tanstack/react-query` is the data layer.** No `useEffect + fetch + useState`. Mutations always invalidate the related query keys on success.
 - **API errors throw.** `apiFetch` parses `{ error: { kind, ... } }` and throws `ApiError`. React-query catches the throw — page code never inspects HTTP statuses.
-- **No design system yet.** Slice 1 hand-rolls four primitives. AI Elements arrives when slice 2/3 introduces chat UI.
+- **No design system yet.** Slice 1 hand-rolls four primitives. AI Elements arrives when a later slice introduces richer components.
+- **SSE streaming for agent turns.** `api/sse.ts` provides `runAgentTurnStream` (POST-based, not EventSource) and `reconnectStream` (GET-based). The `ChatThreadPage` accumulates tokens in local state for an optimistic streaming bubble; on `done` it invalidates the thread query to pick up the canonical server messages. A "Stop" button aborts the fetch controller.
 - **No CORS, no env config.** Vite proxies `/api → http://localhost:3100`. `fetch("/api/workspaces")` works because dev is same-origin.
 - **Tailwind 4 via `@tailwindcss/vite`.** No `tailwind.config.ts` — v4 uses CSS-driven config in `index.css`.

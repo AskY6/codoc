@@ -20,6 +20,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@cobook/chat':
+        specifier: workspace:*
+        version: link:../../packages/chat
       '@cobook/core':
         specifier: workspace:*
         version: link:../../packages/core

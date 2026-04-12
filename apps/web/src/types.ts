@@ -126,9 +126,36 @@ export interface AgentListItem {
 }
 
 // Response from POST /api/threads/:id/turn (synchronous agent turn).
+// Also used as the payload of the SSE "done" event.
 export interface RunAgentTurnResponse {
   readonly userMessage: ThreadMessage;
   readonly assistantMessages: readonly ThreadMessage[];
+}
+
+// SSE event payloads streamed from POST /api/threads/:id/turn.
+export interface SSETokenEvent {
+  readonly delta: string;
+  readonly nodeId: string;
+}
+
+export interface SSEToolCallEvent {
+  readonly tool: string;
+  readonly input: Readonly<Record<string, unknown>>;
+  readonly nodeId: string;
+}
+
+export interface SSEToolResultEvent {
+  readonly tool: string;
+  readonly output: unknown;
+  readonly nodeId: string;
+}
+
+export interface SSETitleUpdateEvent {
+  readonly title: string;
+}
+
+export interface SSEErrorEvent {
+  readonly message: string;
 }
 
 export interface ServiceErrorBody {

@@ -18,6 +18,7 @@ import type { ServiceCtx } from "../context.js";
 import type {
   MessageAlreadyExists,
   ThreadAlreadyExists,
+  ThreadConflict,
   ThreadNotFound,
   WorkspaceNotFound,
 } from "../errors.js";
@@ -94,6 +95,23 @@ export const threadRepo = {
     const r = await ctx.storage.threads.delete(ctx.storageCtx, id);
     if (!r.ok) return err({ kind: "thread-not-found", id });
     return ok(undefined);
+  },
+
+  async update(
+    ctx: ServiceCtx,
+    input: { thread: ChatThread; expectedRev: string },
+  ): Promise<Result<ThreadListItem, ThreadNotFound | ThreadConflict>> {
+    const r = await ctx.storage.threads.update(ctx.storageCtx, {
+      thread: input.thread,
+      expectedRev: input.expectedRev as import("@cobook/storage").Rev,
+    });
+    if (!r.ok) {
+      if (r.error.kind === "thread-not-found") {
+        return err({ kind: "thread-not-found", id: input.thread.id });
+      }
+      return err({ kind: "thread-conflict" });
+    }
+    return ok(toListItem(r.value));
   },
 
   async appendMessage(
