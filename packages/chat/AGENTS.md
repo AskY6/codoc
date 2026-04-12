@@ -12,7 +12,9 @@ This is the **root node** of a tree-based context layout. Each subtree has its o
 |---|---|---|
 | [`src/state/AGENTS.md`](src/state/AGENTS.md) | `ChatState`, `ChatEvent`, `chatReducers`, and the `ChatTool` / `ChatAgent` / `ChatToolRegistry` / `ChatAgentRegistry` / `ChatGraph` aliases | `@cobook/graph`, `@cobook/core` |
 | [`src/adapter/AGENTS.md`](src/adapter/AGENTS.md) | Translation between `ChatMessage[]` in core and `ChatState` / `ChatEvent` flowing through the graph | `state`, `@cobook/graph`, `@cobook/core` |
-| [`src/runner/AGENTS.md`](src/runner/AGENTS.md) | Chat turn runner — seeds initial state, invokes `runGraph`, collects events, returns the outcome | `adapter`, `state`, `@cobook/graph`, `@cobook/core` |
+| [`src/runner/AGENTS.md`](src/runner/AGENTS.md) | Chat turn runner + `LlmClient` interface + Anthropic adapter | `adapter`, `state`, `@cobook/graph`, `@cobook/core` |
+| [`src/tools/AGENTS.md`](src/tools/AGENTS.md) | Concrete `ChatTool` implementations: 6 platform tools + 2 RSS tools | `state`, `@cobook/core`, `@cobook/graph` |
+| [`src/agents/AGENTS.md`](src/agents/AGENTS.md) | Concrete `ChatAgent` implementations: router + general + RSS specialists + shared tool-call loop | `state`, `runner`, `tools`, `@cobook/core`, `@cobook/graph` |
 
 ## Cross-module invariants
 
@@ -21,11 +23,11 @@ These apply to **every** subtree. They are not repeated inside subtree docs.
 ### 1. Import direction is strictly inward
 
 ```
-runner → adapter → state → @cobook/graph
-                        \→ @cobook/core
+agents → tools → runner → adapter → state → @cobook/graph
+                                          \→ @cobook/core
 ```
 
-`state/` is the **only** subtree allowed to touch `@cobook/graph`'s generic `Tool` / `Agent` types directly — everyone else reads `ChatTool` / `ChatAgent` / `ChatGraph` through `state/`'s aliases so the concrete `<S, E>` binding is stated exactly once in this package.
+`state/` is the **only** subtree allowed to touch `@cobook/graph`'s generic `Tool` / `Agent` types directly — everyone else reads `ChatTool` / `ChatAgent` / `ChatGraph` through `state/`'s aliases so the concrete `<S, E>` binding is stated exactly once in this package. `agents/` depends on `runner/` (for `ChatRunContext`) and `tools/` (for tool instances); no reverse imports.
 
 ### 2. This is the chat boundary
 
@@ -47,11 +49,10 @@ Same rule as `@cobook/core` and `@cobook/graph`. Structured failures (bad state 
 
 `src/index.ts` re-exports the types needed to consume the runtime from outside (a service layer, tests, a CLI). Internal helpers stay unexported.
 
-## Current status: skeleton only
+## Current status: slice 5a complete
 
-Function bodies are `declare`-only. The file layout, module index, and `AGENTS.md` contracts are the meaningful output at this stage. See session notes for the planned fill-in order.
+All five subtrees are implemented. The state/adapter/runner layer was filled in Session A (slice 5a). The tools/agents layer and registry were added in Session B. The chat runtime is fully functional for synchronous (non-streaming) agent turns.
 
-## Planned next-session work
+## `registry.ts` (root level)
 
-- Drop `E` from `Tool<S, E>` (and therefore from `ChatTool`) once `@cobook/graph` reworks its tool contract to inject the event writer through `NodeContext` rather than the type signature. That change lives in `@cobook/graph`; this package will absorb it by updating the alias.
-- Flesh out `runner/` and `adapter/` contracts beyond the placeholder signatures in this session.
+`buildChatAgentRegistry` and `buildChatToolRegistry` — Map-based implementations of the `ChatAgentRegistry` / `ChatToolRegistry` interfaces from `state/`. Lives at the package root because it depends on both `state/` aliases and concrete agent/tool types.

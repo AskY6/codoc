@@ -9,18 +9,14 @@ the rationale for splitting repo vs. usecases.
 
 ```
 usecases/
-  workspace/
-    create-workspace.ts
-    delete-workspace.ts
-    ...
-  codoc/
-    ...
-  chat/
-    send-message.ts
-    run-agent-turn.ts
-    ...
-  index.ts          barrel — re-exports every use case
+  workspace/       — workspace CRUD
+  codoc/           — codoc CRUD + content updates
+  thread/          — thread CRUD + message append
+  agent/           — agent listing, linking, runAgentTurn
+  index.ts         — barrel — re-exports every use case
 ```
+
+Each subdirectory has its own `AGENTS.md` with module-level detail.
 
 Group by aggregate, not by verb. `create-workspace` goes next to
 `delete-workspace` because they change together when workspace rules
