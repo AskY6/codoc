@@ -6,7 +6,7 @@
 // concrete `Storage` impl. Use case error handling is centralised in
 // `../http/error.ts` — never expand a service error inline.
 
-import type { WorkspaceId } from "@cobook/core";
+import type { AgentId, WorkspaceId } from "@cobook/core";
 import type { ServiceCtx } from "@cobook/service";
 import {
   createCodoc,
@@ -17,10 +17,16 @@ import {
   listCodocsByWorkspace,
   listThreadsByWorkspace,
   listWorkspaces,
+  listWorkspaceAgents,
+  setWorkspaceAgents,
   updateWorkspace,
 } from "@cobook/service";
 import { Hono } from "hono";
 import { respondError } from "../http/error.js";
+
+interface SetWorkspaceAgentsBody {
+  readonly agentIds?: unknown;
+}
 
 interface CreateWorkspaceBody {
   readonly name?: unknown;
@@ -278,6 +284,54 @@ export function workspaceRoutes(baseCtx: ServiceCtx) {
       return respondError(c, result.error);
     }
     return c.json(result.value);
+  });
+
+  // GET /api/workspaces/:id/agents — current agent ids for this workspace
+  app.get("/:id/agents", async (c) => {
+    const workspaceId = c.req.param("id") as WorkspaceId;
+    const agentIds = await listWorkspaceAgents(baseCtx, workspaceId);
+    return c.json({ agentIds });
+  });
+
+  // PUT /api/workspaces/:id/agents — { agentIds: string[] }
+  //
+  // Reconcile the set of agents enabled in this workspace. The body
+  // carries the full desired set; the use case diffs internally.
+  app.put("/:id/agents", async (c) => {
+    const workspaceId = c.req.param("id") as WorkspaceId;
+    let body: SetWorkspaceAgentsBody;
+    try {
+      body = (await c.req.json()) as SetWorkspaceAgentsBody;
+    } catch {
+      return c.json(
+        { error: { kind: "bad-request", reason: "invalid JSON body" } },
+        400,
+      );
+    }
+
+    if (
+      !Array.isArray(body.agentIds) ||
+      !body.agentIds.every((v: unknown) => typeof v === "string")
+    ) {
+      return c.json(
+        { error: { kind: "bad-request", reason: "agentIds must be an array of strings" } },
+        400,
+      );
+    }
+
+    const result = await setWorkspaceAgents(baseCtx, {
+      workspaceId,
+      agentIds: body.agentIds as AgentId[],
+    });
+
+    if (!result.ok) {
+      const e = result.error;
+      if (e.kind === "tx-aborted") {
+        return c.json({ error: { kind: "storage-unavailable" } }, 503);
+      }
+      return respondError(c, e);
+    }
+    return c.json({ agentIds: result.value });
   });
 
   // DELETE /api/workspaces/:id

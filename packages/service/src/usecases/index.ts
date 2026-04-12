@@ -92,6 +92,11 @@ export {
 } from "./agent/list-agents.js";
 
 export {
+  listWorkspaceAgents,
+  type ListWorkspaceAgentsError,
+} from "./agent/list-workspace-agents.js";
+
+export {
   setWorkspaceAgents,
   type SetWorkspaceAgentsInput,
   type SetWorkspaceAgentsError,

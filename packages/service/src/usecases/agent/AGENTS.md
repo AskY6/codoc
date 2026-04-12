@@ -11,6 +11,7 @@ Must never import from: `../workspace/`, `../codoc/`, `../thread/` (sibling aggr
 | File | What it owns |
 |---|---|
 | `list-agents.ts` | `listAgents` — pass-through to `agentRepo.list`. |
+| `list-workspace-agents.ts` | `listWorkspaceAgents` — return agent ids linked to a workspace. |
 | `set-workspace-agents.ts` | `setWorkspaceAgents` — reconcile desired vs. current agent set for a workspace. Transactional diff (read → link new → unlink removed). |
 | `set-thread-agents.ts` | `setThreadAgents` — same diff pattern, scoped to a thread. |
 | `set-thread-codocs.ts` | `setThreadCodocs` — same diff pattern for codoc links; error includes `ThreadCodocWorkspaceMismatch`. |

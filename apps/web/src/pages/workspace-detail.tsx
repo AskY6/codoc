@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Bot,
   FileText,
   MessageSquare,
   Plus,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { listAgents } from "../api/agents";
 import {
   createCodoc,
   deleteCodoc,
@@ -31,7 +33,11 @@ import {
   deleteThread,
   listThreadsByWorkspace,
 } from "../api/threads";
-import { getWorkspace } from "../api/workspaces";
+import {
+  getWorkspace,
+  getWorkspaceAgents,
+  setWorkspaceAgents,
+} from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import {
   Card,
@@ -53,6 +59,8 @@ const codocListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "codocs"] as const;
 const threadListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "threads"] as const;
+const workspaceAgentsKey = (workspaceId: string) =>
+  ["workspace", workspaceId, "agents"] as const;
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -88,6 +96,17 @@ export function WorkspaceDetailPage() {
   const threadsQuery = useQuery({
     queryKey: threadListKey(workspaceId),
     queryFn: () => listThreadsByWorkspace(workspaceId),
+    enabled: workspaceId !== "",
+  });
+
+  const agentsQuery = useQuery({
+    queryKey: ["agents"] as const,
+    queryFn: listAgents,
+  });
+
+  const workspaceAgentsQuery = useQuery({
+    queryKey: workspaceAgentsKey(workspaceId),
+    queryFn: () => getWorkspaceAgents(workspaceId),
     enabled: workspaceId !== "",
   });
 
@@ -139,6 +158,29 @@ export function WorkspaceDetailPage() {
       });
     },
   });
+
+  const setAgentsMutation = useMutation({
+    mutationFn: setWorkspaceAgents,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceAgentsKey(workspaceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: workspaceKey(workspaceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+    },
+  });
+
+  function toggleWorkspaceAgent(agentId: string) {
+    const current = new Set(workspaceAgentsQuery.data?.agentIds ?? []);
+    if (current.has(agentId)) {
+      current.delete(agentId);
+    } else {
+      current.add(agentId);
+    }
+    setAgentsMutation.mutate({ workspaceId, agentIds: [...current] });
+  }
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -229,6 +271,36 @@ export function WorkspaceDetailPage() {
           Last edited {relativeTime(item.updatedAt)}
         </p>
       </header>
+
+      {(agentsQuery.data ?? []).length > 0 && (
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-medium text-neutral-900">Agents</h2>
+          </div>
+          <div className="mb-8 flex flex-wrap gap-2">
+            {(agentsQuery.data ?? []).map((a) => {
+              const enabled = (
+                workspaceAgentsQuery.data?.agentIds ?? []
+              ).includes(a.listing.id);
+              return (
+                <button
+                  key={a.listing.id}
+                  type="button"
+                  onClick={() => toggleWorkspaceAgent(a.listing.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors ${
+                    enabled
+                      ? "border-blue-300 bg-blue-50 text-blue-700"
+                      : "border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  {a.listing.name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-medium text-neutral-900">Codocs</h2>

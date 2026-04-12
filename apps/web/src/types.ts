@@ -62,16 +62,39 @@ export interface ThreadListItem {
   readonly rev: string;
 }
 
-// Slice 4 is user-only: no assistant / system variants on the wire
-// yet. Slice 5's run-agent-turn will extend this union with
-// `kind: "assistant"` (carrying agentId + metadata) and possibly
-// `kind: "system"`.
-export type ChatMessage = {
-  readonly kind: "user";
-  readonly id: string;
-  readonly threadId: string;
-  readonly content: string;
-};
+// A single tool invocation recorded on an assistant message.
+export interface ToolCall {
+  readonly name: string;
+  readonly input: Readonly<Record<string, unknown>>;
+}
+
+export interface AssistantMetadata {
+  readonly toolCalls: readonly ToolCall[];
+}
+
+// Role ADT: user messages have no agentId; assistant messages always
+// carry agentId + metadata (anonymous assistants are unrepresentable).
+export type ChatMessage =
+  | {
+      readonly kind: "user";
+      readonly id: string;
+      readonly threadId: string;
+      readonly content: string;
+    }
+  | {
+      readonly kind: "assistant";
+      readonly id: string;
+      readonly threadId: string;
+      readonly content: string;
+      readonly agentId: string;
+      readonly metadata: AssistantMetadata;
+    }
+  | {
+      readonly kind: "system";
+      readonly id: string;
+      readonly threadId: string;
+      readonly content: string;
+    };
 
 export interface ThreadMessage {
   readonly message: ChatMessage;
@@ -87,6 +110,25 @@ export interface ThreadDetail {
   readonly messages: readonly ThreadMessage[];
   readonly agentIds: readonly string[];
   readonly codocIds: readonly string[];
+}
+
+// Agent wire DTOs.
+
+export interface AgentListing {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+export interface AgentListItem {
+  readonly listing: AgentListing;
+  readonly createdAt: number;
+}
+
+// Response from POST /api/threads/:id/turn (synchronous agent turn).
+export interface RunAgentTurnResponse {
+  readonly userMessage: ThreadMessage;
+  readonly assistantMessages: readonly ThreadMessage[];
 }
 
 export interface ServiceErrorBody {

@@ -4,7 +4,12 @@
 // even though the list / create endpoints live under a workspace
 // path (standard REST nesting, mirroring `api/codocs.ts`).
 
-import type { ThreadDetail, ThreadListItem, ThreadMessage } from "../types";
+import type {
+  RunAgentTurnResponse,
+  ThreadDetail,
+  ThreadListItem,
+  ThreadMessage,
+} from "../types";
 import { apiFetch } from "./client";
 
 export function listThreadsByWorkspace(
@@ -52,6 +57,60 @@ export function appendUserMessage(
   const { threadId, content } = body;
   return apiFetch<ThreadMessage>(
     `/api/threads/${encodeURIComponent(threadId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    },
+  );
+}
+
+export interface SetThreadAgentsBody {
+  readonly threadId: string;
+  readonly agentIds: readonly string[];
+}
+
+export function setThreadAgents(
+  body: SetThreadAgentsBody,
+): Promise<{ agentIds: string[] }> {
+  const { threadId, agentIds } = body;
+  return apiFetch<{ agentIds: string[] }>(
+    `/api/threads/${encodeURIComponent(threadId)}/agents`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ agentIds }),
+    },
+  );
+}
+
+export interface SetThreadCodocsBody {
+  readonly threadId: string;
+  readonly codocIds: readonly string[];
+}
+
+export function setThreadCodocs(
+  body: SetThreadCodocsBody,
+): Promise<{ codocIds: string[] }> {
+  const { threadId, codocIds } = body;
+  return apiFetch<{ codocIds: string[] }>(
+    `/api/threads/${encodeURIComponent(threadId)}/codocs`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ codocIds }),
+    },
+  );
+}
+
+export interface RunAgentTurnInput {
+  readonly threadId: string;
+  readonly content: string;
+}
+
+export function runAgentTurn(
+  input: RunAgentTurnInput,
+): Promise<RunAgentTurnResponse> {
+  const { threadId, content } = input;
+  return apiFetch<RunAgentTurnResponse>(
+    `/api/threads/${encodeURIComponent(threadId)}/turn`,
     {
       method: "POST",
       body: JSON.stringify({ content }),

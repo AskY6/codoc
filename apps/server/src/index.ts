@@ -16,6 +16,7 @@ import type { ServiceCtx, LlmConfig } from "@cobook/service";
 import { SystemClock, createMemoryStorage } from "@cobook/storage-memory";
 import { Hono } from "hono";
 import { UuidIdGenerator } from "./ports/id.js";
+import { agentRoutes } from "./routes/agents.js";
 import { codocRoutes } from "./routes/codocs.js";
 import { threadRoutes } from "./routes/threads.js";
 import { workspaceRoutes } from "./routes/workspaces.js";
@@ -70,6 +71,7 @@ async function seedAgents(): Promise<void> {
 const app = new Hono();
 
 app.get("/", (c) => c.json({ name: "cobook", status: "ok" }));
+app.route("/api/agents", agentRoutes(baseCtx));
 app.route("/api/workspaces", workspaceRoutes(baseCtx));
 app.route("/api/codocs", codocRoutes(baseCtx));
 app.route("/api/threads", threadRoutes(baseCtx));
