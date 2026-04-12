@@ -63,7 +63,7 @@ Choose the agent whose description best matches the user's intent. If no special
       }
 
       const response = await chatCtx.llm.createMessage({
-        model: "claude-haiku-4-5-20251001",
+        model: chatCtx.modelConfig?.routerModel ?? "claude-haiku-4-5-20251001",
         maxTokens: 256,
         system: systemPrompt,
         messages: [{ role: "user", content: latestUser.content }],

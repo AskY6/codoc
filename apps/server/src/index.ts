@@ -23,11 +23,12 @@ import { workspaceRoutes } from "./routes/workspaces.js";
 
 // ---- LLM config from env ------------------------------------------------
 
+const llmModel = process.env["LLM_MODEL"];
 const llmConfig: LlmConfig = {
-  apiKey: process.env["ANTHROPIC_API_KEY"],
-  baseURL: process.env["ANTHROPIC_BASE_URL"],
-  routerModel: process.env["ROUTER_MODEL"],
-  defaultModel: process.env["DEFAULT_MODEL"],
+  apiKey: process.env["LLM_API_KEY"],
+  baseURL: process.env["LLM_BASE_URL"],
+  routerModel: process.env["LLM_ROUTER_MODEL"] ?? llmModel,
+  defaultModel: llmModel,
 };
 
 // ---- Storage + context ---------------------------------------------------

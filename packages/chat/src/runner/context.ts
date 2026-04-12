@@ -83,7 +83,13 @@ export interface LlmClient {
  * directly — they only know `NodeContext<E>`. This keeps the
  * framework layer vendor-neutral.
  */
+export interface ModelConfig {
+  readonly routerModel?: string | undefined;
+  readonly defaultModel?: string | undefined;
+}
+
 export interface ChatRunContext extends NodeContext<ChatEvent> {
   readonly llm: LlmClient;
   readonly mintMessageId: () => MessageId;
+  readonly modelConfig?: ModelConfig | undefined;
 }

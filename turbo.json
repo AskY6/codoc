@@ -13,6 +13,11 @@
       "dependsOn": ["^build"],
       "outputs": [],
       "env": ["DATABASE_URL"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
     }
   }
 }

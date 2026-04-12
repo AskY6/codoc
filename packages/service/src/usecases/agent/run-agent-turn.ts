@@ -284,6 +284,10 @@ export async function runAgentTurn(
     signal: input.signal ?? AbortSignal.timeout(120_000),
     llm,
     mintMessageId: () => ctx.idGen.messageId(),
+    modelConfig: {
+      routerModel: ctx.llmConfig.routerModel,
+      defaultModel: ctx.llmConfig.defaultModel,
+    },
   };
 
   const runResult = await runChatTurn(
@@ -293,9 +297,13 @@ export async function runAgentTurn(
   );
 
   if (!runResult.ok) {
+    const graphErr = runResult.error;
+    const cause = graphErr.kind === "nodeThrew" && graphErr.cause
+      ? (graphErr.cause instanceof Error ? graphErr.cause.message : String(graphErr.cause))
+      : "";
     return err({
       kind: "graph-run-failed",
-      message: runResult.error.kind,
+      message: cause ? `${graphErr.kind}: ${cause}` : graphErr.kind,
     });
   }
 

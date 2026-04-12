@@ -15,6 +15,7 @@ export type {
   LlmResponseBlock,
   LlmResponse,
   ChatRunContext,
+  ModelConfig,
 } from "./context.js";
 export {
   createAnthropicLlmClient,

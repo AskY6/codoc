@@ -42,10 +42,11 @@ export function createGeneralAgent(
       state: ChatState,
       ctx: NodeContext<ChatEvent>,
     ): Promise<Partial<ChatState>> {
+      const chatCtx = ctx as ChatRunContext;
       return runToolLoop({
         agentId,
         nodeId: agentId as unknown as NodeId,
-        model: "claude-sonnet-4-20250514",
+        model: chatCtx.modelConfig?.defaultModel ?? "claude-sonnet-4-20250514",
         systemPrompt: GENERAL_SYSTEM_PROMPT,
         tools,
         state,
