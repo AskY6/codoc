@@ -44,6 +44,8 @@ import {
   setThreadAgents,
   setThreadCodocs,
 } from "../api/threads";
+import { CodocCard } from "../components/codoc-card";
+import { CodocPanel } from "../components/codoc-panel";
 import { Button } from "../components/ui/button";
 import { relativeTime } from "../lib/format";
 import type {
@@ -54,6 +56,25 @@ import type {
   ThreadMessage,
   ToolCall,
 } from "../types";
+
+// ---- Codoc reference extraction from tool calls ----------------------------
+
+const CODOC_ID_TOOLS = new Set(["getCodoc", "updateCodoc", "deleteCodoc"]);
+
+function extractCodocIds(toolCalls: readonly ToolCall[]): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const tc of toolCalls) {
+    if (CODOC_ID_TOOLS.has(tc.name)) {
+      const id = (tc.input as { id?: string }).id;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+  return ids;
+}
 
 const threadKey = (id: string) => ["thread", id] as const;
 const agentsKey = ["agents"] as const;
@@ -103,9 +124,15 @@ function ToolCallIndicator({ toolCalls }: { toolCalls: readonly ToolCall[] }) {
 function MessageBubble({
   item,
   agentName,
+  codocLookup,
+  selectedCodocId,
+  onSelectCodoc,
 }: {
   item: ThreadMessage;
   agentName: string | null;
+  codocLookup: ReadonlyMap<string, CodocListItem>;
+  selectedCodocId: string | null;
+  onSelectCodoc: (id: string) => void;
 }) {
   const msg: ChatMessage = item.message;
 
@@ -124,6 +151,7 @@ function MessageBubble({
   }
 
   if (msg.kind === "assistant") {
+    const codocIds = extractCodocIds(msg.metadata.toolCalls);
     return (
       <li className="flex flex-col items-start">
         <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
@@ -134,6 +162,23 @@ function MessageBubble({
           {msg.content}
           <ToolCallIndicator toolCalls={msg.metadata.toolCalls} />
         </div>
+        {codocIds.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {codocIds.map((id) => {
+              const codoc = codocLookup.get(id);
+              return (
+                <CodocCard
+                  key={id}
+                  codocId={id}
+                  title={codoc?.title ?? null}
+                  path={codoc?.path ?? id}
+                  isSelected={selectedCodocId === id}
+                  onClick={onSelectCodoc}
+                />
+              );
+            })}
+          </div>
+        )}
       </li>
     );
   }
@@ -374,6 +419,7 @@ export function ChatThreadPage() {
   });
 
   const [draft, setDraft] = useState("");
+  const [selectedCodocId, setSelectedCodocId] = useState<string | null>(null);
 
   // ---- Streaming state --------------------------------------------------
 
@@ -477,6 +523,12 @@ export function ChatThreadPage() {
     agentNameMap.set(a.listing.id, a.listing.name);
   }
 
+  // Build codoc id -> list item map for card display.
+  const codocLookup = new Map<string, CodocListItem>();
+  for (const c of codocsQuery.data ?? []) {
+    codocLookup.set(c.id, c);
+  }
+
   if (threadQuery.isLoading) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -506,107 +558,125 @@ export function ChatThreadPage() {
   if (!detail) return null;
 
   return (
-    <div className="mx-auto flex h-screen max-w-2xl flex-col px-6 py-10">
-      <Link
-        to={`/workspace/${encodeURIComponent(workspaceId)}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to workspace
-      </Link>
+    <div className="flex h-screen">
+      {/* ---- Left column: chat ---- */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10">
+          <Link
+            to={`/workspace/${encodeURIComponent(workspaceId)}`}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to workspace
+          </Link>
 
-      <header className="mt-6 mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {detail.thread.thread.title ?? "Untitled"}
-        </h1>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Last edited {relativeTime(detail.thread.updatedAt)}
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <AgentPicker
-            threadId={threadId}
-            currentAgentIds={detail.agentIds}
-            allAgents={agentsQuery.data ?? []}
-          />
-          <CodocPicker
-            threadId={threadId}
-            currentCodocIds={detail.codocIds}
-            allCodocs={codocsQuery.data ?? []}
-          />
-        </div>
-      </header>
-
-      <div
-        ref={scrollRef}
-        className="mb-4 flex-1 overflow-y-auto p-4"
-      >
-        {detail.messages.length === 0 && !optimisticUserMsg ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
-            <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground">
-              No messages yet. Say something to start the conversation.
+          <header className="mt-6 mb-4">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              {detail.thread.thread.title ?? "Untitled"}
+            </h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Last edited {relativeTime(detail.thread.updatedAt)}
             </p>
+            <div className="mt-3 flex items-center gap-2">
+              <AgentPicker
+                threadId={threadId}
+                currentAgentIds={detail.agentIds}
+                allAgents={agentsQuery.data ?? []}
+              />
+              <CodocPicker
+                threadId={threadId}
+                currentCodocIds={detail.codocIds}
+                allCodocs={codocsQuery.data ?? []}
+              />
+            </div>
+          </header>
+
+          <div
+            ref={scrollRef}
+            className="mb-4 flex-1 overflow-y-auto p-4"
+          >
+            {detail.messages.length === 0 && !optimisticUserMsg ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2">
+                <MessageSquare className="h-8 w-8 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">
+                  No messages yet. Say something to start the conversation.
+                </p>
+              </div>
+            ) : (
+              <ul className="space-y-6">
+                {detail.messages.map((item) => (
+                  <MessageBubble
+                    key={item.message.id}
+                    item={item}
+                    agentName={
+                      item.message.kind === "assistant"
+                        ? agentNameMap.get(item.message.agentId) ?? null
+                        : null
+                    }
+                    codocLookup={codocLookup}
+                    selectedCodocId={selectedCodocId}
+                    onSelectCodoc={setSelectedCodocId}
+                  />
+                ))}
+                {optimisticUserMsg && (
+                  <li className="flex flex-col items-end">
+                    <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <User className="h-3 w-3" />
+                      You
+                    </span>
+                    <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
+                      {optimisticUserMsg}
+                    </div>
+                  </li>
+                )}
+                {streaming && (
+                  <StreamingBubble
+                    text={streamText}
+                    toolCalls={streamToolCalls}
+                    agentName={null}
+                  />
+                )}
+              </ul>
+            )}
           </div>
-        ) : (
-          <ul className="space-y-6">
-            {detail.messages.map((item) => (
-              <MessageBubble
-                key={item.message.id}
-                item={item}
-                agentName={
-                  item.message.kind === "assistant"
-                    ? agentNameMap.get(item.message.agentId) ?? null
-                    : null
-                }
-              />
-            ))}
-            {optimisticUserMsg && (
-              <li className="flex flex-col items-end">
-                <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                  <User className="h-3 w-3" />
-                  You
-                </span>
-                <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
-                  {optimisticUserMsg}
-                </div>
-              </li>
+
+          <form onSubmit={handleSend} className="flex items-end gap-2 pb-4">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message..."
+              rows={1}
+              disabled={streaming}
+              className="flex-1 resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-50"
+            />
+            {streaming ? (
+              <Button type="button" onClick={handleStop} variant="outline">
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={draft.trim() === ""}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
             )}
-            {streaming && (
-              <StreamingBubble
-                text={streamText}
-                toolCalls={streamToolCalls}
-                agentName={null}
-              />
-            )}
-          </ul>
-        )}
+          </form>
+          {streamError && (
+            <p className="pb-4 text-sm text-destructive">{streamError}</p>
+          )}
+        </div>
       </div>
 
-      <form onSubmit={handleSend} className="flex items-end gap-2 pb-4">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          rows={1}
-          disabled={streaming}
-          className="flex-1 resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-50"
-        />
-        {streaming ? (
-          <Button type="button" onClick={handleStop} variant="outline">
-            <Square className="h-4 w-4" />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            disabled={draft.trim() === ""}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        )}
-      </form>
-      {streamError && (
-        <p className="pb-4 text-sm text-destructive">{streamError}</p>
+      {/* ---- Right column: codoc panel ---- */}
+      {selectedCodocId && (
+        <div className="w-[480px] shrink-0">
+          <CodocPanel
+            codocId={selectedCodocId}
+            onClose={() => setSelectedCodocId(null)}
+          />
+        </div>
       )}
     </div>
   );
