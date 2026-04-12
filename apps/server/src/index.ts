@@ -13,7 +13,8 @@
 import { serve } from "@hono/node-server";
 import { AgentId } from "@cobook/core";
 import type { ServiceCtx, LlmConfig } from "@cobook/service";
-import { SystemClock, createMemoryStorage } from "@cobook/storage-memory";
+import { createPgStorage } from "@cobook/storage-pg";
+import { SystemClock } from "@cobook/storage-memory";
 import { Hono } from "hono";
 import { UuidIdGenerator } from "./ports/id.js";
 import { agentRoutes } from "./routes/agents.js";
@@ -33,7 +34,9 @@ const llmConfig: LlmConfig = {
 
 // ---- Storage + context ---------------------------------------------------
 
-const storage = createMemoryStorage();
+const storage = createPgStorage({
+  connectionString: process.env["DATABASE_URL"]!,
+});
 const baseCtx: ServiceCtx = {
   storage,
   storageCtx: storage.ctx(),

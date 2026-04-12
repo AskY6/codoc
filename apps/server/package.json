@@ -15,6 +15,7 @@
     "@cobook/service": "workspace:*",
     "@cobook/storage": "workspace:*",
     "@cobook/storage-memory": "workspace:*",
+    "@cobook/storage-pg": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0"
   },
