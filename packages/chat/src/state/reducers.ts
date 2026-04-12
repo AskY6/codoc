@@ -13,8 +13,8 @@ import type { ChatState } from "./state.js";
  * - Every other field (`workspaceId`, `threadId`, `activeAgent`)
  *   uses the default "last write wins" strategy, which means
  *   omitting them from this table is correct.
- *
- * Skeleton: implementation TBD. The shape here locks the contract
- * so downstream code can already reference it.
  */
-export declare const chatReducers: StateReducers<ChatState>;
+export const chatReducers: StateReducers<ChatState> = {
+  messages: (prev, incoming) => [...prev, ...incoming],
+  pinnedCodocs: (prev, incoming) => [...prev, ...incoming],
+};

@@ -47,8 +47,8 @@ describe("createWorkspace", () => {
     const fixedCtx = {
       ...ctx,
       idGen: {
+        ...ctx.idGen,
         workspaceId: () => "ws_fixed" as never,
-        codocId: () => "codoc_unused" as never,
       },
     };
 

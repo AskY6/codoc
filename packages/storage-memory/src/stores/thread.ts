@@ -47,6 +47,9 @@ export interface MemoryThreadStoreDeps {
   readonly clock: Clock;
   /** Cross-store check used by `create` to refuse orphan threads. */
   readonly workspaceExists: (workspaceId: WorkspaceId) => boolean;
+  /** Cascade hooks called when a thread is deleted. */
+  readonly cascadeDeleteThreadAgents?: (threadId: ThreadId) => void;
+  readonly cascadeDeleteThreadCodocs?: (threadId: ThreadId) => void;
 }
 
 export interface MemoryThreadStore extends ThreadStore {
@@ -57,6 +60,16 @@ export interface MemoryThreadStore extends ThreadStore {
    * cascading is a storage implementation detail.
    */
   readonly __cascadeDeleteByWorkspace: (workspaceId: WorkspaceId) => void;
+
+  /**
+   * Escape hatch for peer stores that need the workspace a thread
+   * belongs to (e.g. `ThreadCodocStore` enforcing the same-workspace
+   * constraint). Returns `undefined` if the thread does not exist.
+   */
+  readonly __getWorkspaceId: (id: ThreadId) => WorkspaceId | undefined;
+
+  /** Returns `true` if a thread with the given id exists. */
+  readonly __hasThread: (id: ThreadId) => boolean;
 }
 
 export function createMemoryThreadStore(
@@ -140,6 +153,8 @@ export function createMemoryThreadStore(
       id: ThreadId,
     ): Promise<Result<void, NotFound<"thread">>> {
       if (!rows.has(id)) return err({ kind: "thread-not-found" });
+      deps.cascadeDeleteThreadAgents?.(id);
+      deps.cascadeDeleteThreadCodocs?.(id);
       rows.delete(id);
       messagesByThread.delete(id);
       seqByThread.delete(id);
@@ -193,10 +208,20 @@ export function createMemoryThreadStore(
         if (row.thread.workspaceId === workspaceId) doomed.push(id);
       }
       for (const id of doomed) {
+        deps.cascadeDeleteThreadAgents?.(id);
+        deps.cascadeDeleteThreadCodocs?.(id);
         rows.delete(id);
         messagesByThread.delete(id);
         seqByThread.delete(id);
       }
+    },
+
+    __getWorkspaceId(id: ThreadId): WorkspaceId | undefined {
+      return rows.get(id)?.thread.workspaceId;
+    },
+
+    __hasThread(id: ThreadId): boolean {
+      return rows.has(id);
     },
   };
 

@@ -16,6 +16,7 @@ export interface WorkspaceListItem {
   // on update; never parse or compare beyond equality.
   readonly rev: string;
   readonly codocCount: number;
+  readonly agentCount: number;
 }
 
 // Flattened on the wire (unlike WorkspaceListItem) because the
@@ -84,6 +85,8 @@ export interface ThreadMessage {
 export interface ThreadDetail {
   readonly thread: ThreadListItem;
   readonly messages: readonly ThreadMessage[];
+  readonly agentIds: readonly string[];
+  readonly codocIds: readonly string[];
 }
 
 export interface ServiceErrorBody {

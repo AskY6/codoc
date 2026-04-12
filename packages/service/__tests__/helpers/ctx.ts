@@ -6,8 +6,10 @@
 // isolated by construction.
 
 import type {
+  AgentId,
   CodocId,
   MessageId,
+  SessionId,
   ThreadId,
   WorkspaceId,
 } from "@cobook/core";
@@ -26,6 +28,8 @@ export function counterIdGenerator(): IdGenerator {
   let codoc = 0;
   let thread = 0;
   let msg = 0;
+  let agent = 0;
+  let session = 0;
   return {
     workspaceId(): WorkspaceId {
       return `ws_${++ws}` as WorkspaceId;
@@ -38,6 +42,12 @@ export function counterIdGenerator(): IdGenerator {
     },
     messageId(): MessageId {
       return `msg_${++msg}` as MessageId;
+    },
+    agentId(): AgentId {
+      return `agent_${++agent}` as AgentId;
+    },
+    sessionId(): SessionId {
+      return `session_${++session}` as SessionId;
     },
   };
 }

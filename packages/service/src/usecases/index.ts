@@ -85,3 +85,26 @@ export {
   type AppendUserMessageInput,
   type AppendUserMessageError,
 } from "./thread/append-user-message.js";
+
+export {
+  listAgents,
+  type ListAgentsError,
+} from "./agent/list-agents.js";
+
+export {
+  setWorkspaceAgents,
+  type SetWorkspaceAgentsInput,
+  type SetWorkspaceAgentsError,
+} from "./agent/set-workspace-agents.js";
+
+export {
+  setThreadAgents,
+  type SetThreadAgentsInput,
+  type SetThreadAgentsError,
+} from "./agent/set-thread-agents.js";
+
+export {
+  setThreadCodocs,
+  type SetThreadCodocsInput,
+  type SetThreadCodocsError,
+} from "./agent/set-thread-codocs.js";

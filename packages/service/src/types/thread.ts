@@ -14,7 +14,7 @@
 // page which always loads a thread together with its messages should
 // prefer one round-trip over two parallel queries.
 
-import type { ChatMessage, ChatThread } from "@cobook/core";
+import type { AgentId, ChatMessage, ChatThread, CodocId } from "@cobook/core";
 
 export interface ThreadListItem {
   readonly thread: ChatThread;
@@ -41,4 +41,6 @@ export interface ThreadMessage {
 export interface ThreadDetail {
   readonly thread: ThreadListItem;
   readonly messages: readonly ThreadMessage[];
+  readonly agentIds: readonly AgentId[];
+  readonly codocIds: readonly CodocId[];
 }

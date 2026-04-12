@@ -17,6 +17,8 @@ import type { Result, ThreadId } from "@cobook/core";
 import { ok } from "@cobook/core";
 import type { ServiceCtx } from "../../context.js";
 import type { ThreadNotFound } from "../../errors.js";
+import { threadAgentRepo } from "../../repo/thread-agent.js";
+import { threadCodocRepo } from "../../repo/thread-codoc.js";
 import { threadRepo } from "../../repo/thread.js";
 import type { ThreadDetail } from "../../types/thread.js";
 
@@ -28,6 +30,10 @@ export async function getThread(
 ): Promise<Result<ThreadDetail, GetThreadError>> {
   const thread = await threadRepo.get(ctx, id);
   if (!thread.ok) return thread;
-  const messages = await threadRepo.listMessages(ctx, id);
-  return ok({ thread: thread.value, messages });
+  const [messages, agentIds, codocIds] = await Promise.all([
+    threadRepo.listMessages(ctx, id),
+    threadAgentRepo.listByThread(ctx, id),
+    threadCodocRepo.listByThread(ctx, id),
+  ]);
+  return ok({ thread: thread.value, messages, agentIds, codocIds });
 }

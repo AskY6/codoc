@@ -9,3 +9,7 @@
 export { workspaceRepo } from "./workspace.js";
 export { codocRepo } from "./codoc.js";
 export { threadRepo } from "./thread.js";
+export { agentRepo } from "./agent.js";
+export { workspaceAgentRepo } from "./workspace-agent.js";
+export { threadAgentRepo } from "./thread-agent.js";
+export { threadCodocRepo } from "./thread-codoc.js";

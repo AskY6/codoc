@@ -3,8 +3,10 @@
 // flavour is an infrastructure decision, not a service decision.
 
 import type {
+  AgentId,
   CodocId,
   MessageId,
+  SessionId,
   ThreadId,
   WorkspaceId,
 } from "@cobook/core";
@@ -22,5 +24,11 @@ export class UuidIdGenerator implements IdGenerator {
   }
   messageId(): MessageId {
     return crypto.randomUUID() as MessageId;
+  }
+  agentId(): AgentId {
+    return crypto.randomUUID() as AgentId;
+  }
+  sessionId(): SessionId {
+    return crypto.randomUUID() as SessionId;
   }
 }

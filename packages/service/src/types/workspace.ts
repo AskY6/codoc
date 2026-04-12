@@ -29,4 +29,5 @@ export interface WorkspaceListItem {
   readonly updatedAt: number;
   readonly rev: string;
   readonly codocCount: number;
+  readonly agentCount: number;
 }

@@ -16,6 +16,7 @@ import type {
 } from "../errors.js";
 import type { WorkspaceListItem } from "../types/workspace.js";
 import { codocRepo } from "./codoc.js";
+import { workspaceAgentRepo } from "./workspace-agent.js";
 
 export interface UpdateWorkspaceRepoInput {
   readonly workspace: Workspace;
@@ -26,12 +27,16 @@ async function toListItem(
   ctx: ServiceCtx,
   row: StoredWorkspace,
 ): Promise<WorkspaceListItem> {
-  const codocCount = await codocRepo.countByWorkspace(ctx, row.workspace.id);
+  const [codocCount, agentCount] = await Promise.all([
+    codocRepo.countByWorkspace(ctx, row.workspace.id),
+    workspaceAgentRepo.countByWorkspace(ctx, row.workspace.id),
+  ]);
   return {
     workspace: row.workspace,
     updatedAt: row.updatedAt as number,
     rev: row.rev as string,
     codocCount,
+    agentCount,
   };
 }
 

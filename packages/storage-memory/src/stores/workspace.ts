@@ -36,6 +36,10 @@ export interface MemoryWorkspaceStoreDeps {
    */
   readonly cascadeDeleteCodocs?: (workspaceId: WorkspaceId) => void;
   readonly cascadeDeleteThreads?: (workspaceId: WorkspaceId) => void;
+  readonly cascadeDeleteWorkspaceAgents?: (workspaceId: WorkspaceId) => void;
+  readonly cascadeDeleteThreadAgents?: (workspaceId: WorkspaceId) => void;
+  readonly cascadeDeleteThreadCodocs?: (workspaceId: WorkspaceId) => void;
+  readonly cascadeDeleteSessions?: (workspaceId: WorkspaceId) => void;
 }
 
 export interface MemoryWorkspaceStore extends WorkspaceStore {
@@ -119,6 +123,10 @@ export function createMemoryWorkspaceStore(
       // store wires its cascade hook here.
       deps.cascadeDeleteCodocs?.(id);
       deps.cascadeDeleteThreads?.(id);
+      deps.cascadeDeleteWorkspaceAgents?.(id);
+      deps.cascadeDeleteThreadAgents?.(id);
+      deps.cascadeDeleteThreadCodocs?.(id);
+      deps.cascadeDeleteSessions?.(id);
       rows.delete(id);
       return ok(undefined);
     },

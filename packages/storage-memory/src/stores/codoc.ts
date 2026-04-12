@@ -15,7 +15,7 @@
 // `ctx.threadCodocs.listByCodoc` (passed in via deps). The surface stays
 // the same so callers don't need to change.
 
-import type { Codoc, CodocId, Result, WorkspaceId } from "@cobook/core";
+import type { Codoc, CodocId, Result, ThreadId, WorkspaceId } from "@cobook/core";
 import { err, ok } from "@cobook/core";
 import type {
   AlreadyExists,
@@ -35,6 +35,12 @@ export interface MemoryCodocStoreDeps {
   readonly clock: Clock;
   /** Returns the ids of this workspace's live codocs. Used by `delete`. */
   readonly workspaceExists: (workspaceId: WorkspaceId) => boolean;
+  /**
+   * Returns thread ids that reference a given codoc. Used by `delete`
+   * to refuse removal when threads still pin the codoc. Injected by
+   * `createMemoryStorage` once `ThreadCodocStore` is a real impl.
+   */
+  readonly listReferringThreads?: (codocId: CodocId) => readonly ThreadId[];
 }
 
 export interface MemoryCodocStore extends CodocStore {
@@ -45,6 +51,12 @@ export interface MemoryCodocStore extends CodocStore {
    * storage implementation detail.
    */
   readonly __cascadeDeleteByWorkspace: (workspaceId: WorkspaceId) => void;
+
+  /** Returns the workspace a codoc belongs to, or `undefined`. */
+  readonly __getWorkspaceId: (id: CodocId) => WorkspaceId | undefined;
+
+  /** Returns `true` if a codoc with the given id exists. */
+  readonly __hasCodoc: (id: CodocId) => boolean;
 }
 
 export function createMemoryCodocStore(
@@ -124,9 +136,10 @@ export function createMemoryCodocStore(
       id: CodocId,
     ): Promise<Result<void, NotFound<"codoc"> | CodocReferenced>> {
       if (!rows.has(id)) return err({ kind: "codoc-not-found" });
-      // Slice 2 note: `ThreadCodocStore` is still a stub, so there are
-      // never any referrers. When slice 4 ships the real thread-codoc
-      // store, wire its `listByCodoc` into deps and consult it here.
+      const referrers = deps.listReferringThreads?.(id) ?? [];
+      if (referrers.length > 0) {
+        return err({ kind: "codoc-referenced", byThreads: referrers });
+      }
       rows.delete(id);
       return ok(undefined);
     },
@@ -137,6 +150,14 @@ export function createMemoryCodocStore(
         if (row.workspaceId === workspaceId) doomed.push(id);
       }
       for (const id of doomed) rows.delete(id);
+    },
+
+    __getWorkspaceId(id: CodocId): WorkspaceId | undefined {
+      return rows.get(id)?.workspaceId;
+    },
+
+    __hasCodoc(id: CodocId): boolean {
+      return rows.has(id);
     },
   };
 

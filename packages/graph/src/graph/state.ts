@@ -20,10 +20,24 @@ export type StateReducers<S> = {
  * Merge a node's partial update into the current state, honouring
  * any per-field reducer. Pure.
  *
- * Skeleton implementation — see `graph/AGENTS.md` for the contract.
+ * Only keys present in `update` trigger a merge. Keys whose value
+ * is `undefined` in the update are skipped (treated as "no change").
  */
-export declare function mergeState<S>(
+export function mergeState<S>(
   prev: S,
   update: Partial<S>,
   reducers: StateReducers<S>,
-): S;
+): S {
+  const result = { ...prev };
+  for (const key of Object.keys(update) as Array<keyof S>) {
+    const incoming = update[key];
+    if (incoming === undefined) continue;
+    const reducer = reducers[key];
+    if (reducer) {
+      result[key] = reducer(prev[key], incoming as S[keyof S]);
+    } else {
+      result[key] = incoming as S[keyof S];
+    }
+  }
+  return result;
+}

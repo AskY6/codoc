@@ -12,8 +12,10 @@
 // needs them.
 
 import type {
+  AgentId,
   CodocId,
   MessageId,
+  SessionId,
   ThreadId,
   WorkspaceId,
 } from "@cobook/core";
@@ -23,4 +25,6 @@ export interface IdGenerator {
   codocId(): CodocId;
   threadId(): ThreadId;
   messageId(): MessageId;
+  agentId(): AgentId;
+  sessionId(): SessionId;
 }

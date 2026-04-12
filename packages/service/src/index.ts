@@ -51,6 +51,7 @@ export type { IdGenerator } from "./ports/id.js";
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";
 export type { CodocDetail, CodocListItem } from "./types/codoc.js";
+export type { AgentListItem } from "./types/agent.js";
 export type {
   ThreadDetail,
   ThreadListItem,
