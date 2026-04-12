@@ -37,6 +37,13 @@ export type ChatEvent =
       readonly output: unknown;
     }
   | {
+      readonly kind: "confirmationRequest";
+      readonly requestId: string;
+      readonly nodeId: NodeId;
+      readonly tool: string;
+      readonly input: Readonly<Record<string, unknown>>;
+    }
+  | {
       readonly kind: "agentHandoff";
       readonly from: AgentId;
       readonly to: AgentId;

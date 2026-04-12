@@ -64,6 +64,8 @@ export interface RunAgentTurnInput {
   readonly onEvent?: ((event: ChatEvent) => void) | undefined;
   /** Cooperative cancellation signal (e.g. client disconnect). */
   readonly signal?: AbortSignal | undefined;
+  /** Optional confirmation gate for mutating tools. */
+  readonly confirmTool?: import("@cobook/chat").ConfirmToolFn | undefined;
 }
 
 export interface RunAgentTurnOutput {
@@ -304,6 +306,7 @@ export async function runAgentTurn(
       routerModel: ctx.llmConfig.routerModel,
       defaultModel: ctx.llmConfig.defaultModel,
     },
+    confirmTool: input.confirmTool,
   };
 
   const runResult = await runChatTurn(

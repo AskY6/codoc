@@ -25,6 +25,7 @@ import {
   emitToStream,
   getActiveStream,
   hasActiveStream,
+  resolveConfirmation,
   type SSEEvent,
 } from "../streaming.js";
 
@@ -295,11 +296,44 @@ export function threadRoutes(baseCtx: ServiceCtx) {
 
       let titlePromise: Promise<void> | undefined;
 
+      // Confirmation gate: emits SSE event and blocks until the client
+      // responds via POST /:id/confirm.
+      let confirmRequestCounter = 0;
+      async function confirmTool(
+        tool: string,
+        toolInput: Readonly<Record<string, unknown>>,
+      ): Promise<boolean> {
+        const requestId = `${threadId}-${++confirmRequestCounter}`;
+        return new Promise<boolean>((resolve) => {
+          // Register the pending confirmation.
+          active.pendingConfirmation = { requestId, resolve };
+
+          // Timeout: auto-deny after 2 minutes.
+          const timeout = setTimeout(() => {
+            if (active.pendingConfirmation?.requestId === requestId) {
+              active.pendingConfirmation.resolve(false);
+              active.pendingConfirmation = null;
+            }
+          }, 120_000);
+
+          // Wrap the original resolve to clear the timeout.
+          const originalResolve = resolve;
+          active.pendingConfirmation = {
+            requestId,
+            resolve: (approved: boolean) => {
+              clearTimeout(timeout);
+              originalResolve(approved);
+            },
+          };
+        });
+      }
+
       try {
         const result = await runAgentTurn(baseCtx, {
           threadId,
           content: body.content as string,
           signal: c.req.raw.signal,
+          confirmTool,
           onEvent: (event) => {
             // Map ChatEvent to SSE events. Fire-and-forget write;
             // errors are swallowed — the client may have disconnected.
@@ -313,7 +347,7 @@ export function threadRoutes(baseCtx: ServiceCtx) {
         if (!result.ok) {
           await emit({
             event: "error",
-            data: JSON.stringify({ message: result.error.message ?? result.error.kind }),
+            data: JSON.stringify({ message: "message" in result.error ? result.error.message : result.error.kind }),
           });
         } else {
           // Emit done with all assistant messages.
@@ -376,6 +410,48 @@ export function threadRoutes(baseCtx: ServiceCtx) {
     });
   });
 
+  // POST /api/threads/:id/confirm — { requestId, approved }
+  //
+  // Resolves a pending tool confirmation. The agent turn is paused
+  // waiting for this response.
+  app.post("/:id/confirm", async (c) => {
+    const threadId = c.req.param("id");
+    let body: { requestId?: unknown; approved?: unknown };
+    try {
+      body = (await c.req.json()) as { requestId?: unknown; approved?: unknown };
+    } catch {
+      return c.json(
+        { error: { kind: "bad-request", reason: "invalid JSON body" } },
+        400,
+      );
+    }
+
+    if (typeof body.requestId !== "string" || typeof body.approved !== "boolean") {
+      return c.json(
+        { error: { kind: "bad-request", reason: "requestId (string) and approved (boolean) are required" } },
+        400,
+      );
+    }
+
+    const active = getActiveStream(threadId);
+    if (!active || active.done) {
+      return c.json(
+        { error: { kind: "not-found", reason: "No active stream for this thread" } },
+        404,
+      );
+    }
+
+    const resolved = resolveConfirmation(active, body.requestId, body.approved);
+    if (!resolved) {
+      return c.json(
+        { error: { kind: "not-found", reason: "No pending confirmation with this requestId" } },
+        404,
+      );
+    }
+
+    return c.json({ ok: true });
+  });
+
   return app;
 }
 
@@ -405,6 +481,16 @@ function chatEventToSSE(
         data: JSON.stringify({
           tool: event.tool,
           output: event.output,
+          nodeId: event.nodeId,
+        }),
+      };
+    case "confirmationRequest":
+      return {
+        event: "confirmationRequest",
+        data: JSON.stringify({
+          requestId: event.requestId,
+          tool: event.tool,
+          input: event.input,
           nodeId: event.nodeId,
         }),
       };

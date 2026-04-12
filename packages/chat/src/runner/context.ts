@@ -88,8 +88,22 @@ export interface ModelConfig {
   readonly defaultModel?: string | undefined;
 }
 
+/**
+ * Confirmation gate callback. The tool loop calls this before
+ * executing a tool that requires user approval. The implementation
+ * (provided by the service layer) emits a `confirmationRequest` SSE
+ * event and blocks until the user responds via POST /:id/confirm.
+ *
+ * Returns `true` to approve, `false` to deny.
+ */
+export type ConfirmToolFn = (
+  tool: string,
+  input: Readonly<Record<string, unknown>>,
+) => Promise<boolean>;
+
 export interface ChatRunContext extends NodeContext<ChatEvent> {
   readonly llm: LlmClient;
   readonly mintMessageId: () => MessageId;
   readonly modelConfig?: ModelConfig | undefined;
+  readonly confirmTool?: ConfirmToolFn | undefined;
 }

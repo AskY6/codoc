@@ -23,6 +23,13 @@ import type { ChatTool } from "../state/aliases.js";
 
 const MAX_TOOL_ITERATIONS = 10;
 
+/** Tools that mutate codocs — require user confirmation when a gate is provided. */
+const CONFIRMATION_REQUIRED = new Set([
+  "createCodoc",
+  "updateCodoc",
+  "deleteCodoc",
+]);
+
 interface ToolLoopParams {
   readonly agentId: AgentId;
   readonly nodeId: NodeId;
@@ -65,6 +72,7 @@ export async function runToolLoop(
     name: string;
     input: Readonly<Record<string, unknown>>;
   }> = [];
+  const allToolResults: Array<{ name: string; output: unknown }> = [];
 
   let iterations = 0;
 
@@ -110,7 +118,7 @@ export async function runToolLoop(
         threadId: state.threadId!,
         content: fullText,
         agentId,
-        metadata: { toolCalls: allToolCalls },
+        metadata: { toolCalls: allToolCalls, toolResults: allToolResults },
       };
       ctx.emit({ kind: "done", finalMessage });
       return { messages: [finalMessage] };
@@ -140,6 +148,33 @@ export async function runToolLoop(
 
       allToolCalls.push({ name: toolUse.name, input: toolUse.input });
 
+      // Confirmation gate: pause for user approval on mutating tools.
+      if (
+        ctx.confirmTool &&
+        CONFIRMATION_REQUIRED.has(toolUse.name)
+      ) {
+        const requestId = `${nodeId}-${toolUse.id}`;
+        ctx.emit({
+          kind: "confirmationRequest",
+          requestId,
+          nodeId,
+          tool: toolUse.name,
+          input: toolUse.input,
+        });
+        const approved = await ctx.confirmTool(toolUse.name, toolUse.input);
+        if (!approved) {
+          const output = { denied: true, message: "User denied this action." };
+          allToolResults.push({ name: toolUse.name, output });
+          ctx.emit({ kind: "toolResult", nodeId, tool: toolUse.name, output });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolUse.id,
+            content: JSON.stringify(output),
+          });
+          continue;
+        }
+      }
+
       const tool = toolMap.get(toolUse.name);
       let output: unknown;
       if (tool) {
@@ -148,6 +183,8 @@ export async function runToolLoop(
       } else {
         output = { error: `Unknown tool: ${toolUse.name}` };
       }
+
+      allToolResults.push({ name: toolUse.name, output });
 
       ctx.emit({
         kind: "toolResult",
@@ -174,7 +211,7 @@ export async function runToolLoop(
     threadId: state.threadId!,
     content: `Reached maximum tool call limit (${MAX_TOOL_ITERATIONS}).`,
     agentId,
-    metadata: { toolCalls: allToolCalls },
+    metadata: { toolCalls: allToolCalls, toolResults: allToolResults },
   };
   ctx.emit({ kind: "done", finalMessage });
   return { messages: [finalMessage] };

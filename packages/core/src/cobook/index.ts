@@ -19,6 +19,7 @@ export type {
   ChatThread,
   ChatMessage,
   ToolCall,
+  ToolResult,
   AssistantMetadata,
 } from "./chat.js";
 

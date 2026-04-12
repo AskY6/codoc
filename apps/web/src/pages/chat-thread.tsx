@@ -40,21 +40,27 @@ import { listAgents } from "../api/agents";
 import { listCodocsByWorkspace } from "../api/codocs";
 import { runAgentTurnStream, type StreamControl } from "../api/sse";
 import {
+  confirmToolCall,
   getThread,
   setThreadAgents,
   setThreadCodocs,
 } from "../api/threads";
+import { ChatMarkdown } from "../components/chat-markdown";
 import { CodocCard } from "../components/codoc-card";
 import { CodocPanel } from "../components/codoc-panel";
+import { ToolConfirmation } from "../components/tool-confirmation";
 import { Button } from "../components/ui/button";
 import { relativeTime } from "../lib/format";
 import type {
   AgentListItem,
   ChatMessage,
   CodocListItem,
+  SSEConfirmationRequestEvent,
   SSEToolCallEvent,
+  SSEToolResultEvent,
   ThreadMessage,
   ToolCall,
+  ToolResult,
 } from "../types";
 
 // ---- Codoc reference extraction from tool calls ----------------------------
@@ -81,42 +87,113 @@ const agentsKey = ["agents"] as const;
 const codocListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "codocs"] as const;
 
-// ---- Tool call display (collapsed by default) ---------------------------
+// ---- Tool call + result cards --------------------------------------------
 
-function ToolCallIndicator({ toolCalls }: { toolCalls: readonly ToolCall[] }) {
-  const [expanded, setExpanded] = useState(false);
+/** Build a name→output lookup from the results array. */
+function buildResultMap(
+  results: readonly ToolResult[],
+): Map<string, unknown[]> {
+  const map = new Map<string, unknown[]>();
+  for (const r of results) {
+    const arr = map.get(r.name);
+    if (arr) arr.push(r.output);
+    else map.set(r.name, [r.output]);
+  }
+  return map;
+}
+
+function ToolCallCards({
+  toolCalls,
+  toolResults,
+}: {
+  toolCalls: readonly ToolCall[];
+  toolResults: readonly ToolResult[];
+}) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   if (toolCalls.length === 0) return null;
 
+  // Track per-name indices to pair calls with results in order.
+  const resultMap = buildResultMap(toolResults);
+  const consumed = new Map<string, number>();
+
   return (
-    <div className="mt-2">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Wrench className="h-3 w-3" />
-        {toolCalls.length} tool call{toolCalls.length > 1 ? "s" : ""}
-        {expanded ? (
-          <ChevronDown className="h-3 w-3" />
-        ) : (
-          <ChevronRight className="h-3 w-3" />
-        )}
-      </button>
-      {expanded && (
-        <ul className="mt-1 space-y-1">
-          {toolCalls.map((tc, i) => (
-            <li
-              key={i}
-              className="rounded bg-muted px-2 py-1 font-mono text-xs text-muted-foreground"
+    <div className="mt-3 space-y-1.5">
+      {toolCalls.map((tc, i) => {
+        // Pair this call with the next unconsumed result of the same name.
+        const idx = consumed.get(tc.name) ?? 0;
+        consumed.set(tc.name, idx + 1);
+        const outputs = resultMap.get(tc.name);
+        const result = outputs?.[idx];
+        const isExpanded = expandedIdx === i;
+
+        return (
+          <div
+            key={i}
+            className="rounded-lg border border-border bg-muted/30"
+          >
+            <button
+              type="button"
+              onClick={() => setExpandedIdx(isExpanded ? null : i)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50"
             >
-              {tc.name}({JSON.stringify(tc.input)})
-            </li>
-          ))}
-        </ul>
-      )}
+              <Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span className="font-medium text-foreground">{tc.name}</span>
+              <span className="flex-1 truncate text-muted-foreground">
+                {summarizeInput(tc.input)}
+              </span>
+              {result !== undefined && (
+                <span className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  done
+                </span>
+              )}
+              {isExpanded ? (
+                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
+            </button>
+            {isExpanded && (
+              <div className="border-t border-border px-3 py-2 space-y-2">
+                <div>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Input
+                  </p>
+                  <pre className="overflow-x-auto rounded bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                    {JSON.stringify(tc.input, null, 2)}
+                  </pre>
+                </div>
+                {result !== undefined && (
+                  <div>
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Output
+                    </p>
+                    <pre className="max-h-48 overflow-auto rounded bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                      {typeof result === "string"
+                        ? result
+                        : JSON.stringify(result, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+/** One-line summary of tool input for the collapsed row. */
+function summarizeInput(input: Readonly<Record<string, unknown>>): string {
+  const keys = Object.keys(input);
+  if (keys.length === 0) return "";
+  if (keys.length === 1) {
+    const val = input[keys[0]!];
+    const str = typeof val === "string" ? val : JSON.stringify(val);
+    return str.length > 60 ? str.slice(0, 57) + "..." : str;
+  }
+  return keys.join(", ");
 }
 
 // ---- Message bubble -----------------------------------------------------
@@ -158,10 +235,15 @@ function MessageBubble({
           <Bot className="h-3 w-3" />
           {agentName ?? msg.agentId}
         </span>
-        <div className="max-w-[80%] whitespace-pre-wrap text-sm text-foreground">
-          {msg.content}
-          <ToolCallIndicator toolCalls={msg.metadata.toolCalls} />
-        </div>
+        {msg.content && (
+          <div className="max-w-[80%] text-sm text-foreground">
+            <ChatMarkdown content={msg.content} />
+          </div>
+        )}
+        <ToolCallCards
+          toolCalls={msg.metadata.toolCalls}
+          toolResults={msg.metadata.toolResults ?? []}
+        />
         {codocIds.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
             {codocIds.map((id) => {
@@ -198,34 +280,56 @@ function MessageBubble({
 function StreamingBubble({
   text,
   toolCalls,
+  toolResults,
+  confirmations,
+  onConfirmRespond,
   agentName,
 }: {
   text: string;
   toolCalls: readonly SSEToolCallEvent[];
+  toolResults: readonly SSEToolResultEvent[];
+  confirmations: readonly SSEConfirmationRequestEvent[];
+  onConfirmRespond: (requestId: string, approved: boolean) => void;
   agentName: string | null;
 }) {
+  // Convert streaming SSE events into the ToolCall/ToolResult shapes
+  // expected by ToolCallCards.
+  const calls: ToolCall[] = toolCalls.map((tc) => ({
+    name: tc.tool,
+    input: tc.input,
+  }));
+  const results: ToolResult[] = toolResults.map((tr) => ({
+    name: tr.tool,
+    output: tr.output,
+  }));
+
   return (
     <li className="flex flex-col items-start">
       <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
         <Bot className="h-3 w-3" />
         {agentName ?? "Assistant"}
       </span>
-      <div className="max-w-[80%] whitespace-pre-wrap text-sm text-foreground">
-        {text || (
-          <span className="inline-flex items-center gap-1 text-muted-foreground animate-pulse">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Thinking...
-          </span>
-        )}
-        {toolCalls.length > 0 && (
-          <div className="mt-2">
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Wrench className="h-3 w-3" />
-              {toolCalls.length} tool call{toolCalls.length > 1 ? "s" : ""}
-            </span>
-          </div>
-        )}
-      </div>
+      {text ? (
+        <div className="max-w-[80%] text-sm text-foreground">
+          <ChatMarkdown content={text} />
+        </div>
+      ) : toolCalls.length === 0 && confirmations.length === 0 ? (
+        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground animate-pulse">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Thinking...
+        </span>
+      ) : null}
+      <ToolCallCards toolCalls={calls} toolResults={results} />
+      {confirmations.map((c) => (
+        <div key={c.requestId} className="mt-2 w-full max-w-[80%]">
+          <ToolConfirmation
+            requestId={c.requestId}
+            tool={c.tool}
+            input={c.input}
+            onRespond={onConfirmRespond}
+          />
+        </div>
+      ))}
     </li>
   );
 }
@@ -426,6 +530,8 @@ export function ChatThreadPage() {
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [streamToolCalls, setStreamToolCalls] = useState<SSEToolCallEvent[]>([]);
+  const [streamToolResults, setStreamToolResults] = useState<SSEToolResultEvent[]>([]);
+  const [pendingConfirmations, setPendingConfirmations] = useState<SSEConfirmationRequestEvent[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [optimisticUserMsg, setOptimisticUserMsg] = useState<string | null>(null);
   const streamRef = useRef<StreamControl | null>(null);
@@ -439,6 +545,7 @@ export function ChatThreadPage() {
   }, [
     threadQuery.data?.messages.length,
     streamText,
+    streamToolResults.length,
     streaming,
     optimisticUserMsg,
   ]);
@@ -453,6 +560,8 @@ export function ChatThreadPage() {
       setStreaming(true);
       setStreamText("");
       setStreamToolCalls([]);
+      setStreamToolResults([]);
+      setPendingConfirmations([]);
       setStreamError(null);
       setOptimisticUserMsg(trimmed);
 
@@ -463,10 +572,18 @@ export function ChatThreadPage() {
         onToolCall: (event) => {
           setStreamToolCalls((prev) => [...prev, event]);
         },
+        onToolResult: (event) => {
+          setStreamToolResults((prev) => [...prev, event]);
+        },
+        onConfirmationRequest: (event) => {
+          setPendingConfirmations((prev) => [...prev, event]);
+        },
         onDone: () => {
           setStreaming(false);
           setStreamText("");
           setStreamToolCalls([]);
+          setStreamToolResults([]);
+          setPendingConfirmations([]);
           setOptimisticUserMsg(null);
           streamRef.current = null;
           void queryClient.invalidateQueries({
@@ -498,6 +615,8 @@ export function ChatThreadPage() {
     setStreaming(false);
     setStreamText("");
     setStreamToolCalls([]);
+    setStreamToolResults([]);
+    setPendingConfirmations([]);
     setOptimisticUserMsg(null);
     streamRef.current = null;
     void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
@@ -508,6 +627,10 @@ export function ChatThreadPage() {
       e.preventDefault();
       void handleSend(e as unknown as FormEvent);
     }
+  }
+
+  function handleConfirmRespond(requestId: string, approved: boolean) {
+    confirmToolCall({ threadId, requestId, approved }).catch(() => {});
   }
 
   // Clean up stream on unmount.
@@ -633,6 +756,9 @@ export function ChatThreadPage() {
                   <StreamingBubble
                     text={streamText}
                     toolCalls={streamToolCalls}
+                    toolResults={streamToolResults}
+                    confirmations={pendingConfirmations}
+                    onConfirmRespond={handleConfirmRespond}
                     agentName={null}
                   />
                 )}

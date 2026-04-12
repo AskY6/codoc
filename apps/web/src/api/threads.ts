@@ -117,3 +117,22 @@ export function runAgentTurn(
     },
   );
 }
+
+export interface ConfirmToolCallBody {
+  readonly threadId: string;
+  readonly requestId: string;
+  readonly approved: boolean;
+}
+
+export function confirmToolCall(
+  body: ConfirmToolCallBody,
+): Promise<{ ok: boolean }> {
+  const { threadId, requestId, approved } = body;
+  return apiFetch<{ ok: boolean }>(
+    `/api/threads/${encodeURIComponent(threadId)}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({ requestId, approved }),
+    },
+  );
+}

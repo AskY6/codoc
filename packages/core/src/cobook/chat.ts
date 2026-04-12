@@ -13,9 +13,16 @@ export interface ToolCall {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
+/** The output of a single tool execution, paired with the call by name. */
+export interface ToolResult {
+  readonly name: string;
+  readonly output: unknown;
+}
+
 /** Metadata that only assistant messages carry. */
 export interface AssistantMetadata {
   readonly toolCalls: readonly ToolCall[];
+  readonly toolResults: readonly ToolResult[];
 }
 
 /**

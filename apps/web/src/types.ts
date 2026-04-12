@@ -68,8 +68,15 @@ export interface ToolCall {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
+// The output of a single tool execution, paired with the call by name.
+export interface ToolResult {
+  readonly name: string;
+  readonly output: unknown;
+}
+
 export interface AssistantMetadata {
   readonly toolCalls: readonly ToolCall[];
+  readonly toolResults: readonly ToolResult[];
 }
 
 // Role ADT: user messages have no agentId; assistant messages always
@@ -152,6 +159,13 @@ export interface SSEToolResultEvent {
 
 export interface SSETitleUpdateEvent {
   readonly title: string;
+}
+
+export interface SSEConfirmationRequestEvent {
+  readonly requestId: string;
+  readonly tool: string;
+  readonly input: Readonly<Record<string, unknown>>;
+  readonly nodeId: string;
 }
 
 export interface SSEErrorEvent {

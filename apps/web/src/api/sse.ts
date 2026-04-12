@@ -5,6 +5,7 @@
 
 import type {
   RunAgentTurnResponse,
+  SSEConfirmationRequestEvent,
   SSEErrorEvent,
   SSETitleUpdateEvent,
   SSETokenEvent,
@@ -16,6 +17,7 @@ export interface StreamHandlers {
   onToken?: (event: SSETokenEvent) => void;
   onToolCall?: (event: SSEToolCallEvent) => void;
   onToolResult?: (event: SSEToolResultEvent) => void;
+  onConfirmationRequest?: (event: SSEConfirmationRequestEvent) => void;
   onDone?: (event: RunAgentTurnResponse) => void;
   onTitleUpdate?: (event: SSETitleUpdateEvent) => void;
   onError?: (event: SSEErrorEvent) => void;
@@ -156,6 +158,11 @@ function dispatchSSEEvent(
         break;
       case "toolResult":
         handlers.onToolResult?.(JSON.parse(data) as SSEToolResultEvent);
+        break;
+      case "confirmationRequest":
+        handlers.onConfirmationRequest?.(
+          JSON.parse(data) as SSEConfirmationRequestEvent,
+        );
         break;
       case "done":
         handlers.onDone?.(JSON.parse(data) as RunAgentTurnResponse);

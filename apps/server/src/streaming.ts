@@ -11,10 +11,18 @@ export interface SSEEvent {
   readonly data: string; // already JSON-stringified
 }
 
+/** Pending confirmation awaiting user approval. */
+export interface PendingConfirmation {
+  readonly requestId: string;
+  readonly resolve: (approved: boolean) => void;
+}
+
 export interface ActiveStream {
   readonly events: SSEEvent[];
   readonly listeners: Set<(evt: SSEEvent) => void>;
   done: boolean;
+  /** At most one pending confirmation per stream at a time. */
+  pendingConfirmation: PendingConfirmation | null;
 }
 
 const activeStreams = new Map<string, ActiveStream>();
@@ -33,9 +41,30 @@ export function createActiveStream(threadId: string): ActiveStream {
     events: [],
     listeners: new Set(),
     done: false,
+    pendingConfirmation: null,
   };
   activeStreams.set(threadId, stream);
   return stream;
+}
+
+/**
+ * Resolve the pending confirmation for a stream.
+ * Returns false if there was no pending confirmation with that requestId.
+ */
+export function resolveConfirmation(
+  stream: ActiveStream,
+  requestId: string,
+  approved: boolean,
+): boolean {
+  if (
+    stream.pendingConfirmation &&
+    stream.pendingConfirmation.requestId === requestId
+  ) {
+    stream.pendingConfirmation.resolve(approved);
+    stream.pendingConfirmation = null;
+    return true;
+  }
+  return false;
 }
 
 export function emitToStream(stream: ActiveStream, evt: SSEEvent): void {

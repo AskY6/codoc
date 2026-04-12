@@ -16,6 +16,7 @@ export type {
   LlmResponse,
   ChatRunContext,
   ModelConfig,
+  ConfirmToolFn,
 } from "./context.js";
 export {
   createAnthropicLlmClient,
