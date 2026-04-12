@@ -41,6 +41,51 @@ export interface CodocDetail {
   readonly rev: string;
 }
 
+// Chat thread / message wire DTOs for slice 4.
+//
+// Thread DTOs nest the canonical backend type (`thread: ChatThread`)
+// just like `WorkspaceListItem` — the core type holds only primitives,
+// so JSON serialisation is safe (unlike `CodocListItem`, which is
+// flattened because `Codoc.ast` holds non-serialisable maps).
+
+export interface ChatThread {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly title: string | null;
+}
+
+export interface ThreadListItem {
+  readonly thread: ChatThread;
+  readonly updatedAt: number;
+  // Opaque optimistic-concurrency token, same rules as workspace.rev.
+  readonly rev: string;
+}
+
+// Slice 4 is user-only: no assistant / system variants on the wire
+// yet. Slice 5's run-agent-turn will extend this union with
+// `kind: "assistant"` (carrying agentId + metadata) and possibly
+// `kind: "system"`.
+export type ChatMessage = {
+  readonly kind: "user";
+  readonly id: string;
+  readonly threadId: string;
+  readonly content: string;
+};
+
+export interface ThreadMessage {
+  readonly message: ChatMessage;
+  // Per-thread monotonic ordering key assigned by the server. Clients
+  // treat it as opaque; combined with `message.id` it is the canonical
+  // pagination cursor for future slices.
+  readonly seq: number;
+  readonly createdAt: number;
+}
+
+export interface ThreadDetail {
+  readonly thread: ThreadListItem;
+  readonly messages: readonly ThreadMessage[];
+}
+
 export interface ServiceErrorBody {
   readonly error: { readonly kind: string; readonly [k: string]: unknown };
 }

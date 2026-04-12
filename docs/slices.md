@@ -214,58 +214,114 @@ no chat integration; those are slices 4–6).
 
 ---
 
-## Slice 4 — chat threads (no agents yet)
+## Slice 4 — chat threads (no agents yet) — DONE
 
-**Page:** thread list inside the workspace detail page + a basic
-thread page that lists messages and lets the user manually append
-a user message. **No agent activation, no streaming, no tool calls.**
-
-**Why this slice:** first time we exercise an aggregate with an
-**append-only child collection** (`ChatMessage` rows under
+**Why this slice existed:** first time we exercise an aggregate with
+an **append-only child collection** (`ChatMessage` rows under
 `ChatThread`). It validates the `ThreadStore.appendMessage` contract
 (monotonic `seq`, atomic assignment) without dragging the entire
 agent runtime in. The thread page becomes the test bed slices 5/6
 will mount agent UI on.
 
+**Page:** Chats section on the workspace detail page +
+`/workspace/:workspaceId/chat/:threadId` page with a scrollable
+message transcript and a textarea + Send button that appends user
+messages synchronously. "New chat" creates a thread with `title:
+null` and navigates into it immediately. **No agent activation, no
+streaming, no tool calls** — slice 5's job.
+
 **Stores replaced:** `ThreadStore` (full impl — `get`, `listByWorkspace`,
-`create`, `update`, `delete`, `appendMessage`, `listMessages`).
+`create`, `update`, `delete`, `appendMessage`, `listMessages`). The
+in-memory impl keeps an explicit `seqByThread: Map<ThreadId, number>`
+counter rather than deriving from `messages.length` so future
+per-message delete doesn't silently break monotonicity. Workspace
+cascade wipes threads + their message logs via the same
+`cascadeDelete*` hook pattern slice 2 introduced for codocs.
 
 **Stubs still in place:** `AgentStore`, `ThreadCodocStore`,
 `ThreadAgentStore`, `WorkspaceAgentStore`, `AgentSessionStore`.
 
-**New use cases:**
-- `listThreadsByWorkspace`
-- `createThread` (use case mints `ThreadId` via `IdGenerator.threadId()`)
-- `deleteThread`
-- `getThread` (returns `{ thread, messages }` — first multi-fetch
-  use case; sets the pattern for "page bundle" DTOs)
-- `appendUserMessage` — synchronous, no agent. Use case mints
-  `MessageId` and lets the store assign `seq`.
+**Use cases:** `listThreadsByWorkspace`, `createThread`,
+`deleteThread`, `getThread`, `appendUserMessage`.
+**Routes:** `GET/POST /api/workspaces/:id/threads`,
+`GET/DELETE /api/threads/:id`, `POST /api/threads/:id/messages`.
 
-**New conventions to lock in:**
-- "page bundle" DTO pattern (`{ thread, messages }`) vs "fetch
-  separately" — slice 4 should pick **one** and document it in
-  `usecases/AGENTS.md` so slice 6 doesn't reinvent it
-- how `seq` is exposed on the wire
-- whether `listMessages` ever needs cursoring before slice 6
-  (probably not — defer)
+**Conventions locked in** (documented in
+`packages/service/src/usecases/thread/AGENTS.md`):
 
-**New routes:**
-- `GET /api/workspaces/:id/threads`
-- `POST /api/workspaces/:id/threads`
-- `DELETE /api/threads/:id`
-- `GET /api/threads/:id`
-- `POST /api/threads/:id/messages` *(synchronous append, returns the
-  stored message; no streaming)*
+- **DTOs nest the canonical core type.** `ThreadListItem` wraps
+  `ChatThread`, `ThreadMessage` wraps `ChatMessage`, same as
+  `WorkspaceListItem` wraps `Workspace`. `CodocListItem`'s flattened
+  shape remains the documented exception (because `Codoc.ast` holds
+  `ReadonlyMap`s that don't survive `JSON.stringify`). Default is
+  still "nest the canonical type".
+- **Page-bundle DTO pattern.** `getThread` returns
+  `{ thread: ThreadListItem, messages: readonly ThreadMessage[] }`
+  in a single use case and a single HTTP round-trip. Alternative
+  (two parallel queries for header + messages) rejected because the
+  two pieces are always loaded together, one round-trip halves the
+  latency, and concurrent `appendMessage` between internal calls is
+  harmless. This is the reference shape for any future multi-fetch
+  use case (slice 5's `run-agent-turn` bundle, slice 6's
+  `createWorkspaceFromPreset` bundle).
+- **`seq` is on the wire.** `ThreadMessage.seq: number` is a
+  thread-local monotonic integer assigned by
+  `ThreadStore.appendMessage`. Combined with `message.id` it is the
+  canonical cursor for pagination. No cursoring added in slice 4
+  (in-memory store returns the full log) but the shape is frozen so
+  the slice that needs pagination only adds query-string parameters,
+  not a new DTO.
+- **`appendMessage` does NOT bump `thread.updatedAt`.** The
+  `ThreadStore.update` and `ThreadStore.appendMessage` methods have
+  distinct contracts; only `update` stamps `updatedAt` / allocates
+  a new `Rev`. A thread with 100 messages still has the `updatedAt`
+  of its last rename. If a future slice wants "sort by last message
+  time", the right fix is to expose a `lastMessageAt: number | null`
+  on `ThreadListItem` computed as a pure-read join, not as a side
+  effect of `appendMessage`.
+- **Append uses `ctx.idGen.messageId()`.** The use case mints
+  `MessageId`, the store assigns `seq` atomically. Same rule as
+  every other create use case. `MessageAlreadyExists` is therefore
+  structurally unreachable under a correct `IdGenerator`, but the
+  variant is listed in the error union + HTTP mapping + wire shape
+  so the ADT is frozen now; slice 5 may reach it via runtime session
+  replay.
+- **Long-form conflict recovery is not re-used yet.** `ThreadStore.update`
+  is implemented but no slice 4 use case calls it — inline rename
+  lands with slice 5 or later and will follow the slice-1.5
+  short-field "force refetch, require re-save" pattern, not slice 3's
+  long-form recovery.
+
+**Deferred** (recorded in `usecases/thread/AGENTS.md`):
+
+- **`updateThread` use case.** No slice 4 UI path renames a thread.
+- **Auto-title from first message.** Slice 4 creates threads with
+  `title: null` and the UI shows "Untitled". A later slice may
+  populate the title on append, but that belongs on append, not on
+  create, so empty threads stay "Untitled".
+- **`listMessages` pagination.** `ListMessagesOptions` already defines
+  `afterSeq` / `limit` on the port and the in-memory store honours
+  them, but no use case exposes them. Pagination lands when the
+  slice that needs it adds query-string parsing.
+- **`threadCount` on `WorkspaceListItem`.** Out of scope. Slice 5
+  adds `agentCount`; if a later slice wants `threadCount` it mirrors
+  that upgrade with a new pure-read join method on `threadRepo`.
+
+**Verification:** curl smoke test walked the full CRUD —
+create workspace → empty list → create thread → list shows it →
+`getThread` returns `{ thread, messages: [] }` → append user message
+(seq=1, user variant on the wire) → `getThread` now returns the
+message → separately, workspace cascade delete wiped a thread +
+message through the new `cascadeDeleteThreads` hook (thread-not-found
+on `getThread` after workspace DELETE). Full service test suite
+passes (47 tests) and workspace typecheck is clean across all 14
+packages.
 
 **Legacy reference:** the thread list area of
 `legacy/apps/web/src/pages/workspace-detail.tsx` and the message log
-of `legacy/apps/web/src/pages/chat-page.tsx` (strip everything to do
-with agents, codoc context, SSE, and the canvas panel).
-
-**Verification:** `/verify-fix` — create a thread, append a few user
-messages, reload, delete the thread, confirm cascade (messages
-gone).
+of `legacy/apps/web/src/pages/chat-page.tsx` (stripped — no agent
+picker, no codoc context, no SSE, no canvas panel; those are
+slices 5–6).
 
 ---
 

@@ -10,10 +10,12 @@ import type { WorkspaceId } from "@cobook/core";
 import type { ServiceCtx } from "@cobook/service";
 import {
   createCodoc,
+  createThread,
   createWorkspace,
   deleteWorkspace,
   getWorkspace,
   listCodocsByWorkspace,
+  listThreadsByWorkspace,
   listWorkspaces,
   updateWorkspace,
 } from "@cobook/service";
@@ -33,6 +35,10 @@ interface UpdateWorkspaceBody {
 
 interface CreateCodocBody {
   readonly path?: unknown;
+  readonly title?: unknown;
+}
+
+interface CreateThreadBody {
   readonly title?: unknown;
 }
 
@@ -106,6 +112,59 @@ export function workspaceRoutes(baseCtx: ServiceCtx) {
     const result = await createCodoc(baseCtx, {
       workspaceId,
       path: body.path.trim(),
+      title:
+        typeof body.title === "string" && body.title.trim() !== ""
+          ? body.title.trim()
+          : null,
+    });
+
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value, 201);
+  });
+
+  // GET /api/workspaces/:id/threads — every thread in the workspace
+  app.get("/:id/threads", async (c) => {
+    const id = c.req.param("id") as WorkspaceId;
+    const result = await listThreadsByWorkspace(baseCtx, id);
+    if (!result.ok) {
+      return respondError(c, result.error);
+    }
+    return c.json(result.value);
+  });
+
+  // POST /api/workspaces/:id/threads — { title? }
+  app.post("/:id/threads", async (c) => {
+    const workspaceId = c.req.param("id") as WorkspaceId;
+    let body: CreateThreadBody;
+    try {
+      body = (await c.req.json()) as CreateThreadBody;
+    } catch {
+      return c.json(
+        { error: { kind: "bad-request", reason: "invalid JSON body" } },
+        400,
+      );
+    }
+
+    if (
+      body.title !== undefined &&
+      body.title !== null &&
+      typeof body.title !== "string"
+    ) {
+      return c.json(
+        {
+          error: {
+            kind: "bad-request",
+            reason: "title must be a string or null",
+          },
+        },
+        400,
+      );
+    }
+
+    const result = await createThread(baseCtx, {
+      workspaceId,
       title:
         typeof body.title === "string" && body.title.trim() !== ""
           ? body.title.trim()

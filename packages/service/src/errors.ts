@@ -72,6 +72,11 @@ export type ThreadAlreadyExists = {
   readonly id: ThreadId;
 };
 
+export type MessageAlreadyExists = {
+  readonly kind: "message-already-exists";
+  readonly id: MessageId;
+};
+
 // ---- conflicts ---------------------------------------------------------
 //
 // Optimistic-concurrency failure. `expectedRev` is opaque to callers —
@@ -142,6 +147,7 @@ export type ServiceError =
   | AgentAlreadyExists
   | CodocAlreadyExists
   | ThreadAlreadyExists
+  | MessageAlreadyExists
   | WorkspaceConflict
   | AgentConflict
   | CodocConflict

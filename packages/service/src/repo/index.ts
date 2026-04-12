@@ -8,3 +8,4 @@
 
 export { workspaceRepo } from "./workspace.js";
 export { codocRepo } from "./codoc.js";
+export { threadRepo } from "./thread.js";

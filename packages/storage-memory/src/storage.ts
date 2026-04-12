@@ -24,9 +24,9 @@ import {
   sessionStub,
   threadAgentStub,
   threadCodocStub,
-  threadStub,
   workspaceAgentStub,
 } from "./stores/stubs.js";
+import { createMemoryThreadStore } from "./stores/thread.js";
 import { createMemoryWorkspaceStore } from "./stores/workspace.js";
 
 export interface CreateMemoryStorageOptions {
@@ -38,17 +38,20 @@ export function createMemoryStorage(
 ): Storage {
   const clock = options.clock ?? new SystemClock();
 
-  // Two-phase construction so the two real stores can close over each
-  // other. `workspaces` needs to know how to cascade into codocs;
-  // `codocs` needs to know whether a workspace id is live. Each store
-  // reads the other through a function reference that is populated
-  // below, so declaration order does not matter.
+  // Two-phase construction so the real stores can close over each
+  // other. `workspaces` needs to know how to cascade into codocs and
+  // threads; the dependent stores need to know whether a workspace id
+  // is live. Each store reads the other through a function reference
+  // that is populated below, so declaration order does not matter.
   let codocCascadeRef: ((id: Parameters<typeof workspaces.delete>[1]) => void) | null =
+    null;
+  let threadCascadeRef: ((id: Parameters<typeof workspaces.delete>[1]) => void) | null =
     null;
 
   const workspaces = createMemoryWorkspaceStore({
     clock,
     cascadeDeleteCodocs: (id) => codocCascadeRef?.(id),
+    cascadeDeleteThreads: (id) => threadCascadeRef?.(id),
   });
 
   const codocs = createMemoryCodocStore({
@@ -57,11 +60,17 @@ export function createMemoryStorage(
   });
   codocCascadeRef = (id) => codocs.__cascadeDeleteByWorkspace(id);
 
+  const threads = createMemoryThreadStore({
+    clock,
+    workspaceExists: (id) => workspaces.__hasWorkspace(id),
+  });
+  threadCascadeRef = (id) => threads.__cascadeDeleteByWorkspace(id);
+
   return {
     workspaces,
     codocs,
     agents: agentStub,
-    threads: threadStub,
+    threads,
     threadCodocs: threadCodocStub,
     threadAgents: threadAgentStub,
     workspaceAgents: workspaceAgentStub,

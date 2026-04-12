@@ -35,6 +35,7 @@ export interface MemoryWorkspaceStoreDeps {
    * contribute nothing here.
    */
   readonly cascadeDeleteCodocs?: (workspaceId: WorkspaceId) => void;
+  readonly cascadeDeleteThreads?: (workspaceId: WorkspaceId) => void;
 }
 
 export interface MemoryWorkspaceStore extends WorkspaceStore {
@@ -117,6 +118,7 @@ export function createMemoryWorkspaceStore(
       // Stubs contribute nothing — the slice that stops stubbing each
       // store wires its cascade hook here.
       deps.cascadeDeleteCodocs?.(id);
+      deps.cascadeDeleteThreads?.(id);
       rows.delete(id);
       return ok(undefined);
     },

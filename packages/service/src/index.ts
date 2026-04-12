@@ -34,6 +34,7 @@ export type {
   AgentAlreadyExists,
   CodocAlreadyExists,
   ThreadAlreadyExists,
+  MessageAlreadyExists,
   WorkspaceConflict,
   AgentConflict,
   CodocConflict,
@@ -50,6 +51,11 @@ export type { IdGenerator } from "./ports/id.js";
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";
 export type { CodocDetail, CodocListItem } from "./types/codoc.js";
+export type {
+  ThreadDetail,
+  ThreadListItem,
+  ThreadMessage,
+} from "./types/thread.js";
 
 // ---- repo (thin facades over storage) ---------------------------------
 export * from "./repo/index.js";

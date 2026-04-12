@@ -56,6 +56,7 @@ function statusFor(error: ServiceError): ContentfulStatusCode {
     case "agent-already-exists":
     case "codoc-already-exists":
     case "thread-already-exists":
+    case "message-already-exists":
     case "workspace-conflict":
     case "agent-conflict":
     case "codoc-conflict":

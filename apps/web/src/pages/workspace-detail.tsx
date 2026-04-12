@@ -12,14 +12,25 @@
 // one does not force the other to refetch.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FileText, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  MessageSquare,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   createCodoc,
   deleteCodoc,
   listCodocsByWorkspace,
 } from "../api/codocs";
+import {
+  createThread,
+  deleteThread,
+  listThreadsByWorkspace,
+} from "../api/threads";
 import { getWorkspace } from "../api/workspaces";
 import { Button } from "../components/ui/button";
 import {
@@ -40,6 +51,8 @@ import { Input } from "../components/ui/input";
 const workspaceKey = (id: string) => ["workspace", id] as const;
 const codocListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "codocs"] as const;
+const threadListKey = (workspaceId: string) =>
+  ["workspace", workspaceId, "threads"] as const;
 
 function relativeTime(ms: number): string {
   const diff = Date.now() - ms;
@@ -58,6 +71,7 @@ export function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const workspaceId = id ?? "";
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const workspaceQuery = useQuery({
     queryKey: workspaceKey(workspaceId),
@@ -68,6 +82,12 @@ export function WorkspaceDetailPage() {
   const codocsQuery = useQuery({
     queryKey: codocListKey(workspaceId),
     queryFn: () => listCodocsByWorkspace(workspaceId),
+    enabled: workspaceId !== "",
+  });
+
+  const threadsQuery = useQuery({
+    queryKey: threadListKey(workspaceId),
+    queryFn: () => listThreadsByWorkspace(workspaceId),
     enabled: workspaceId !== "",
   });
 
@@ -98,6 +118,28 @@ export function WorkspaceDetailPage() {
     },
   });
 
+  // Threads. The workspace envelope does NOT carry a threadCount yet
+  // (see packages/service/src/usecases/thread/AGENTS.md — deferred),
+  // so thread mutations only need to invalidate the thread list. If
+  // a future slice adds threadCount we mirror codoc's fanout.
+  const createThreadMutation = useMutation({
+    mutationFn: createThread,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: threadListKey(workspaceId),
+      });
+    },
+  });
+
+  const deleteThreadMutation = useMutation({
+    mutationFn: deleteThread,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: threadListKey(workspaceId),
+      });
+    },
+  });
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [path, setPath] = useState("");
@@ -119,6 +161,21 @@ export function WorkspaceDetailPage() {
       title: title.trim() === "" ? null : title.trim(),
     });
     setDialogOpen(false);
+  }
+
+  // Thread creation is a single click: title is always null at
+  // creation time (see the "Auto-title from first message" deferred
+  // item in packages/service/src/usecases/thread/AGENTS.md). We
+  // navigate to the new thread on success so the user lands in the
+  // chat page and can start typing.
+  async function handleNewChat() {
+    const result = await createThreadMutation.mutateAsync({
+      workspaceId,
+      title: null,
+    });
+    navigate(
+      `/workspace/${encodeURIComponent(workspaceId)}/chat/${encodeURIComponent(result.thread.id)}`,
+    );
   }
 
   if (workspaceQuery.isLoading) {
@@ -249,6 +306,84 @@ export function WorkspaceDetailPage() {
           <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             New codoc
+          </Button>
+        </div>
+      )}
+
+      <div className="mt-10 mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-medium text-neutral-900">Chats</h2>
+        <Button
+          onClick={handleNewChat}
+          disabled={createThreadMutation.isPending}
+        >
+          <Plus className="h-4 w-4" />
+          {createThreadMutation.isPending ? "Creating…" : "New chat"}
+        </Button>
+      </div>
+
+      {threadsQuery.isLoading ? (
+        <p className="text-sm text-neutral-500">Loading…</p>
+      ) : threadsQuery.isError ? (
+        <p className="text-sm text-red-600">
+          Failed to load chats: {(threadsQuery.error as Error).message}
+        </p>
+      ) : threadsQuery.data && threadsQuery.data.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {threadsQuery.data.map((item) => (
+            <Card key={item.thread.id} className="group relative">
+              <Link
+                to={`/workspace/${encodeURIComponent(workspaceId)}/chat/${encodeURIComponent(item.thread.id)}`}
+                className="absolute inset-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                aria-label={`Open ${item.thread.title ?? "Untitled"}`}
+              />
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="flex items-center gap-2 truncate">
+                      <MessageSquare className="h-4 w-4 flex-shrink-0 text-neutral-400" />
+                      <span className="truncate">
+                        {item.thread.title ?? "Untitled"}
+                      </span>
+                    </CardTitle>
+                  </div>
+                  <div className="relative z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Delete ${item.thread.title ?? "Untitled"}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteThreadMutation.mutate(item.thread.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-neutral-500" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-neutral-500">
+                  {relativeTime(item.updatedAt)}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center">
+          <p className="text-base font-medium text-neutral-900">
+            No chats yet
+          </p>
+          <p className="max-w-sm text-sm text-neutral-500">
+            Start a new chat to explore this workspace.
+          </p>
+          <Button
+            onClick={handleNewChat}
+            disabled={createThreadMutation.isPending}
+          >
+            <Plus className="h-4 w-4" />
+            {createThreadMutation.isPending ? "Creating…" : "New chat"}
           </Button>
         </div>
       )}

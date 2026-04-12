@@ -8,13 +8,11 @@ import type {
   AgentStore,
   ThreadAgentStore,
   ThreadCodocStore,
-  ThreadStore,
   WorkspaceAgentStore,
 } from "@cobook/storage";
 import { notImplementedStore } from "../not-implemented.js";
 
 export const agentStub: AgentStore = notImplementedStore<AgentStore>("agents");
-export const threadStub: ThreadStore = notImplementedStore<ThreadStore>("threads");
 export const threadCodocStub: ThreadCodocStore =
   notImplementedStore<ThreadCodocStore>("threadCodocs");
 export const threadAgentStub: ThreadAgentStore =

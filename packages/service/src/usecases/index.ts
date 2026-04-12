@@ -58,3 +58,30 @@ export {
   type UpdateCodocContentInput,
   type UpdateCodocContentError,
 } from "./codoc/update-codoc-content.js";
+
+export {
+  listThreadsByWorkspace,
+  type ListThreadsByWorkspaceError,
+} from "./thread/list-threads-by-workspace.js";
+
+export {
+  createThread,
+  type CreateThreadInput,
+  type CreateThreadError,
+} from "./thread/create-thread.js";
+
+export {
+  deleteThread,
+  type DeleteThreadError,
+} from "./thread/delete-thread.js";
+
+export {
+  getThread,
+  type GetThreadError,
+} from "./thread/get-thread.js";
+
+export {
+  appendUserMessage,
+  type AppendUserMessageInput,
+  type AppendUserMessageError,
+} from "./thread/append-user-message.js";

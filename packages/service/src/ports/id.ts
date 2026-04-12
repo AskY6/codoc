@@ -11,9 +11,16 @@
 // New id types are added one method at a time, as each vertical slice
 // needs them.
 
-import type { CodocId, WorkspaceId } from "@cobook/core";
+import type {
+  CodocId,
+  MessageId,
+  ThreadId,
+  WorkspaceId,
+} from "@cobook/core";
 
 export interface IdGenerator {
   workspaceId(): WorkspaceId;
   codocId(): CodocId;
+  threadId(): ThreadId;
+  messageId(): MessageId;
 }
