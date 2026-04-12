@@ -7,3 +7,4 @@
 export { createRouterAgent } from "./router.js";
 export { createGeneralAgent } from "./general.js";
 export { createRssAgent } from "./rss.js";
+export { createPerfReviewAgent } from "./perf-review/index.js";

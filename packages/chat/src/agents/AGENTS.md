@@ -19,7 +19,8 @@ Each agent's `run(state, ctx)` casts the generic `NodeContext<ChatEvent>` to `Ch
 | `router.ts` | `createRouterAgent` — Haiku structured-output classifier. No tools. Reads latest user message, returns `{ activeAgent }` as state update. The graph's conditional edge dispatches to the chosen specialist. |
 | `general.ts` | `createGeneralAgent` — Sonnet specialist with platform tools. Default fallback when the router has no clear match. |
 | `rss.ts` | `createRssAgent` — Sonnet specialist with platform + RSS tools. RSS-specific system prompt. |
-| `run-tool-loop.ts` | Shared tool-call loop used by general and RSS specialists. Calls LLM → executes tool_use blocks → feeds results back → repeats until final text or max 10 iterations. Internal helper, not exported from the package. |
+| `run-tool-loop.ts` | Shared tool-call loop used by general, RSS, and perf-review specialists. Calls LLM → executes tool_use blocks → feeds results back → repeats until final text or max 10 iterations. Internal helper, not exported from the package. |
+| [`perf-review/`](perf-review/AGENTS.md) | Performance review specialist — two-phase (individual review + calibration). Rubric is configurable via `rubric.ts`. |
 
 ## Hard invariants
 

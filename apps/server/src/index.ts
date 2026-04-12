@@ -60,6 +60,12 @@ async function seedAgents(): Promise<void> {
       description:
         "Subscribe to RSS feeds, read articles, and save summaries",
     },
+    {
+      id: AgentId("perf-review"),
+      name: "Performance Reviewer",
+      description:
+        "Review subordinate performance materials — de-beautify, score, and calibrate",
+    },
   ];
 
   for (const listing of agents) {

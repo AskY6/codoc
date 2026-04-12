@@ -27,6 +27,7 @@ import {
   buildInitialState,
   createAnthropicLlmClient,
   createGeneralAgent,
+  createPerfReviewAgent,
   createPlatformTools,
   createRouterAgent,
   createRssAgent,
@@ -80,6 +81,7 @@ export type RunAgentTurnError =
 
 const BASE_AGENT_ID = "base" as AgentId;
 const RSS_AGENT_ID = "rss" as AgentId;
+const PERF_REVIEW_AGENT_ID = "perf-review" as AgentId;
 const ROUTER_NODE_ID = "router" as NodeId;
 
 // ---- Use case ------------------------------------------------------------
@@ -157,7 +159,19 @@ export async function runAgentTurn(
         path: path || "untitled",
         title: inp.title,
       });
-      return r.ok ? r.value : { error: `Failed to create codoc` };
+      if (!r.ok) return { error: `Failed to create codoc` };
+      // Create only sets title; write content via update.
+      if (inp.content) {
+        const { updateCodocContent: update } = await import(
+          "../codoc/update-codoc-content.js"
+        );
+        await update(ctx, {
+          id: r.value.id as CodocId,
+          content: inp.content,
+          expectedRev: r.value.rev,
+        });
+      }
+      return r.value;
     },
     async updateCodoc(inp: { id: string; content: string }) {
       const { updateCodocContent: update } = await import(
@@ -209,6 +223,8 @@ export async function runAgentTurn(
       specialists.push(
         createRssAgent(id, [...platformTools, ...rssTools]),
       );
+    } else if (id === PERF_REVIEW_AGENT_ID) {
+      specialists.push(createPerfReviewAgent(id, platformTools));
     } else {
       // Default: general-shaped specialist with platform tools.
       specialists.push(createGeneralAgent(id, platformTools));
