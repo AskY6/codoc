@@ -16,24 +16,12 @@ import { Button } from "../components/ui/button";
 import { MdxRenderer } from "../components/mdx/renderer";
 import { codocComponents } from "../components/mdx/component-map";
 import { parseCodocContent } from "../components/mdx/parse-frontmatter";
+import { relativeTime } from "../lib/format";
 
 const codocKey = (id: string) => ["codoc", id] as const;
 const codocListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "codocs"] as const;
 const workspaceKey = (id: string) => ["workspace", id] as const;
-
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
 
 export function CodocDetailPage() {
   const { workspaceId: wsParam, codocId: codocParam } = useParams<{
@@ -146,57 +134,55 @@ export function CodocDetailPage() {
   const dirty = editorContent !== codoc.content;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-16">
-      <Link
-        to={`/workspace/${encodeURIComponent(workspaceId)}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to workspace
-      </Link>
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      {/* Compact top bar: back + title + meta + mode toggle */}
+      <div className="flex items-center gap-3 mb-4">
+        <Link
+          to={`/workspace/${encodeURIComponent(workspaceId)}`}
+          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
 
-      <header className="mt-8 mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          {codoc.title ?? codoc.path}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{codoc.path}</p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Last edited {relativeTime(codoc.updatedAt)}
-        </p>
-      </header>
-
-      {/* Mode toggle + actions */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
-          <button
-            type="button"
-            onClick={() => setMode("view")}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              mode === "view"
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Eye className="h-3.5 w-3.5" />
-            View
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("edit")}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-              mode === "edit"
-                ? "bg-foreground text-background"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </button>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h1 className="text-base font-semibold tracking-tight text-foreground truncate">
+            {codoc.title ?? codoc.path}
+          </h1>
+          <span className="text-xs text-muted-foreground shrink-0">{codoc.path}</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {relativeTime(codoc.updatedAt)}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setMode("view")}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                mode === "view"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Eye className="h-3 w-3" />
+              View
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("edit")}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                mode === "edit"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Pencil className="h-3 w-3" />
+              Edit
+            </button>
+          </div>
           {dirty && (
-            <span className="text-xs text-muted-foreground">Unsaved changes</span>
+            <span className="text-xs text-muted-foreground">Unsaved</span>
           )}
           {mode === "edit" && (
             <Button
@@ -212,7 +198,7 @@ export function CodocDetailPage() {
 
       {/* View mode */}
       {mode === "view" && (
-        <div className="rounded-lg border border-border p-6">
+        <div className="rounded-lg border border-border p-5">
           {hasMdxContent ? (
             <MdxRenderer
               source={parsed.body}

@@ -45,6 +45,7 @@ import {
   setThreadCodocs,
 } from "../api/threads";
 import { Button } from "../components/ui/button";
+import { relativeTime } from "../lib/format";
 import type {
   AgentListItem,
   ChatMessage,
@@ -58,19 +59,6 @@ const threadKey = (id: string) => ["thread", id] as const;
 const agentsKey = ["agents"] as const;
 const codocListKey = (workspaceId: string) =>
   ["workspace", workspaceId, "codocs"] as const;
-
-function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
 
 // ---- Tool call display (collapsed by default) ---------------------------
 
