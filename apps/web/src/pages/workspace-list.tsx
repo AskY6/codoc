@@ -16,8 +16,8 @@
 // its own visible CTA.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, FileText, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
@@ -141,18 +141,68 @@ export function WorkspaceListPage() {
     updateMutation.error instanceof ApiError &&
     updateMutation.error.kind === "workspace-conflict";
 
+  // --- search + sort (client-side) ---
+  type SortKey = "activity" | "name";
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("activity");
+
+  const filtered = useMemo(() => {
+    const items = workspacesQuery.data ?? [];
+    const q = search.trim().toLowerCase();
+    const matched = q
+      ? items.filter(
+          (it) =>
+            it.workspace.name.toLowerCase().includes(q) ||
+            (it.workspace.description?.toLowerCase().includes(q) ?? false),
+        )
+      : items;
+    return [...matched].sort((a, b) =>
+      sort === "activity"
+        ? b.updatedAt - a.updatedAt
+        : a.workspace.name.localeCompare(b.workspace.name),
+    );
+  }, [workspacesQuery.data, search, sort]);
+
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-3xl px-6 py-16">
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-          Workspaces
+          Projects
         </h1>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4" />
-          New workspace
+          New project
         </Button>
       </div>
 
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search projects…"
+          className="pl-9"
+        />
+      </div>
+
+      {/* Sort */}
+      <div className="mb-6 flex justify-end">
+        <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+          Sort by
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="activity">Activity</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+      </div>
+
+      {/* Content */}
       {workspacesQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workspacesQuery.isError ? (
@@ -161,72 +211,72 @@ export function WorkspaceListPage() {
           {(workspacesQuery.error as Error).message}
         </p>
       ) : workspacesQuery.data && workspacesQuery.data.length > 0 ? (
-        <div className="divide-y divide-border rounded-lg border border-border">
-          {workspacesQuery.data.map((item) => (
-            <div key={item.workspace.id} className="group relative">
+        filtered.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {filtered.map((item) => (
               <Link
+                key={item.workspace.id}
                 to={`/workspace/${encodeURIComponent(item.workspace.id)}`}
-                className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/50"
+                className="group relative flex min-h-[140px] flex-col rounded-lg border border-border bg-background p-5 transition-colors hover:bg-muted/40"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {item.workspace.name}
+                <p className="text-sm font-semibold text-foreground">
+                  {item.workspace.name}
+                </p>
+                {item.workspace.description && (
+                  <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                    {item.workspace.description}
                   </p>
-                  {item.workspace.description && (
-                    <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
-                      {item.workspace.description}
-                    </p>
-                  )}
+                )}
+                <p className="mt-auto pt-4 text-xs text-muted-foreground">
+                  Updated {relativeTime(item.updatedAt)}
+                </p>
+
+                {/* Hover actions */}
+                <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Edit ${item.workspace.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openEditDialog(item);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${item.workspace.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deleteMutation.mutate(item.workspace.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <FileText className="h-3 w-3" />
-                  {item.codocCount}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {relativeTime(item.updatedAt)}
-                </span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
               </Link>
-              <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Edit ${item.workspace.name}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openEditDialog(item);
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Delete ${item.workspace.name}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    deleteMutation.mutate(item.workspace.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            No projects matching &ldquo;{search}&rdquo;
+          </p>
+        )
       ) : (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-16 text-center">
           <p className="text-sm font-medium text-foreground">
-            No workspaces yet
+            No projects yet
           </p>
           <p className="text-sm text-muted-foreground">
-            Create your first workspace to start collecting codocs and chats.
+            Create your first project to start collecting codocs and chats.
           </p>
           <Button onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
-            New workspace
+            New project
           </Button>
         </div>
       )}
@@ -235,7 +285,7 @@ export function WorkspaceListPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Edit workspace" : "New workspace"}
+              {editing ? "Edit project" : "New project"}
             </DialogTitle>
           </DialogHeader>
           <form
@@ -253,7 +303,7 @@ export function WorkspaceListPage() {
                 id="workspace-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My workspace"
+                placeholder="My project"
                 autoFocus
               />
             </div>
@@ -271,7 +321,7 @@ export function WorkspaceListPage() {
                 id="workspace-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="What's this workspace for?"
+                placeholder="What's this project for?"
               />
             </div>
             {!editing && createMutation.isError && (
@@ -281,7 +331,7 @@ export function WorkspaceListPage() {
             )}
             {editing && updateConflict && (
               <p className="text-sm text-warning-foreground">
-                Someone else just edited this workspace — the list has
+                Someone else just edited this project — the list has
                 been reloaded. Review your changes and click Save again
                 to overwrite.
               </p>
