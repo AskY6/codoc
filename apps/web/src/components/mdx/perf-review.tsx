@@ -357,13 +357,15 @@ export function AdjustmentSuggestion({
   reason: string;
 }) {
   return (
-    <div className="flex items-baseline gap-2 text-sm py-1.5 border-l-2 border-muted pl-4">
-      <span className="font-medium">{person}</span>
-      <span className="text-xs text-muted-foreground">{dimension}</span>
-      <span className="font-mono text-red-600">{from}</span>
-      <span className="text-muted-foreground">→</span>
-      <span className="font-mono text-green-600">{to}</span>
-      <span className="text-muted-foreground text-xs ml-1 leading-relaxed">{reason}</span>
+    <div className="border-l-2 border-muted pl-4 py-2 text-sm">
+      <div className="flex items-baseline gap-2">
+        <span className="font-medium">{person}</span>
+        <span className="text-xs text-muted-foreground">{dimension}</span>
+        <span className="font-mono text-red-600">{from}</span>
+        <span className="text-muted-foreground">→</span>
+        <span className="font-mono text-green-600">{to}</span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{reason}</p>
     </div>
   );
 }
@@ -391,13 +393,13 @@ export function Item({
 }) {
   const label = (type && itemTypeLabels[type]) ?? type;
   return (
-    <div className="flex items-baseline gap-2 text-sm leading-relaxed border-l-2 border-muted pl-4 py-1">
+    <div className="border-l-2 border-muted pl-4 py-2 text-sm leading-relaxed">
       {label && (
-        <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+        <span className="mb-1 inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
           {label}
         </span>
       )}
-      <span>{children}</span>
+      <p className="mt-1">{children}</p>
     </div>
   );
 }

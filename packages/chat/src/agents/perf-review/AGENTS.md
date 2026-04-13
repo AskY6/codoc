@@ -12,13 +12,14 @@ Must never import from: `../../adapter/`.
 |---|---|
 | `rubric.ts` | Evaluation rubric — dimensions, weights, 1-5 scoring descriptors. **Edit this file to tune the evaluation model.** Changes take effect on server restart. |
 | `perf-review.ts` | `createPerfReviewAgent` — Sonnet specialist with platform tools. Two-phase system prompt: individual review and horizontal calibration. Outputs codoc format (YAML frontmatter + MDX). |
+| `MATERIAL_TEMPLATE.md` | Human-facing material template aligned with the value-proof framework: baseline delivery, standout contributions, and future plans. |
 | `index.ts` | Barrel re-export. |
 
 ## Two-phase workflow
 
-**Phase 1 (individual review):** reads a subordinate's source codoc, strips embellished language, extracts structured facts, scores each rubric dimension 1-5 with evidence, writes a `Review: {name} — {period}` codoc.
+**Phase 1 (individual review):** reads a subordinate's source codoc, strips embellished language, reconstructs the value-proof chain (result -> benefit -> evidence -> personal contribution), scores each rubric dimension 1-5 with evidence, writes a `Review: {name} — {period}` codoc.
 
-**Phase 2 (calibration):** reads all review codocs, builds a comparison matrix via `$ref` to review data fields, flags score distribution anomalies, writes a `校准报告 — {period}` codoc.
+**Phase 2 (calibration):** reads all review codocs, groups people by role/scope before comparing, builds a comparison matrix via `$ref` to review data fields, flags score distribution anomalies, writes a `校准报告 — {period}` codoc.
 
 ## Codoc output format
 

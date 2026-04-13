@@ -134,7 +134,7 @@ function LeafNode({
         <span className="truncate text-sm font-medium text-foreground">
           {codoc.title ?? codoc.path.split("/").pop()}
         </span>
-        <span className="ml-auto text-[11px] text-muted-foreground/50 shrink-0">
+        <span className="ml-auto mr-7 text-[11px] text-muted-foreground/50 shrink-0">
           {relativeTime(codoc.updatedAt)}
         </span>
       </Link>

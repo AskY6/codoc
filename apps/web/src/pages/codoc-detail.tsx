@@ -121,7 +121,7 @@ export function CodocDetailPage() {
 
   if (codocQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-16">
+      <div className="mx-auto max-w-5xl px-6 py-16">
         <p className="text-sm text-muted-foreground">Loading…</p>
       </div>
     );
@@ -129,7 +129,7 @@ export function CodocDetailPage() {
 
   if (codocQuery.isError) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-16">
+      <div className="mx-auto max-w-5xl px-6 py-16">
         <Link
           to={`/workspace/${encodeURIComponent(workspaceId)}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -150,7 +150,7 @@ export function CodocDetailPage() {
   const dirty = editorContent !== codoc.content;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
+    <div className="mx-auto max-w-5xl px-6 py-8">
       {/* Compact top bar: back + title + meta + mode toggle */}
       <div className="flex items-center gap-3 mb-4">
         <Link
