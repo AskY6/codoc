@@ -13,6 +13,7 @@
 import { serve } from "@hono/node-server";
 import { AgentId } from "@cobook/core";
 import type { ServiceCtx, LlmConfig } from "@cobook/service";
+import { createSourceRegistry } from "@cobook/service";
 import { createPgStorage } from "@cobook/storage-pg";
 import { SystemClock } from "@cobook/storage-memory";
 import { Hono } from "hono";
@@ -43,6 +44,7 @@ const baseCtx: ServiceCtx = {
   clock: new SystemClock(),
   idGen: new UuidIdGenerator(),
   llmConfig,
+  sourceProviders: createSourceRegistry(),
 };
 
 // ---- Seed agents (idempotent on restart) ---------------------------------

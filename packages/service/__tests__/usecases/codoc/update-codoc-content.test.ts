@@ -138,7 +138,10 @@ describe("updateCodocContent", () => {
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
-    expect(updated.value.resolvedData).toEqual({ score: 4, label: "excellent" });
+    expect(updated.value.resolvedData).toEqual({
+      score: { kind: "ready", value: 4 },
+      label: { kind: "ready", value: "excellent" },
+    });
   });
 
   it("resolves $ref fields across sibling codocs", async () => {
@@ -173,7 +176,9 @@ describe("updateCodocContent", () => {
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
-    expect(updated.value.resolvedData).toEqual({ alice_score: 4 });
+    expect(updated.value.resolvedData).toEqual({
+      alice_score: { kind: "ready", value: 4 },
+    });
   });
 
   it("returns null for $ref to a non-existent codoc", async () => {
@@ -198,8 +203,8 @@ describe("updateCodocContent", () => {
 
     expect(updated.ok).toBe(true);
     if (!updated.ok) return;
-    // Sole field resolves to null → entire resolvedData is null.
-    expect(updated.value.resolvedData).toBeNull();
+    // Sole field has an error (unknown target) → resolvedData carries the error.
+    expect(updated.value.resolvedData?.["x"]?.kind).toBe("error");
   });
 
   it("bumps updatedAt on every successful update", async () => {

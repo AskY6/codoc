@@ -68,6 +68,6 @@ export async function updateCodocContent(
   validateDAG(astMap);
 
   // Resolve data fields for the response.
-  const resolved = resolveDataFields(next, astMap);
+  const resolved = await resolveDataFields(next, astMap, ctx.sourceProviders);
   return ok({ ...updated.value, resolvedData: resolved });
 }

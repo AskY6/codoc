@@ -31,6 +31,16 @@ export interface CodocListItem {
   readonly rev: string;
 }
 
+// Wire-safe resolve result, mirrors @cobook/core ResolveResult.
+export type ResolveResult =
+  | { readonly kind: "ready"; readonly value: unknown }
+  | { readonly kind: "error"; readonly error: ResolveError };
+
+export interface ResolveError {
+  readonly message: string;
+  readonly cause: ResolveError | null;
+}
+
 // Detail DTO returned by GET /api/codocs/:id. Adds raw `content` on
 // top of the list item; the ast is deliberately server-side only.
 export interface CodocDetail {
@@ -40,7 +50,7 @@ export interface CodocDetail {
   readonly content: string;
   readonly updatedAt: number;
   readonly rev: string;
-  readonly resolvedData: Record<string, unknown> | null;
+  readonly resolvedData: Record<string, ResolveResult> | null;
 }
 
 // Chat thread / message wire DTOs for slice 4.

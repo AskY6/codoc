@@ -9,6 +9,8 @@
 // fields the UI actually needs, and the ast stays server-side until a
 // slice introduces a proper wire-safe projection for it.
 
+import type { ResolveResult } from "@cobook/core";
+
 export interface CodocListItem {
   /** Peeled `CodocId`. Opaque string to every caller above storage. */
   readonly id: string;
@@ -36,6 +38,6 @@ export interface CodocDetail {
   readonly content: string;
   readonly updatedAt: number;
   readonly rev: string;
-  /** Resolved data fields. `null` when the codoc has no data block. */
-  readonly resolvedData: Record<string, unknown> | null;
+  /** Resolved data fields. Each value is a `ResolveResult` (ready | error). `null` when the codoc has no data block. */
+  readonly resolvedData: Record<string, ResolveResult> | null;
 }

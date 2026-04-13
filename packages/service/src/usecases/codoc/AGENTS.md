@@ -102,22 +102,26 @@ This is the pattern every future long-form-document use case should
 copy. Field-level edits (workspace rename, codoc rename) keep the
 slice-1.5 "force refetch, require re-confirm" shape.
 
-### `resolvedData` on `CodocDetail` (slice 6)
+### `resolvedData` on `CodocDetail`
 
-`CodocDetail` carries `resolvedData: Record<string, unknown> | null` —
+`CodocDetail` carries `resolvedData: Record<string, ResolveResult> | null` —
 the wire-safe projection of the codoc's data fields with `$ref`
-values resolved:
+values resolved and source providers executed:
 
-- **static** fields pass through as-is.
-- **ref** fields resolve 1-level deep: if the target field is
-  `static`, its value is used; if the target is another `ref`, a
-  `source`, or missing, the value is `null`.
-- **source** fields are `null` (no execution engine yet).
+- **static** fields → `{ kind: "ready", value }`.
+- **ref** fields resolve **transitively** via the core DAG evaluator.
+  A chain like `ref → ref → ... → static` resolves to the leaf
+  static value. If any node in the chain fails, the error propagates
+  with a causal chain.
+- **source** fields are executed via registered `SourceProvider`
+  implementations. Provider errors produce `{ kind: "error" }`.
 - When the codoc has zero data fields, `resolvedData` is `null`.
 
 Resolution is **per-request on read** (`getCodoc` → `getDetailResolved`).
 No cached or persisted DAG. The workspace's full AST set is fetched
-via `codocRepo.listAstsByWorkspace` and used as a lookup table.
+via `codocRepo.listAstsByWorkspace`, the DAG is built, source
+providers are executed in parallel, and the core `evaluate()` walks
+topo order to resolve everything.
 
 ### DAG validation on write (slice 6)
 
@@ -139,6 +143,6 @@ layer can be added later without changing any signatures.
 
 | Export | Purpose |
 |---|---|
-| `resolveDataFields(codoc, lookup)` | Resolve all data fields against a workspace AST map. Returns `Record<string, unknown> \| null`. |
+| `resolveDataFields(codoc, lookup, sourceProviders)` | **Async.** Build DAG → execute source providers → core `evaluate()` → project per-codoc results. Returns `Record<string, ResolveResult> \| null`. Falls back to field-level resolution when the DAG can't be built (unknown targets). |
 | `toAstMap(rows)` | Convert `StoredCodoc[]` → `Map<CodocPath, CodocAST>` for both resolution and `buildDAG`. |
 | `validateDAG(astMap)` | Build DAG + check cycles; logs warnings, never throws. |

@@ -65,6 +65,7 @@ export function makeTestCtx(): TestCtxBundle {
     clock,
     idGen: counterIdGenerator(),
     llmConfig: {},
+    sourceProviders: new Map(),
   };
   return { ctx };
 }

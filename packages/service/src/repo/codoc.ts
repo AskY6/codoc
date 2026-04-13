@@ -16,7 +16,7 @@
 // to preserve meta / data when only content changes, and the repo is
 // the single place allowed to touch the storage port.
 
-import type { Codoc, CodocAST, CodocId, CodocPath, Result, WorkspaceId } from "@cobook/core";
+import type { Codoc, CodocAST, CodocId, CodocPath, ResolveResult, Result, WorkspaceId } from "@cobook/core";
 import { err, ok } from "@cobook/core";
 import type { Rev, StoredCodoc } from "@cobook/storage";
 import type { ServiceCtx } from "../context.js";
@@ -52,7 +52,7 @@ function toListItem(row: StoredCodoc): CodocListItem {
 
 function toDetail(
   row: StoredCodoc,
-  resolvedData: Record<string, unknown> | null = null,
+  resolvedData: Record<string, ResolveResult> | null = null,
 ): CodocDetail {
   return {
     id: row.codoc.id as string,
@@ -124,7 +124,11 @@ export const codocRepo = {
       r.value.workspaceId,
     );
     const astMap = toAstMap(siblings);
-    const resolved = resolveDataFields(r.value.codoc, astMap);
+    const resolved = await resolveDataFields(
+      r.value.codoc,
+      astMap,
+      ctx.sourceProviders,
+    );
     return ok(toDetail(r.value, resolved));
   },
 

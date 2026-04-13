@@ -1,6 +1,7 @@
 import type { Clock, Ctx as StorageCtx, Storage } from "@cobook/storage";
 import type { IdGenerator } from "./ports/id.js";
 import type { LlmConfig } from "./ports/llm.js";
+import type { SourceRegistry } from "./ports/source.js";
 
 /**
  * Per-call environment for service use cases and repo modules.
@@ -24,6 +25,7 @@ export interface ServiceCtx {
   readonly clock: Clock;
   readonly idGen: IdGenerator;
   readonly llmConfig: LlmConfig;
+  readonly sourceProviders: SourceRegistry;
 }
 
 /**
@@ -42,4 +44,5 @@ export const withStorageCtx = (
   clock: ctx.clock,
   idGen: ctx.idGen,
   llmConfig: ctx.llmConfig,
+  sourceProviders: ctx.sourceProviders,
 });

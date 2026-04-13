@@ -11,12 +11,28 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { getCodoc, updateCodocContent } from "../api/codocs";
-import type { CodocDetail } from "../types";
+import type { CodocDetail, ResolveResult } from "../types";
 import { Button } from "../components/ui/button";
 import { MdxRenderer } from "../components/mdx/renderer";
 import { codocComponents } from "../components/mdx/component-map";
 import { parseCodocContent } from "../components/mdx/parse-frontmatter";
 import { relativeTime } from "../lib/format";
+
+/** Extract ready values from resolved data for the MDX renderer. */
+function readyValues(
+  resolved: Record<string, ResolveResult> | null,
+): Record<string, unknown> | null {
+  if (!resolved) return null;
+  const out: Record<string, unknown> = {};
+  let has = false;
+  for (const [k, v] of Object.entries(resolved)) {
+    if (v.kind === "ready") {
+      out[k] = v.value;
+      has = true;
+    }
+  }
+  return has ? out : null;
+}
 
 const codocKey = (id: string) => ["codoc", id] as const;
 const codocListKey = (workspaceId: string) =>
@@ -202,7 +218,7 @@ export function CodocDetailPage() {
           {hasMdxContent ? (
             <MdxRenderer
               source={parsed.body}
-              data={codoc.resolvedData ?? parsed.data}
+              data={readyValues(codoc.resolvedData) ?? parsed.data}
               components={codocComponents}
             />
           ) : editorContent.trim() ? (

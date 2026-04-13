@@ -21,3 +21,5 @@ export { checkCycles } from "./cycle.js";
 export type { CycleCheck, Cycle } from "./cycle.js";
 
 export { invalidate } from "./invalidate.js";
+
+export { evaluate } from "./evaluate.js";

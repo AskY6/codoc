@@ -53,6 +53,10 @@ export type { ParseError } from "./parser/index.js";
 // ---- ports (outbound dependencies) ------------------------------------
 export type { IdGenerator } from "./ports/id.js";
 export type { LlmConfig } from "./ports/llm.js";
+export type { SourceProvider, SourceRegistry } from "./ports/source.js";
+
+// ---- providers (built-in source provider implementations) ---------------
+export { createSourceRegistry } from "./providers/index.js";
 
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";

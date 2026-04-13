@@ -113,6 +113,25 @@ ADT rather than a possibly-empty array — callers must handle both branches exp
 
 BFS over the `dependents` index. Returns every node transitively downstream of `seed`, **including `seed` itself**. Pure — does not mutate the DAG or any node state. Callers decide what to do with the affected set (flip state, enqueue recompute, etc.).
 
+## `evaluate(dag, sourceValues)` (`evaluate.ts`)
+
+Pure, synchronous evaluation of every node in the DAG. Walks `topoSort` order and resolves each node:
+
+- `static` → `{ kind: "ready", value: field.value }`
+- `ref` → looks up the target's already-computed result (topo order guarantees the target was evaluated first). If the target is `ready`, propagates its value; if `error`, propagates with a causal chain.
+- `source` → looks up a pre-seeded value in `sourceValues`. If present, wraps as `ready`; if absent, produces an error.
+
+Cyclic nodes (those `topoSort` could not order) receive an error result.
+
+```ts
+evaluate(
+  dag: DAG,
+  sourceValues: ReadonlyMap<NodeId, unknown>,
+): ReadonlyMap<NodeId, ResolveResult>
+```
+
+The caller (service layer) is responsible for executing source providers asynchronously and passing their results in `sourceValues`. This keeps the core layer pure and synchronous.
+
 ## `upstream` / `downstream` (`query.ts`)
 
 ```ts
