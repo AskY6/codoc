@@ -65,19 +65,30 @@ import type {
 
 // ---- Codoc reference extraction from tool calls ----------------------------
 
-const CODOC_ID_TOOLS = new Set(["getCodoc", "updateCodoc", "deleteCodoc"]);
 const CONFIRMATION_TOOLS = new Set(["createCodoc", "updateCodoc", "deleteCodoc"]);
 
-function extractCodocIds(toolCalls: readonly ToolCall[]): string[] {
+function extractCodocIds(
+  toolCalls: readonly ToolCall[],
+  toolResults: readonly ToolResult[],
+): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
+  const push = (id: string) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  };
   for (const tc of toolCalls) {
-    if (CODOC_ID_TOOLS.has(tc.name)) {
+    if (tc.name === "updateCodoc") {
       const id = (tc.input as { id?: string }).id;
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        ids.push(id);
-      }
+      if (id) push(id);
+    }
+  }
+  for (const tr of toolResults) {
+    if (tr.name === "createCodoc") {
+      const id = (tr.output as { id?: string })?.id;
+      if (id) push(id);
     }
   }
   return ids;
@@ -228,7 +239,7 @@ function MessageBubble({
   }
 
   if (msg.kind === "assistant") {
-    const codocIds = extractCodocIds(msg.metadata.toolCalls);
+    const codocIds = extractCodocIds(msg.metadata.toolCalls, msg.metadata.toolResults ?? []);
     return (
       <li className="flex flex-col items-start">
         <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
@@ -706,7 +717,7 @@ export function ChatThreadPage() {
 
   if (threadQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
+      <div className="mx-auto max-w-4xl px-6 py-16">
         <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     );
@@ -714,7 +725,7 @@ export function ChatThreadPage() {
 
   if (threadQuery.isError) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-16">
+      <div className="mx-auto max-w-4xl px-6 py-16">
         <Link
           to={`/workspace/${encodeURIComponent(workspaceId)}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -736,7 +747,7 @@ export function ChatThreadPage() {
     <div className="flex h-screen overflow-hidden">
       {/* ---- Left column: chat ---- */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-6 py-10">
+        <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-6 py-10">
           <Link
             to={`/workspace/${encodeURIComponent(workspaceId)}`}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
