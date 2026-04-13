@@ -205,7 +205,9 @@ export async function runAgentTurn(
 
   // 8. Resolve available agents from the registry.
   const allAgents = await agentRepo.list(ctx);
+  // "base" agent is always active — ensure it is in the linked set.
   const linkedAgentSet = new Set(linkedAgentIds.map(String));
+  linkedAgentSet.add(BASE_AGENT_ID);
 
   // Build specialist agents for linked agents.
   const specialists = [];
@@ -231,16 +233,6 @@ export async function runAgentTurn(
       // Default: general-shaped specialist with platform tools.
       specialists.push(createGeneralAgent(id, platformTools));
     }
-  }
-
-  // If no agents are linked, add the base agent as default.
-  if (specialists.length === 0) {
-    routableAgents.push({
-      id: BASE_AGENT_ID,
-      name: "Cobook Assistant",
-      description: "General workspace assistant",
-    });
-    specialists.push(createGeneralAgent(BASE_AGENT_ID, platformTools));
   }
 
   // 9. Build the graph.

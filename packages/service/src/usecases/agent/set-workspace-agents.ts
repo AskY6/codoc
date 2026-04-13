@@ -4,8 +4,8 @@
 // the current set, links new ones, and unlinks removed ones. Runs
 // inside a transaction so the read-then-write is atomic.
 
-import type { AgentId, Result, WorkspaceId } from "@cobook/core";
-import { ok } from "@cobook/core";
+import type { Result, WorkspaceId } from "@cobook/core";
+import { type AgentId, AgentId as makeAgentId, ok } from "@cobook/core";
 import type { TxAborted } from "@cobook/storage";
 import type { ServiceCtx } from "../../context.js";
 import { withStorageCtx } from "../../context.js";
@@ -22,6 +22,8 @@ export type SetWorkspaceAgentsError =
   | AgentNotFound
   | TxAborted;
 
+const BASE_AGENT_ID = makeAgentId("base");
+
 export async function setWorkspaceAgents(
   ctx: ServiceCtx,
   input: SetWorkspaceAgentsInput,
@@ -32,7 +34,9 @@ export async function setWorkspaceAgents(
       txCtx,
       input.workspaceId,
     );
+    // "base" agent is always required — ensure it cannot be removed.
     const desired = new Set(input.agentIds);
+    desired.add(BASE_AGENT_ID);
     const currentSet = new Set(current);
 
     const toLink = input.agentIds.filter((id) => !currentSet.has(id));

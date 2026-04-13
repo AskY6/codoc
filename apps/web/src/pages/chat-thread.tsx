@@ -372,6 +372,7 @@ function AgentPicker({
   }, [open]);
 
   function toggle(agentId: string) {
+    if (agentId === "base") return; // base agent is always required
     const current = new Set(currentAgentIds);
     if (current.has(agentId)) {
       current.delete(agentId);
@@ -401,15 +402,19 @@ function AgentPicker({
       {open && (
         <div className="absolute left-0 z-20 mt-1 w-56 rounded-lg border border-border bg-background p-1 shadow-lg">
           {allAgents.map((a) => {
-            const checked = currentAgentIds.includes(a.listing.id);
+            const isBase = a.listing.id === "base";
+            const checked = isBase || currentAgentIds.includes(a.listing.id);
             return (
               <label
                 key={a.listing.id}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
+                  isBase ? "cursor-default opacity-60" : "cursor-pointer hover:bg-muted"
+                }`}
               >
                 <input
                   type="checkbox"
                   checked={checked}
+                  disabled={isBase}
                   onChange={() => toggle(a.listing.id)}
                   className="h-3.5 w-3.5 rounded border-border"
                 />
@@ -746,24 +751,25 @@ export function ChatThreadPage() {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* ---- Left column: chat ---- */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-6 py-10">
-          <Link
-            to={`/workspace/${encodeURIComponent(workspaceId)}`}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to workspace
-          </Link>
-
-          <header className="mt-6 mb-4">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+      <div className={`flex min-h-0 min-w-0 flex-col bg-muted/40 ${selectedCodocId ? "w-1/2" : "flex-1"}`}>
+        <div className={`flex min-h-0 w-full flex-1 flex-col px-6 pt-4 pb-0 ${selectedCodocId ? "" : "mx-auto max-w-4xl"}`}>
+          <div className="flex items-center gap-4">
+            <Link
+              to={`/workspace/${encodeURIComponent(workspaceId)}`}
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
               {detail.thread.thread.title ?? "Untitled"}
             </h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Last edited {relativeTime(detail.thread.updatedAt)}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {relativeTime(detail.thread.updatedAt)}
+            </span>
+          </div>
+
+          <header className="mt-2 mb-3">
+            <div className="flex items-center gap-2">
               <AgentPicker
                 threadId={threadId}
                 currentAgentIds={detail.agentIds}
@@ -860,7 +866,7 @@ export function ChatThreadPage() {
 
       {/* ---- Right column: codoc panel ---- */}
       {selectedCodocId && (
-        <div className="w-[480px] shrink-0 min-h-0">
+        <div className="w-1/2 shrink-0 min-h-0">
           <CodocPanel
             codocId={selectedCodocId}
             onClose={() => setSelectedCodocId(null)}

@@ -1,7 +1,7 @@
 // set-thread-agents — reconcile the set of agents activated in a thread.
 
-import type { AgentId, Result, ThreadId } from "@cobook/core";
-import { ok } from "@cobook/core";
+import type { Result, ThreadId } from "@cobook/core";
+import { type AgentId, AgentId as makeAgentId, ok } from "@cobook/core";
 import type { TxAborted } from "@cobook/storage";
 import type { ServiceCtx } from "../../context.js";
 import { withStorageCtx } from "../../context.js";
@@ -15,6 +15,8 @@ export interface SetThreadAgentsInput {
 
 export type SetThreadAgentsError = ThreadNotFound | AgentNotFound | TxAborted;
 
+const BASE_AGENT_ID = makeAgentId("base");
+
 export async function setThreadAgents(
   ctx: ServiceCtx,
   input: SetThreadAgentsInput,
@@ -22,7 +24,9 @@ export async function setThreadAgents(
   return ctx.storage.withTransaction(async (storageCtx) => {
     const txCtx = withStorageCtx(ctx, storageCtx);
     const current = await threadAgentRepo.listByThread(txCtx, input.threadId);
+    // "base" agent is always required — ensure it cannot be removed.
     const desired = new Set(input.agentIds);
+    desired.add(BASE_AGENT_ID);
     const currentSet = new Set(current);
 
     const toLink = input.agentIds.filter((id) => !currentSet.has(id));

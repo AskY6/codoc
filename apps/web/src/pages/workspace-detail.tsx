@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot } from "lucide-react";
+import { ArrowLeft, Bot, FileCode2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { listAgents } from "../api/agents";
@@ -14,6 +14,7 @@ import { relativeTime } from "../lib/format";
 import { CodocTree } from "../components/codoc-tree";
 import { ChatLinks } from "../components/chat-links";
 import { CreateCodocDialog } from "../components/create-codoc-dialog";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -36,6 +37,7 @@ export function WorkspaceDetailPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: "codoc" | "thread"; id: string } | null>(null);
 
   // --- queries ---
 
@@ -166,9 +168,9 @@ export function WorkspaceDetailPage() {
   // --- render ---
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
+    <div className="mx-auto max-w-5xl px-6 py-8">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3 mb-6">
         <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Link>
@@ -180,69 +182,88 @@ export function WorkspaceDetailPage() {
         </span>
       </div>
 
-      {ws.workspace.description && (
-        <p className="mb-3 text-sm text-muted-foreground pl-7">
-          {ws.workspace.description}
-        </p>
-      )}
+      {/* 2×2 grid: top row auto-height (config band), bottom row flexible (content) */}
+      <div className="grid grid-cols-[minmax(280px,1fr)_2fr] grid-rows-[auto_1fr] gap-x-12 gap-y-8">
+        {/* Top-left: Agents */}
+        <section>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+            Agents
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {agents.map((a) => {
+              const isBase = a.listing.id === "base";
+              const active = isBase || enabledAgentIds.has(a.listing.id);
+              return (
+                <button
+                  key={a.listing.id}
+                  type="button"
+                  onClick={() => { if (!isBase) toggleAgent(a.listing.id); }}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs transition-colors ${
+                    active
+                      ? "bg-foreground text-background"
+                      : "border border-border text-muted-foreground hover:text-foreground"
+                  } ${isBase ? "cursor-default" : ""}`}
+                >
+                  <Bot className="h-3 w-3" />
+                  {a.listing.name}
+                </button>
+              );
+            })}
+            {agents.length === 0 && (
+              <p className="text-sm text-muted-foreground">No agents configured</p>
+            )}
+          </div>
+        </section>
 
-      {/* Agent chips */}
-      {agents.length > 0 && (
-        <div className="flex items-center gap-1.5 mb-5 pl-7">
-          <span className="text-[11px] text-muted-foreground mr-1">Agents</span>
-          {agents.map((a) => (
-            <button
-              key={a.listing.id}
-              type="button"
-              onClick={() => toggleAgent(a.listing.id)}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs transition-colors ${
-                enabledAgentIds.has(a.listing.id)
-                  ? "bg-foreground text-background"
-                  : "border border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Bot className="h-3 w-3" />
-              {a.listing.name}
-            </button>
-          ))}
-        </div>
-      )}
+        {/* Top-right: Instructions */}
+        <section>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+            Instructions
+          </h2>
+          <div className="flex items-center gap-3 rounded-lg border border-dashed border-border py-6 px-4">
+            <FileCode2 className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              No instructions yet
+            </p>
+          </div>
+        </section>
 
-      {/* Codocs — primary */}
-      {codocsQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading codocs…</p>
-      ) : codocsQuery.isError ? (
-        <p className="text-sm text-destructive">
-          Failed to load codocs: {(codocsQuery.error as Error).message}
-        </p>
-      ) : (
-        <CodocTree
-          codocs={codocsQuery.data ?? []}
-          workspaceId={workspaceId}
-          onDelete={(id) => deleteCodocMut.mutate(id)}
-          onCreate={() => {
-            createCodocMut.reset();
-            setDialogOpen(true);
-          }}
-        />
-      )}
+        {/* Bottom-left: Chats */}
+        {threadsQuery.isLoading ? (
+          <p className="text-xs text-muted-foreground">Loading chats…</p>
+        ) : threadsQuery.isError ? (
+          <p className="text-xs text-destructive">
+            Failed to load chats: {(threadsQuery.error as Error).message}
+          </p>
+        ) : (
+          <ChatLinks
+            threads={threadsQuery.data ?? []}
+            workspaceId={workspaceId}
+            onNew={handleNewChat}
+            onDelete={(id) => setPendingDelete({ kind: "thread", id })}
+            creating={createThreadMut.isPending}
+          />
+        )}
 
-      {/* Chats — secondary */}
-      {threadsQuery.isLoading ? (
-        <p className="text-xs text-muted-foreground">Loading chats…</p>
-      ) : threadsQuery.isError ? (
-        <p className="text-xs text-destructive">
-          Failed to load chats: {(threadsQuery.error as Error).message}
-        </p>
-      ) : (
-        <ChatLinks
-          threads={threadsQuery.data ?? []}
-          workspaceId={workspaceId}
-          onNew={handleNewChat}
-          onDelete={(id) => deleteThreadMut.mutate(id)}
-          creating={createThreadMut.isPending}
-        />
-      )}
+        {/* Bottom-right: Codocs */}
+        {codocsQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading codocs…</p>
+        ) : codocsQuery.isError ? (
+          <p className="text-sm text-destructive">
+            Failed to load codocs: {(codocsQuery.error as Error).message}
+          </p>
+        ) : (
+          <CodocTree
+            codocs={codocsQuery.data ?? []}
+            workspaceId={workspaceId}
+            onDelete={(id) => setPendingDelete({ kind: "codoc", id })}
+            onCreate={() => {
+              createCodocMut.reset();
+              setDialogOpen(true);
+            }}
+          />
+        )}
+      </div>
 
       <CreateCodocDialog
         open={dialogOpen}
@@ -250,6 +271,18 @@ export function WorkspaceDetailPage() {
         onCreate={handleCreateCodoc}
         isPending={createCodocMut.isPending}
         error={createCodocMut.isError ? (createCodocMut.error as Error) : null}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+        title={pendingDelete?.kind === "codoc" ? "删除 Codoc" : "删除对话"}
+        description="此操作不可撤销，确定要删除吗？"
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          if (pendingDelete.kind === "codoc") deleteCodocMut.mutate(pendingDelete.id);
+          else deleteThreadMut.mutate(pendingDelete.id);
+        }}
       />
     </div>
   );
