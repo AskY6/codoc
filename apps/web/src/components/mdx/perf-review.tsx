@@ -235,9 +235,9 @@ export function WeightedTotal({ scores }: { scores?: Record<string, unknown> }) 
 
 export function Summary({ children }: { children?: ReactNode }) {
   return (
-    <div className="mt-4 border-l-2 border-muted pl-4">
+    <div className="mt-6 border-l-2 border-muted pl-4">
       <p className="text-xs text-muted-foreground mb-1">总体评语</p>
-      <p className="text-sm">{children}</p>
+      <p className="text-sm leading-relaxed">{children}</p>
     </div>
   );
 }
@@ -248,7 +248,7 @@ export function Summary({ children }: { children?: ReactNode }) {
 
 export function CalibrationMatrix({ children }: { children?: ReactNode }) {
   return (
-    <div className="mb-4 overflow-x-auto">
+    <div className="mb-6 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
@@ -272,29 +272,33 @@ export function PersonRow({
   scores,
 }: {
   name: string;
-  scores: Record<string, unknown>;
+  scores?: Record<string, unknown>;
 }) {
+  const s = scores ?? {};
   const num = (v: unknown): number =>
     typeof v === "number" ? v : 0;
 
   const cell = (v: unknown) => {
     const n = num(v);
+    if (n === 0) {
+      return <td className="py-2 pr-3 text-right font-mono text-muted-foreground">—</td>;
+    }
     const color =
       n >= 4 ? "text-green-600" : n >= 3 ? "text-yellow-600" : "text-red-600";
-    return <td className={`py-1.5 pr-3 text-right font-mono ${color}`}>{n}</td>;
+    return <td className={`py-2 pr-3 text-right font-mono ${color}`}>{n}</td>;
   };
 
-  const total = num(scores.total);
+  const total = num(s.total);
 
   return (
     <tr className="border-b border-border/50">
-      <td className="py-1.5 pr-4 font-medium">{name}</td>
-      {cell(scores.business)}
-      {cell(scores.technical)}
-      {cell(scores.impact)}
-      {cell(scores.growth)}
-      {cell(scores.ownership)}
-      <td className="py-1.5 text-right font-mono font-bold">
+      <td className="py-2 pr-4 font-medium">{name}</td>
+      {cell(s.business)}
+      {cell(s.technical)}
+      {cell(s.impact)}
+      {cell(s.growth)}
+      {cell(s.ownership)}
+      <td className="py-2 text-right font-mono font-bold">
         {total.toFixed(2)}
       </td>
     </tr>
@@ -303,7 +307,7 @@ export function PersonRow({
 
 export function AnomalyList({ children }: { children?: ReactNode }) {
   return (
-    <div className="space-y-2 mb-4">
+    <div className="space-y-2 mb-6">
       <p className="text-xs text-muted-foreground font-medium">异常检测</p>
       {children}
     </div>
@@ -322,17 +326,19 @@ export function Anomaly({
   note: string;
 }) {
   return (
-    <div className="flex items-baseline gap-2 text-sm border-l-2 border-muted pl-4">
-      <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
-        {type}
-      </span>
-      {dimension && <span className="text-muted-foreground text-xs">{dimension}</span>}
-      {persons && (
-        <span className="text-xs text-muted-foreground">
-          ({persons.join(", ")})
+    <div className="text-sm border-l-2 border-muted pl-4 py-1">
+      <div className="flex items-baseline gap-2">
+        <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+          {type}
         </span>
-      )}
-      <span className="text-sm">{note}</span>
+        {dimension && <span className="text-muted-foreground text-xs">{dimension}</span>}
+        {persons && (
+          <span className="text-xs text-muted-foreground">
+            ({persons.join(", ")})
+          </span>
+        )}
+      </div>
+      <p className="mt-1 leading-relaxed">{note}</p>
     </div>
   );
 }
@@ -357,7 +363,41 @@ export function AdjustmentSuggestion({
       <span className="font-mono text-red-600">{from}</span>
       <span className="text-muted-foreground">→</span>
       <span className="font-mono text-green-600">{to}</span>
-      <span className="text-muted-foreground text-xs ml-1">{reason}</span>
+      <span className="text-muted-foreground text-xs ml-1 leading-relaxed">{reason}</span>
+    </div>
+  );
+}
+
+export function CalibrationNote({ children }: { children?: ReactNode }) {
+  return (
+    <div className="space-y-2">
+      {children}
+    </div>
+  );
+}
+
+const itemTypeLabels: Record<string, string> = {
+  "data-gap": "数据缺口",
+  comparability: "可比性",
+  evidence: "证据",
+};
+
+export function Item({
+  type,
+  children,
+}: {
+  type?: string;
+  children?: ReactNode;
+}) {
+  const label = (type && itemTypeLabels[type]) ?? type;
+  return (
+    <div className="flex items-baseline gap-2 text-sm leading-relaxed border-l-2 border-muted pl-4 py-1">
+      {label && (
+        <span className="inline-flex items-center rounded-md border bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground shrink-0">
+          {label}
+        </span>
+      )}
+      <span>{children}</span>
     </div>
   );
 }

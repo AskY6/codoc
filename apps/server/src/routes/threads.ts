@@ -298,12 +298,19 @@ export function threadRoutes(baseCtx: ServiceCtx) {
 
       // Confirmation gate: emits SSE event and blocks until the client
       // responds via POST /:id/confirm.
-      let confirmRequestCounter = 0;
+      //
+      // The tool loop emits a `confirmationRequest` ChatEvent (with its
+      // own requestId) *before* calling `confirmTool`. The `onEvent`
+      // callback fires synchronously, so we capture that requestId here
+      // and reuse it as the server-side key — this ensures the client's
+      // POST confirm payload matches what we're waiting for.
+      let lastConfirmRequestId: string | null = null;
       async function confirmTool(
-        tool: string,
-        toolInput: Readonly<Record<string, unknown>>,
+        _tool: string,
+        _toolInput: Readonly<Record<string, unknown>>,
       ): Promise<boolean> {
-        const requestId = `${threadId}-${++confirmRequestCounter}`;
+        const requestId = lastConfirmRequestId ?? `${threadId}-fallback`;
+        lastConfirmRequestId = null;
         return new Promise<boolean>((resolve) => {
           // Register the pending confirmation.
           active.pendingConfirmation = { requestId, resolve };
@@ -335,6 +342,10 @@ export function threadRoutes(baseCtx: ServiceCtx) {
           signal: c.req.raw.signal,
           confirmTool,
           onEvent: (event) => {
+            // Track the requestId so confirmTool can reuse it.
+            if (event.kind === "confirmationRequest") {
+              lastConfirmRequestId = event.requestId;
+            }
             // Map ChatEvent to SSE events. Fire-and-forget write;
             // errors are swallowed — the client may have disconnected.
             const sseEvent = chatEventToSSE(event);

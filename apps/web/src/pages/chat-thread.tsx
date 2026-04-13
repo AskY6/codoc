@@ -38,7 +38,7 @@ import {
 import { Link, useParams } from "react-router-dom";
 import { listAgents } from "../api/agents";
 import { listCodocsByWorkspace } from "../api/codocs";
-import { runAgentTurnStream, type StreamControl } from "../api/sse";
+import { reconnectStream, runAgentTurnStream, type StreamControl } from "../api/sse";
 import {
   confirmToolCall,
   getThread,
@@ -66,6 +66,7 @@ import type {
 // ---- Codoc reference extraction from tool calls ----------------------------
 
 const CODOC_ID_TOOLS = new Set(["getCodoc", "updateCodoc", "deleteCodoc"]);
+const CONFIRMATION_TOOLS = new Set(["createCodoc", "updateCodoc", "deleteCodoc"]);
 
 function extractCodocIds(toolCalls: readonly ToolCall[]): string[] {
   const ids: string[] = [];
@@ -118,7 +119,7 @@ function ToolCallCards({
   const consumed = new Map<string, number>();
 
   return (
-    <div className="mt-3 space-y-1.5">
+    <div className="mt-2 space-y-0">
       {toolCalls.map((tc, i) => {
         // Pair this call with the next unconsumed result of the same name.
         const idx = consumed.get(tc.name) ?? 0;
@@ -126,49 +127,47 @@ function ToolCallCards({
         const outputs = resultMap.get(tc.name);
         const result = outputs?.[idx];
         const isExpanded = expandedIdx === i;
+        const isDenied = result != null && typeof result === "object" && (result as Record<string, unknown>).denied === true;
 
         return (
-          <div
-            key={i}
-            className="rounded-lg border border-border bg-muted/30"
-          >
+          <div key={i}>
             <button
               type="button"
               onClick={() => setExpandedIdx(isExpanded ? null : i)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50"
+              className="flex items-center gap-1.5 py-0.5 text-left text-[11px] text-muted-foreground/70 transition-colors hover:text-muted-foreground"
             >
-              <Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="font-medium text-foreground">{tc.name}</span>
-              <span className="flex-1 truncate text-muted-foreground">
-                {summarizeInput(tc.input)}
-              </span>
-              {result !== undefined && (
-                <span className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  done
+              <Wrench className="h-2.5 w-2.5 shrink-0" />
+              <span>{tc.name}</span>
+              {summarizeInput(tc.input) && (
+                <span className="truncate max-w-[200px] opacity-60">
+                  {summarizeInput(tc.input)}
                 </span>
               )}
+              {isDenied && (
+                <span className="text-destructive/70">denied</span>
+              )}
               {isExpanded ? (
-                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-40" />
               ) : (
-                <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <ChevronRight className="h-2.5 w-2.5 shrink-0 opacity-40" />
               )}
             </button>
             {isExpanded && (
-              <div className="border-t border-border px-3 py-2 space-y-2">
+              <div className="ml-4 mt-1 mb-1 space-y-1.5">
                 <div>
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
                     Input
                   </p>
-                  <pre className="overflow-x-auto rounded bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                  <pre className="overflow-x-auto rounded bg-muted/50 px-2 py-1 font-mono text-[11px] text-muted-foreground/70">
                     {JSON.stringify(tc.input, null, 2)}
                   </pre>
                 </div>
                 {result !== undefined && (
                   <div>
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <p className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/50">
                       Output
                     </p>
-                    <pre className="max-h-48 overflow-auto rounded bg-muted px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                    <pre className="max-h-48 overflow-auto rounded bg-muted/50 px-2 py-1 font-mono text-[11px] text-muted-foreground/70">
                       {typeof result === "string"
                         ? result
                         : JSON.stringify(result, null, 2)}
@@ -185,7 +184,8 @@ function ToolCallCards({
 }
 
 /** One-line summary of tool input for the collapsed row. */
-function summarizeInput(input: Readonly<Record<string, unknown>>): string {
+function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): string {
+  if (!input) return "";
   const keys = Object.keys(input);
   if (keys.length === 0) return "";
   if (keys.length === 1) {
@@ -309,16 +309,11 @@ function StreamingBubble({
         <Bot className="h-3 w-3" />
         {agentName ?? "Assistant"}
       </span>
-      {text ? (
+      {text && (
         <div className="max-w-[80%] text-sm text-foreground">
           <ChatMarkdown content={text} />
         </div>
-      ) : toolCalls.length === 0 && confirmations.length === 0 ? (
-        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground animate-pulse">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Thinking...
-        </span>
-      ) : null}
+      )}
       <ToolCallCards toolCalls={calls} toolResults={results} />
       {confirmations.map((c) => (
         <div key={c.requestId} className="mt-2 w-full max-w-[80%]">
@@ -330,6 +325,10 @@ function StreamingBubble({
           />
         </div>
       ))}
+      <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        {toolCalls.length === 0 && !text ? "Thinking..." : "Processing..."}
+      </span>
     </li>
   );
 }
@@ -545,7 +544,9 @@ export function ChatThreadPage() {
   }, [
     threadQuery.data?.messages.length,
     streamText,
+    streamToolCalls.length,
     streamToolResults.length,
+    pendingConfirmations.length,
     streaming,
     optimisticUserMsg,
   ]);
@@ -640,6 +641,57 @@ export function ChatThreadPage() {
     };
   }, []);
 
+  // Reconnect to in-progress stream on page load / refresh.
+  // The server's GET /stream returns 204 if idle, or replays buffered
+  // events and continues streaming if a turn is active.
+  useEffect(() => {
+    if (!threadId) return;
+
+    const ctrl = reconnectStream(threadId, {
+      onToken: (event) => {
+        setStreaming(true);
+        setStreamText((prev) => prev + event.delta);
+      },
+      onToolCall: (event) => {
+        setStreaming(true);
+        setStreamToolCalls((prev) => [...prev, event]);
+      },
+      onToolResult: (event) => {
+        setStreaming(true);
+        setStreamToolResults((prev) => [...prev, event]);
+      },
+      onConfirmationRequest: (event) => {
+        setStreaming(true);
+        setPendingConfirmations((prev) => [...prev, event]);
+      },
+      onDone: () => {
+        setStreaming(false);
+        setStreamText("");
+        setStreamToolCalls([]);
+        setStreamToolResults([]);
+        setPendingConfirmations([]);
+        setOptimisticUserMsg(null);
+        streamRef.current = null;
+        void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
+      },
+      onTitleUpdate: () => {
+        void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
+      },
+      onError: (event) => {
+        setStreamError(event.message);
+        setStreaming(false);
+        streamRef.current = null;
+        void queryClient.invalidateQueries({ queryKey: threadKey(threadId) });
+      },
+    });
+
+    streamRef.current = ctrl;
+
+    return () => ctrl.abort();
+    // Only run once per thread mount — reconnect is a one-shot probe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId]);
+
   // Build agent id -> name map for display.
   const agentNameMap = new Map<string, string>();
   for (const a of agentsQuery.data ?? []) {
@@ -681,10 +733,10 @@ export function ChatThreadPage() {
   if (!detail) return null;
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* ---- Left column: chat ---- */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-6 py-10">
           <Link
             to={`/workspace/${encodeURIComponent(workspaceId)}`}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -797,7 +849,7 @@ export function ChatThreadPage() {
 
       {/* ---- Right column: codoc panel ---- */}
       {selectedCodocId && (
-        <div className="w-[480px] shrink-0">
+        <div className="w-[480px] shrink-0 min-h-0">
           <CodocPanel
             codocId={selectedCodocId}
             onClose={() => setSelectedCodocId(null)}

@@ -49,7 +49,7 @@ const markdownComponents: Record<string, React.ComponentType<any>> = {
       {children}
     </blockquote>
   ),
-  code: ({ className, children, ...rest }) => {
+  code: ({ className, children, node: _node, ...rest }) => {
     const isBlock = className?.includes("language-");
     if (isBlock) {
       return (

@@ -7,7 +7,7 @@
 
 import { evaluate } from "@mdx-js/mdx";
 import * as runtime from "react/jsx-runtime";
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { Component, useEffect, useState, type ComponentType, type ErrorInfo, type ReactNode } from "react";
 
 export interface MdxRendererProps {
   source: string;
@@ -81,5 +81,38 @@ export function MdxRenderer({ source, data, components }: MdxRendererProps) {
     );
   }
 
-  return <div className="mdx-content">{content}</div>;
+  return (
+    <MdxErrorBoundary>
+      <div className="mdx-content">{content}</div>
+    </MdxErrorBoundary>
+  );
+}
+
+class MdxErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("MDX render error:", error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm font-medium text-destructive">MDX Render Error</p>
+          <pre className="mt-2 text-xs text-destructive/80 whitespace-pre-wrap">
+            {this.state.error.message}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
