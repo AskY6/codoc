@@ -40,6 +40,7 @@ export interface CodocDetail {
   readonly content: string;
   readonly updatedAt: number;
   readonly rev: string;
+  readonly resolvedData: Record<string, unknown> | null;
 }
 
 // Chat thread / message wire DTOs for slice 4.

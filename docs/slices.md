@@ -262,7 +262,7 @@ cascade wipes threads + their message logs via the same
   two pieces are always loaded together, one round-trip halves the
   latency, and concurrent `appendMessage` between internal calls is
   harmless. This is the reference shape for any future multi-fetch
-  use case (slice 5's `run-agent-turn` bundle, slice 6's
+  use case (slice 5's `run-agent-turn` bundle, slice 7's
   `createWorkspaceFromPreset` bundle).
 - **`seq` is on the wire.** `ThreadMessage.seq: number` is a
   thread-local monotonic integer assigned by
@@ -394,7 +394,84 @@ verification for streaming UI, stop button, auto-title, reconnect.
 
 ---
 
-## Slice 6 — presets (cross-domain transactional + SSE progress)
+## Slice 6 — $ref resolution + DAG validation — DONE
+
+**Page:** no new page. The codoc detail view (slice 3) gains
+**resolved data values** — frontmatter `$ref` references are
+replaced with actual numbers/strings from the referenced codocs
+before the MDX renderer sees them.
+
+**Why this slice:** the perf-review agent already produces
+codocs with `$ref` links (`calibration/` → `reviews/` → `materials/`).
+Without resolution, the calibration matrix shows all zeros. This is
+the first time real users hit the wall — the format promised
+cross-codoc references but the runtime doesn't deliver. Presets
+(slice 7) will also benefit from working `$ref` when seeding
+interconnected codocs.
+
+**What landed:**
+
+1. **`resolvedData` on `CodocDetail`.** Both the service and web
+   `CodocDetail` DTOs gained `resolvedData: Record<string, unknown> | null`.
+   Static values pass through; refs resolve 1-level deep (target must
+   be static, otherwise `null`); sources are `null`. `null` when the
+   codoc has no data fields or every resolved value is `null`.
+
+2. **Resolution on read.** `getCodoc` delegates to
+   `codocRepo.getDetailResolved`, which fetches all workspace siblings,
+   builds an AST lookup map, and runs `resolveDataFields` before
+   returning the detail DTO. Always fresh, no caching.
+
+3. **DAG validation on write.** `updateCodocContent` calls `validateDAG`
+   after a successful write. `buildDAG` + `checkCycles` from
+   `@cobook/core` run against the full workspace AST set. Unknown
+   targets and cycles are logged as warnings — neither fails the
+   update. A codoc referencing a not-yet-created target is saveable;
+   the ref resolves to `null` until the target exists.
+
+4. **Web view mode.** The `MdxRenderer` receives
+   `codoc.resolvedData ?? parsed.data` — server-resolved values in
+   view mode, client-side parse in edit-mode preview.
+
+**Stores upgraded:** none new. Resolution uses the existing
+`CodocStore.listByWorkspace` for sibling lookup.
+
+**New files:**
+- `packages/service/src/usecases/codoc/resolve.ts` —
+  `resolveDataFields`, `toAstMap`, `validateDAG`
+
+**Use cases upgraded:**
+- `getCodoc` → delegates to `getDetailResolved`
+- `updateCodocContent` → DAG validation + resolvedData on response
+
+**New routes:** none (existing routes, richer DTOs).
+
+**Conventions locked in** (documented in
+`packages/service/src/usecases/codoc/AGENTS.md`):
+
+- **Resolution depth: 1 level.** A ref resolves to the target's static
+  value. If the target is itself a ref or source, the result is `null`.
+  No transitive chains, no recursive resolution.
+- **Resolution errors → `null`.** Missing codoc, missing field,
+  non-static target → `null` in `resolvedData`. No error propagation
+  to the client; no failure on the API call.
+- **DAG is ephemeral.** Not persisted. Rebuilt per request. A caching
+  layer can be added later without changing any signatures.
+
+**Deferred:**
+- **Source field execution.** `source` fields resolve to `null`.
+  The execution engine is a future slice.
+- **DAG persistence / caching.** Currently rebuilt per request.
+- **`PATCH /api/codocs/:id/data`** — no UI need yet.
+
+**Verification:** typecheck clean across all packages. 77 tests pass
+(18 test files) including 9 new unit tests for `resolveDataFields` and
+3 new integration tests for `$ref` resolution through the full use
+case stack.
+
+---
+
+## Slice 7 — presets (cross-domain transactional + SSE progress)
 
 **Page:** preset gallery on the slice-1 list page — pick a preset,
 optionally pick agents, click "create" and watch a progress stream
@@ -405,9 +482,9 @@ are created.
 previous slices put in place. They are the final integration test
 for the entire vertical stack and the reason why none of the earlier
 slices needed to invent a "this use case actually creates four
-things" pattern — slice 6 is where that pattern lands.
+things" pattern — slice 7 is where that pattern lands.
 
-**Stores upgraded:** none new. Slice 6 only adds a preset registry
+**Stores upgraded:** none new. Slice 7 only adds a preset registry
 (probably a static module under `@cobook/service` or a tiny new
 package — decided in slice planning) and a single composite use
 case.
@@ -424,7 +501,7 @@ case.
 - whether the preset registry is data (JSON) or code (TS modules);
   decision documented in the registry's own `AGENTS.md`
 - the cross-aggregate transaction shape — this is the canonical
-  example future composite use cases (slice 7+) will copy
+  example future composite use cases (slice 8+) will copy
 
 **New routes:**
 - `GET /api/presets`
@@ -447,15 +524,15 @@ confirm the transaction rolls back (no orphan workspace).
 
 ---
 
-## After slice 6
+## After slice 7
 
-Once slice 6 ships, the vertical stack is complete on top of
+Once slice 7 ships, the vertical stack is complete on top of
 in-memory storage. The next major work item is `@cobook/storage-pg`
 — the PG-backed adapter implementing the same `Storage` port that
 `@cobook/storage-memory` already implements. Switching the
 composition root to use PG instead of memory should be a one-line
 change in `apps/server/src/index.ts`. If it isn't, the abstraction
-leaked somewhere and we fix it before declaring slice 6 done.
+leaked somewhere and we fix it before declaring slice 7 done.
 
 Auth / capability checks land **after** the PG migration —
 `usecases/AGENTS.md` already reserves the first line of every use

@@ -17,5 +17,5 @@ export async function getCodoc(
   ctx: ServiceCtx,
   id: CodocId,
 ): Promise<Result<CodocDetail, GetCodocError>> {
-  return codocRepo.getDetail(ctx, id);
+  return codocRepo.getDetailResolved(ctx, id);
 }

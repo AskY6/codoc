@@ -14,8 +14,9 @@ this aggregate copies verbatim.
 | `list-codocs-by-workspace.ts` | Return every codoc in a workspace as a `CodocListItem`. Fails with `workspace-not-found` when the owning workspace is missing, so the UI never silently renders an empty list for a typo'd id. |
 | `create-codoc.ts` | Mint a codoc under a workspace from `{ workspaceId, path, title }`. Use case owns the `CodocId`; transports never supply one. |
 | `get-codoc.ts` | Return a single codoc as a `CodocDetail` DTO. Powers the detail page. |
-| `update-codoc-content.ts` | Overwrite a codoc's raw `content` with optimistic concurrency (`{ id, content, expectedRev }`). Returns the refreshed `CodocDetail`. |
+| `update-codoc-content.ts` | Overwrite a codoc's raw `content` with optimistic concurrency (`{ id, content, expectedRev }`). Returns the refreshed `CodocDetail` with `resolvedData`. |
 | `delete-codoc.ts` | Delete a codoc by id. |
+| `resolve.ts` | Pure helpers for data-field resolution and DAG validation. See "resolve.ts" section below. |
 
 ## Locked-in conventions
 
@@ -101,15 +102,43 @@ This is the pattern every future long-form-document use case should
 copy. Field-level edits (workspace rename, codoc rename) keep the
 slice-1.5 "force refetch, require re-confirm" shape.
 
-### Deferred: nodeState and the dag
+### `resolvedData` on `CodocDetail` (slice 6)
 
-The parser now populates `ast.data`, so codocs can have real data
-fields and refs. The next step is to:
-- add the dag rebuild call inside `updateCodocContent` (after the
-  parse, before the write)
-- decide where the DAG lives across requests (rebuilt per save?
-  cached on the workspace repo?)
-- extend `CodocDetail` (or a sibling DTO) with a wire-safe
-  `nodeState` projection
+`CodocDetail` carries `resolvedData: Record<string, unknown> | null` —
+the wire-safe projection of the codoc's data fields with `$ref`
+values resolved:
 
-This is deferred to a dedicated DAG-integration slice.
+- **static** fields pass through as-is.
+- **ref** fields resolve 1-level deep: if the target field is
+  `static`, its value is used; if the target is another `ref`, a
+  `source`, or missing, the value is `null`.
+- **source** fields are `null` (no execution engine yet).
+- When the codoc has zero data fields, `resolvedData` is `null`.
+
+Resolution is **per-request on read** (`getCodoc` → `getDetailResolved`).
+No cached or persisted DAG. The workspace's full AST set is fetched
+via `codocRepo.listAstsByWorkspace` and used as a lookup table.
+
+### DAG validation on write (slice 6)
+
+`updateCodocContent` rebuilds the workspace DAG after a successful
+write via `validateDAG` (in `resolve.ts`). This calls `buildDAG` +
+`checkCycles` from `@cobook/core`:
+
+- **unknown-target** errors (ref points at a codoc/field that
+  doesn't exist yet) are logged as warnings.
+- **cycles** are logged as warnings.
+- Neither case fails the update — a codoc that references a
+  not-yet-created target is saveable; the ref resolves to `null`
+  until the target exists.
+
+The DAG is ephemeral (rebuilt per write, not persisted). A caching
+layer can be added later without changing any signatures.
+
+### `resolve.ts` — resolution helpers
+
+| Export | Purpose |
+|---|---|
+| `resolveDataFields(codoc, lookup)` | Resolve all data fields against a workspace AST map. Returns `Record<string, unknown> \| null`. |
+| `toAstMap(rows)` | Convert `StoredCodoc[]` → `Map<CodocPath, CodocAST>` for both resolution and `buildDAG`. |
+| `validateDAG(astMap)` | Build DAG + check cycles; logs warnings, never throws. |

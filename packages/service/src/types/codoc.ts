@@ -36,4 +36,6 @@ export interface CodocDetail {
   readonly content: string;
   readonly updatedAt: number;
   readonly rev: string;
+  /** Resolved data fields. `null` when the codoc has no data block. */
+  readonly resolvedData: Record<string, unknown> | null;
 }

@@ -29,6 +29,8 @@ describe("getCodoc", () => {
     expect(result.value.content).toBe("");
     expect(result.value.rev).toBe(created.value.rev);
     expect(result.value.updatedAt).toBe(created.value.updatedAt);
+    // Empty codoc → no data fields → resolvedData is null.
+    expect(result.value.resolvedData).toBeNull();
   });
 
   it("returns codoc-not-found for an unknown id", async () => {

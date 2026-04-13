@@ -202,7 +202,7 @@ export function CodocDetailPage() {
           {hasMdxContent ? (
             <MdxRenderer
               source={parsed.body}
-              data={parsed.data}
+              data={codoc.resolvedData ?? parsed.data}
               components={codocComponents}
             />
           ) : editorContent.trim() ? (

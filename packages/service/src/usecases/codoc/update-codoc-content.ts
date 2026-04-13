@@ -3,9 +3,12 @@
 //
 // The boundary parser runs on every update so that `ast.meta`,
 // `ast.data`, and `ast.view` always reflect the current `content`.
+// After a successful write the workspace DAG is rebuilt for validation
+// (warnings logged, never fails the update) and data fields are
+// resolved for the response.
 
 import type { Codoc, CodocId, Result } from "@cobook/core";
-import { err } from "@cobook/core";
+import { err, ok } from "@cobook/core";
 import type { ServiceCtx } from "../../context.js";
 import type {
   CodocConflict,
@@ -15,6 +18,7 @@ import type {
 import { parseCodoc } from "../../parser/index.js";
 import { codocRepo } from "../../repo/codoc.js";
 import type { CodocDetail } from "../../types/codoc.js";
+import { resolveDataFields, validateDAG } from "./resolve.js";
 
 export interface UpdateCodocContentInput {
   readonly id: CodocId;
@@ -46,12 +50,24 @@ export async function updateCodocContent(
   }
 
   const next: Codoc = {
-    ...current.value,
+    ...current.value.codoc,
     content: input.content,
     ast: parsed.value,
   };
-  return codocRepo.update(ctx, {
+  const updated = await codocRepo.update(ctx, {
     codoc: next,
     expectedRev: input.expectedRev,
   });
+  if (!updated.ok) return updated;
+
+  // DAG validation (advisory — logged, never fails the update).
+  const astMap = await codocRepo.listAstsByWorkspace(
+    ctx,
+    current.value.workspaceId,
+  );
+  validateDAG(astMap);
+
+  // Resolve data fields for the response.
+  const resolved = resolveDataFields(next, astMap);
+  return ok({ ...updated.value, resolvedData: resolved });
 }

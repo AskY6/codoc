@@ -16,7 +16,7 @@
 // to preserve meta / data when only content changes, and the repo is
 // the single place allowed to touch the storage port.
 
-import type { Codoc, CodocId, Result, WorkspaceId } from "@cobook/core";
+import type { Codoc, CodocAST, CodocId, CodocPath, Result, WorkspaceId } from "@cobook/core";
 import { err, ok } from "@cobook/core";
 import type { Rev, StoredCodoc } from "@cobook/storage";
 import type { ServiceCtx } from "../context.js";
@@ -28,6 +28,7 @@ import type {
   WorkspaceNotFound,
 } from "../errors.js";
 import type { CodocDetail, CodocListItem } from "../types/codoc.js";
+import { resolveDataFields, toAstMap } from "../usecases/codoc/resolve.js";
 
 export interface CreateCodocRepoInput {
   readonly codoc: Codoc;
@@ -49,7 +50,10 @@ function toListItem(row: StoredCodoc): CodocListItem {
   };
 }
 
-function toDetail(row: StoredCodoc): CodocDetail {
+function toDetail(
+  row: StoredCodoc,
+  resolvedData: Record<string, unknown> | null = null,
+): CodocDetail {
   return {
     id: row.codoc.id as string,
     path: row.codoc.path as string,
@@ -57,6 +61,7 @@ function toDetail(row: StoredCodoc): CodocDetail {
     content: row.codoc.content,
     updatedAt: row.updatedAt as number,
     rev: row.rev as string,
+    resolvedData,
   };
 }
 
@@ -89,19 +94,53 @@ export const codocRepo = {
   },
 
   /**
-   * Read the full core `Codoc` (ast included). Used by
-   * `updateCodocContent` to preserve `ast.meta` / `ast.data` /
-   * `ast.view` when only `content` changes. Returns the canonical
-   * core type, not a DTO, because its only caller is another piece
-   * of the service layer — not a transport.
+   * Read the full core `Codoc` (ast included) together with the
+   * owning `workspaceId`. Used by `updateCodocContent` to preserve
+   * the ast when only content changes and to look up workspace
+   * siblings for DAG validation.
    */
   async getCodoc(
     ctx: ServiceCtx,
     id: CodocId,
-  ): Promise<Result<Codoc, CodocNotFound>> {
+  ): Promise<Result<{ codoc: Codoc; workspaceId: WorkspaceId }, CodocNotFound>> {
     const r = await ctx.storage.codocs.get(ctx.storageCtx, id);
     if (!r.ok) return err({ kind: "codoc-not-found", id });
-    return ok(r.value.codoc);
+    return ok({ codoc: r.value.codoc, workspaceId: r.value.workspaceId });
+  },
+
+  /**
+   * Read a codoc as a detail DTO with resolved data fields. Fetches
+   * all workspace siblings and resolves `$ref` fields at read time.
+   */
+  async getDetailResolved(
+    ctx: ServiceCtx,
+    id: CodocId,
+  ): Promise<Result<CodocDetail, CodocNotFound>> {
+    const r = await ctx.storage.codocs.get(ctx.storageCtx, id);
+    if (!r.ok) return err({ kind: "codoc-not-found", id });
+
+    const siblings = await ctx.storage.codocs.listByWorkspace(
+      ctx.storageCtx,
+      r.value.workspaceId,
+    );
+    const astMap = toAstMap(siblings);
+    const resolved = resolveDataFields(r.value.codoc, astMap);
+    return ok(toDetail(r.value, resolved));
+  },
+
+  /**
+   * Return the full AST map for every codoc in a workspace. Used by
+   * `updateCodocContent` for DAG validation and resolution.
+   */
+  async listAstsByWorkspace(
+    ctx: ServiceCtx,
+    workspaceId: WorkspaceId,
+  ): Promise<ReadonlyMap<CodocPath, CodocAST>> {
+    const rows = await ctx.storage.codocs.listByWorkspace(
+      ctx.storageCtx,
+      workspaceId,
+    );
+    return toAstMap(rows);
   },
 
   async listByWorkspace(

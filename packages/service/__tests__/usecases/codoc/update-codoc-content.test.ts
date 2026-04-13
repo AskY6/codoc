@@ -36,6 +36,8 @@ describe("updateCodocContent", () => {
     expect(updated.value.title).toBe("A");
     expect(typeof updated.value.rev).toBe("string");
     expect(updated.value.rev).not.toBe(created.value.rev);
+    // No data fields in this content → resolvedData is null.
+    expect(updated.value.resolvedData).toBeNull();
   });
 
   it("re-parses the ast from updated content", async () => {
@@ -113,6 +115,91 @@ describe("updateCodocContent", () => {
     if (!result.ok) {
       expect(result.error.kind).toBe("codoc-not-found");
     }
+  });
+
+  it("resolves static data fields in the response", async () => {
+    const { ctx } = makeTestCtx();
+    const ws = await createWorkspace(ctx, { name: "Alpha", description: null });
+    if (!ws.ok) throw new Error("setup failed");
+
+    const created = await createCodoc(ctx, {
+      workspaceId: ws.value.id,
+      path: "a.codoc",
+      title: null,
+    });
+    if (!created.ok) throw new Error("setup failed");
+
+    const content = "---\ntitle: A\ndata:\n  score: 4\n  label: excellent\n---\nbody";
+    const updated = await updateCodocContent(ctx, {
+      id: created.value.id as CodocId,
+      content,
+      expectedRev: created.value.rev,
+    });
+
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.resolvedData).toEqual({ score: 4, label: "excellent" });
+  });
+
+  it("resolves $ref fields across sibling codocs", async () => {
+    const { ctx } = makeTestCtx();
+    const ws = await createWorkspace(ctx, { name: "Alpha", description: null });
+    if (!ws.ok) throw new Error("setup failed");
+
+    // Create target codoc with a static field.
+    const target = await createCodoc(ctx, {
+      workspaceId: ws.value.id,
+      path: "reviews/alice.codoc",
+      title: null,
+      content: "---\ntitle: Alice\ndata:\n  score_business: 4\n---\n",
+    });
+    if (!target.ok) throw new Error("setup failed");
+
+    // Create source codoc that references the target.
+    const source = await createCodoc(ctx, {
+      workspaceId: ws.value.id,
+      path: "calibration.codoc",
+      title: null,
+    });
+    if (!source.ok) throw new Error("setup failed");
+
+    const content =
+      '---\ntitle: Calibration\ndata:\n  alice_score:\n    $ref: "./reviews/alice.codoc#data.score_business"\n---\nbody';
+    const updated = await updateCodocContent(ctx, {
+      id: source.value.id as CodocId,
+      content,
+      expectedRev: source.value.rev,
+    });
+
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.resolvedData).toEqual({ alice_score: 4 });
+  });
+
+  it("returns null for $ref to a non-existent codoc", async () => {
+    const { ctx } = makeTestCtx();
+    const ws = await createWorkspace(ctx, { name: "Alpha", description: null });
+    if (!ws.ok) throw new Error("setup failed");
+
+    const created = await createCodoc(ctx, {
+      workspaceId: ws.value.id,
+      path: "a.codoc",
+      title: null,
+    });
+    if (!created.ok) throw new Error("setup failed");
+
+    const content =
+      '---\ntitle: A\ndata:\n  x:\n    $ref: "./missing.codoc#data.score"\n---\nbody';
+    const updated = await updateCodocContent(ctx, {
+      id: created.value.id as CodocId,
+      content,
+      expectedRev: created.value.rev,
+    });
+
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    // Sole field resolves to null → entire resolvedData is null.
+    expect(updated.value.resolvedData).toBeNull();
   });
 
   it("bumps updatedAt on every successful update", async () => {
