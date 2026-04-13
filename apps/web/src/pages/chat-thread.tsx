@@ -19,6 +19,8 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   FileText,
   Loader2,
   MessageSquare,
@@ -30,6 +32,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -207,6 +210,59 @@ function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): s
   return keys.join(", ");
 }
 
+// ---- Collapsible wrapper for long messages --------------------------------
+
+const MAX_MESSAGE_HEIGHT = 320; // px before collapse
+
+function CollapsibleContent({
+  children,
+  fadeTo = "from-background",
+}: {
+  children: React.ReactNode;
+  fadeTo?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setOverflows(el.scrollHeight > MAX_MESSAGE_HEIGHT);
+  }, [children]);
+
+  return (
+    <div>
+      <div
+        ref={ref}
+        className="relative overflow-hidden transition-[max-height] duration-200"
+        style={{ maxHeight: expanded || !overflows ? undefined : MAX_MESSAGE_HEIGHT }}
+      >
+        {children}
+        {overflows && !expanded && (
+          <div className={`pointer-events-none sticky bottom-0 left-0 right-0 h-16 -mt-16 bg-gradient-to-t ${fadeTo} to-transparent`} />
+        )}
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {expanded ? (
+            <>
+              <ChevronsDownUp className="h-3 w-3" /> Show less
+            </>
+          ) : (
+            <>
+              <ChevronsUpDown className="h-3 w-3" /> Show more
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---- Message bubble -----------------------------------------------------
 
 function MessageBubble({
@@ -232,7 +288,7 @@ function MessageBubble({
           You
         </span>
         <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
-          {msg.content}
+          <CollapsibleContent fadeTo="from-secondary">{msg.content}</CollapsibleContent>
         </div>
       </li>
     );
@@ -248,7 +304,9 @@ function MessageBubble({
         </span>
         {msg.content && (
           <div className="max-w-[80%] text-sm text-foreground">
-            <ChatMarkdown content={msg.content} />
+            <CollapsibleContent>
+              <ChatMarkdown content={msg.content} />
+            </CollapsibleContent>
           </div>
         )}
         <ToolCallCards
