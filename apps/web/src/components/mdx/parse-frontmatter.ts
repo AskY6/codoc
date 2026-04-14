@@ -13,6 +13,8 @@ export interface ParsedCodoc {
   body: string;
   /** Best-effort extraction of data fields from frontmatter. */
   data: Record<string, unknown>;
+  /** Tags extracted from frontmatter `tags: [...]`. */
+  tags: readonly string[];
 }
 
 export function parseCodocContent(content: string): ParsedCodoc | null {
@@ -37,8 +39,9 @@ export function parseCodocContent(content: string): ParsedCodoc | null {
   // simple `key: value` pairs. Refs ($ref) and nested objects are
   // skipped — they need server-side resolution.
   const data = extractDataBlock(frontmatter);
+  const tags = extractTags(frontmatter);
 
-  return { frontmatter, body: body.trim(), data };
+  return { frontmatter, body: body.trim(), data, tags };
 }
 
 function extractDataBlock(yaml: string): Record<string, unknown> {
@@ -74,6 +77,16 @@ function extractDataBlock(yaml: string): Record<string, unknown> {
   }
 
   return data;
+}
+
+/** Extract tags from `tags: [a, b, c]` in frontmatter. */
+function extractTags(yaml: string): readonly string[] {
+  const match = yaml.match(/^tags:\s*\[([^\]]*)\]/m);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 }
 
 function stripQuotes(s: string): string {

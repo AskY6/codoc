@@ -149,6 +149,9 @@ export async function runAgentTurn(
       return r.ok ? r.value : { error: `Codoc not found: ${id}` };
     },
     async createCodoc(inp: { path?: string; title: string; content: string }) {
+      if (!inp.title || !inp.content) {
+        return { error: "createCodoc requires both 'title' and 'content' fields" };
+      }
       const { createCodoc: create } = await import(
         "../codoc/create-codoc.js"
       );
@@ -160,22 +163,15 @@ export async function runAgentTurn(
         workspaceId,
         path,
         title: inp.title,
+        content: inp.content,
       });
-      if (!r.ok) return { error: `Failed to create codoc` };
-      // Create only sets title; write content via update.
-      if (inp.content) {
-        const { updateCodocContent: update } = await import(
-          "../codoc/update-codoc-content.js"
-        );
-        await update(ctx, {
-          id: r.value.id as CodocId,
-          content: inp.content,
-          expectedRev: r.value.rev,
-        });
-      }
+      if (!r.ok) return { error: `Failed to create codoc: ${r.error.kind}${"message" in r.error ? ` — ${r.error.message}` : ""}` };
       return r.value;
     },
     async updateCodoc(inp: { id: string; content: string }) {
+      if (!inp.id || !inp.content) {
+        return { error: "updateCodoc requires both 'id' and 'content' fields" };
+      }
       const { updateCodocContent: update } = await import(
         "../codoc/update-codoc-content.js"
       );
@@ -309,6 +305,9 @@ export async function runAgentTurn(
 
   if (!runResult.ok) {
     const graphErr = runResult.error;
+    if (graphErr.kind === "nodeThrew" && graphErr.cause instanceof Error) {
+      console.error("[run-agent-turn] nodeThrew:", graphErr.cause.stack ?? graphErr.cause.message);
+    }
     const cause = graphErr.kind === "nodeThrew" && graphErr.cause
       ? (graphErr.cause instanceof Error ? graphErr.cause.message : String(graphErr.cause))
       : "";

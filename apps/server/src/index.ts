@@ -66,13 +66,17 @@ async function seedAgents(): Promise<void> {
       id: AgentId("perf-review"),
       name: "Performance Reviewer",
       description:
-        "Review subordinate performance materials — de-beautify, score, and calibrate",
+        "绩效材料录入、review 评审、评分、校准。Handle all performance review tasks: record/intake materials (录入绩效材料), review and score, calibrate.",
     },
   ];
 
   for (const listing of agents) {
     const existing = await storage.agents.get(storage.ctx(), listing.id);
     if (!existing.ok) {
+      await storage.agents.create(storage.ctx(), listing);
+    } else if (existing.value.listing.description !== listing.description) {
+      // Description changed — delete and recreate to update.
+      await storage.agents.delete(storage.ctx(), listing.id);
       await storage.agents.create(storage.ctx(), listing);
     }
   }

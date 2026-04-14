@@ -12,3 +12,4 @@ test-result
 
 # prevent accidental nested .git
 apps/**/.git
+prompt

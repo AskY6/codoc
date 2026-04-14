@@ -41,13 +41,19 @@ export function createAnthropicLlmClient(
         }),
       );
 
-      const response = await client.messages.create({
-        model: params.model,
-        max_tokens: params.maxTokens,
-        system: params.system,
-        messages,
-        ...(tools && tools.length > 0 && { tools }),
-      });
+      const response = await client.messages.create(
+        {
+          model: params.model,
+          max_tokens: params.maxTokens,
+          system: params.system,
+          messages,
+          ...(tools && tools.length > 0 && { tools }),
+        },
+        {
+          ...(params.signal && { signal: params.signal }),
+          timeout: 600_000, // 10min — parallel pipelines may chain multiple LLM calls
+        },
+      );
 
       const content: LlmResponseBlock[] = [];
       for (const block of response.content) {

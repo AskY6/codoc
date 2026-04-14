@@ -288,136 +288,140 @@ export function threadRoutes(baseCtx: ServiceCtx) {
 
     const active = createActiveStream(threadId);
 
-    return streamSSE(c, async (stream) => {
-      function emit(evt: SSEEvent) {
-        emitToStream(active, evt);
-        return stream.writeSSE(evt);
-      }
+    // Confirmation gate: emits SSE event and blocks until the client
+    // responds via POST /:id/confirm.
+    let lastConfirmRequestId: string | null = null;
+    async function confirmTool(
+      _tool: string,
+      _toolInput: Readonly<Record<string, unknown>>,
+    ): Promise<boolean> {
+      const requestId = lastConfirmRequestId ?? `${threadId}-fallback`;
+      lastConfirmRequestId = null;
+      return new Promise<boolean>((resolve) => {
+        active.pendingConfirmation = { requestId, resolve };
 
-      let titlePromise: Promise<void> | undefined;
+        const timeout = setTimeout(() => {
+          if (active.pendingConfirmation?.requestId === requestId) {
+            active.pendingConfirmation.resolve(false);
+            active.pendingConfirmation = null;
+          }
+        }, 120_000);
 
-      // Confirmation gate: emits SSE event and blocks until the client
-      // responds via POST /:id/confirm.
-      //
-      // The tool loop emits a `confirmationRequest` ChatEvent (with its
-      // own requestId) *before* calling `confirmTool`. The `onEvent`
-      // callback fires synchronously, so we capture that requestId here
-      // and reuse it as the server-side key — this ensures the client's
-      // POST confirm payload matches what we're waiting for.
-      let lastConfirmRequestId: string | null = null;
-      async function confirmTool(
-        _tool: string,
-        _toolInput: Readonly<Record<string, unknown>>,
-      ): Promise<boolean> {
-        const requestId = lastConfirmRequestId ?? `${threadId}-fallback`;
-        lastConfirmRequestId = null;
-        return new Promise<boolean>((resolve) => {
-          // Register the pending confirmation.
-          active.pendingConfirmation = { requestId, resolve };
+        const originalResolve = resolve;
+        active.pendingConfirmation = {
+          requestId,
+          resolve: (approved: boolean) => {
+            clearTimeout(timeout);
+            originalResolve(approved);
+          },
+        };
+      });
+    }
 
-          // Timeout: auto-deny after 2 minutes.
-          const timeout = setTimeout(() => {
-            if (active.pendingConfirmation?.requestId === requestId) {
-              active.pendingConfirmation.resolve(false);
-              active.pendingConfirmation = null;
-            }
-          }, 120_000);
-
-          // Wrap the original resolve to clear the timeout.
-          const originalResolve = resolve;
-          active.pendingConfirmation = {
-            requestId,
-            resolve: (approved: boolean) => {
-              clearTimeout(timeout);
-              originalResolve(approved);
-            },
-          };
-        });
-      }
-
+    // Run the agent turn detached from the SSE response lifecycle.
+    // The turn runs to completion even if the client disconnects;
+    // a reconnecting client picks up buffered events via GET /stream.
+    async function runTurn() {
       try {
         const result = await runAgentTurn(baseCtx, {
           threadId,
           content: body.content as string,
-          signal: c.req.raw.signal,
+          // Safety timeout only — NOT tied to client disconnect.
+          signal: AbortSignal.timeout(600_000),
           confirmTool,
           onEvent: (event) => {
-            // Track the requestId so confirmTool can reuse it.
             if (event.kind === "confirmationRequest") {
               lastConfirmRequestId = event.requestId;
             }
-            // Map ChatEvent to SSE events. Fire-and-forget write;
-            // errors are swallowed — the client may have disconnected.
             const sseEvent = chatEventToSSE(event);
-            if (sseEvent) {
-              emit(sseEvent).catch(() => {});
-            }
+            if (sseEvent) emitToStream(active, sseEvent);
           },
         });
 
         if (!result.ok) {
-          await emit({
+          emitToStream(active, {
             event: "error",
             data: JSON.stringify({ message: "message" in result.error ? result.error.message : result.error.kind }),
           });
         } else {
-          // Emit done with all assistant messages.
-          await emit({
+          // Auto-title on first exchange (before done, so reconnect picks it up).
+          if (needsTitle && result.value.assistantMessages.length > 0) {
+            const assistantText = result.value.assistantMessages
+              .map((m) => m.message.kind === "assistant" ? m.message.content : "")
+              .join("\n");
+            try {
+              const llm = createAnthropicLlmClient({
+                apiKey: baseCtx.llmConfig.apiKey,
+                baseURL: baseCtx.llmConfig.baseURL,
+              });
+              const model = baseCtx.llmConfig.routerModel ?? "claude-haiku-4-5-20251001";
+              const title = await generateTitle(
+                llm,
+                model,
+                body.content as string,
+                assistantText,
+              );
+              if (title) {
+                const updateResult = await updateThread(baseCtx, {
+                  id: threadId,
+                  title,
+                  expectedRev: threadRev,
+                });
+                if (updateResult.ok) {
+                  emitToStream(active, {
+                    event: "title-update",
+                    data: JSON.stringify({ title }),
+                  });
+                }
+              }
+            } catch {
+              // Fire-and-forget — title generation failure is non-critical.
+            }
+          }
+
+          emitToStream(active, {
             event: "done",
             data: JSON.stringify({
               userMessage: result.value.userMessage,
               assistantMessages: result.value.assistantMessages,
             }),
           });
-
-          // Auto-title on first exchange.
-          if (needsTitle && result.value.assistantMessages.length > 0) {
-            const assistantText = result.value.assistantMessages
-              .map((m) => m.message.kind === "assistant" ? m.message.content : "")
-              .join("\n");
-
-            titlePromise = (async () => {
-              try {
-                const llm = createAnthropicLlmClient({
-                  apiKey: baseCtx.llmConfig.apiKey,
-                  baseURL: baseCtx.llmConfig.baseURL,
-                });
-                const model = baseCtx.llmConfig.routerModel ?? "claude-haiku-4-5-20251001";
-                const title = await generateTitle(
-                  llm,
-                  model,
-                  body.content as string,
-                  assistantText,
-                );
-                if (title) {
-                  const updateResult = await updateThread(baseCtx, {
-                    id: threadId,
-                    title,
-                    expectedRev: threadRev,
-                  });
-                  if (updateResult.ok) {
-                    await emit({
-                      event: "title-update",
-                      data: JSON.stringify({ title }),
-                    });
-                  }
-                }
-              } catch {
-                // Fire-and-forget — title generation failure is non-critical.
-              }
-            })();
-          }
         }
       } catch (error) {
-        await emit({
+        emitToStream(active, {
           event: "error",
           data: JSON.stringify({ message: String(error) }),
         });
+      } finally {
+        closeActiveStream(threadId, active);
       }
+    }
 
-      // Wait for title generation before closing the stream.
-      if (titlePromise) await titlePromise;
-      closeActiveStream(threadId, active);
+    // Stream events to this client — same listener pattern as GET /stream.
+    return streamSSE(c, async (stream) => {
+      await new Promise<void>((resolve) => {
+        const listener = (evt: SSEEvent) => {
+          stream.writeSSE(evt).catch(() => {
+            active.listeners.delete(listener);
+            resolve();
+          });
+          if (evt.event === "done" || evt.event === "error") {
+            setTimeout(() => {
+              active.listeners.delete(listener);
+              resolve();
+            }, 3000);
+          }
+        };
+        active.listeners.add(listener);
+
+        c.req.raw.signal.addEventListener("abort", () => {
+          active.listeners.delete(listener);
+          resolve();
+        });
+
+        // Start turn after listener is registered — no events missed.
+        runTurn().catch(() => {});
+      });
     });
   });
 

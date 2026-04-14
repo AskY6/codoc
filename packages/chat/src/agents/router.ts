@@ -67,6 +67,7 @@ Choose the agent whose description best matches the user's intent. If no special
         maxTokens: 256,
         system: systemPrompt,
         messages: [{ role: "user", content: latestUser.content }],
+        signal: chatCtx.signal,
       });
 
       // Parse the response to extract route.

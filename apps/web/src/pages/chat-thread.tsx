@@ -27,6 +27,8 @@ import {
   Send,
   Square,
   User,
+  Check,
+  Copy,
   Wrench,
 } from "lucide-react";
 import {
@@ -263,6 +265,28 @@ function CollapsibleContent({
   );
 }
 
+// ---- Copy button (hover-reveal) -----------------------------------------
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [text]);
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/msg:opacity-100"
+      title="Copy"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
 // ---- Message bubble -----------------------------------------------------
 
 function MessageBubble({
@@ -282,10 +306,11 @@ function MessageBubble({
 
   if (msg.kind === "user") {
     return (
-      <li className="flex flex-col items-end">
+      <li className="group/msg flex flex-col items-end">
         <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
           <User className="h-3 w-3" />
           You
+          <CopyButton text={msg.content} />
         </span>
         <div className="max-w-[80%] whitespace-pre-wrap rounded-lg bg-secondary px-4 py-2.5 text-sm text-foreground">
           <CollapsibleContent fadeTo="from-secondary">{msg.content}</CollapsibleContent>
@@ -297,10 +322,11 @@ function MessageBubble({
   if (msg.kind === "assistant") {
     const codocIds = extractCodocIds(msg.metadata.toolCalls, msg.metadata.toolResults ?? []);
     return (
-      <li className="flex flex-col items-start">
+      <li className="group/msg flex flex-col items-start">
         <span className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
           <Bot className="h-3 w-3" />
           {agentName ?? msg.agentId}
+          <CopyButton text={msg.content} />
         </span>
         {msg.content && (
           <div className="max-w-[80%] text-sm text-foreground">
@@ -664,6 +690,9 @@ export function ChatThreadPage() {
           void queryClient.invalidateQueries({
             queryKey: threadKey(threadId),
           });
+          void queryClient.invalidateQueries({
+            queryKey: codocListKey(workspaceId),
+          });
         },
         onTitleUpdate: () => {
           void queryClient.invalidateQueries({
@@ -698,7 +727,7 @@ export function ChatThreadPage() {
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void handleSend(e as unknown as FormEvent);
     }
@@ -899,9 +928,8 @@ export function ChatThreadPage() {
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
-              rows={1}
               disabled={streaming}
-              className="flex-1 resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-50"
+              className="field-sizing-content min-h-16 max-h-48 flex-1 resize-none rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:opacity-50"
             />
             {streaming ? (
               <Button type="button" onClick={handleStop} variant="outline">

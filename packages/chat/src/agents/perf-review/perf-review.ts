@@ -15,6 +15,8 @@ import type { ChatEvent } from "../../state/events.js";
 import type { ChatState } from "../../state/state.js";
 import type { ChatRunContext } from "../../runner/context.js";
 import { runToolLoop } from "../run-tool-loop.js";
+import { runParallelMaterialRecording } from "./parallel-material.js";
+import { runParallelReview } from "./parallel-review.js";
 import { PERF_REVIEW_RUBRIC } from "./rubric.js";
 
 const PERF_REVIEW_MODEL = ModelId("claude-sonnet-4-20250514");
@@ -405,6 +407,37 @@ export function createPerfReviewAgent(
       ctx: NodeContext<ChatEvent>,
     ): Promise<Partial<ChatState>> {
       const chatCtx = ctx as ChatRunContext;
+
+      // Detect mode from the latest user message and try parallel pipelines.
+      // Each returns null when it decides to fall back (≤1 item or failure).
+      const latestUser = [...state.messages].reverse().find((m) => m.kind === "user");
+
+      if (latestUser) {
+        const text = latestUser.content;
+
+        // Mode zero: material recording
+        if (/录入|录材料|绩效材料|原材料|自评|周报摘要|项目总结/.test(text)) {
+          const result = await runParallelMaterialRecording({
+            agentId,
+            tools,
+            state,
+            ctx: chatCtx,
+          });
+          if (result !== null) return result;
+        }
+
+        // Mode one: individual review
+        if (/review|评审|评估|打分|评分/.test(text)) {
+          const result = await runParallelReview({
+            agentId,
+            tools,
+            state,
+            ctx: chatCtx,
+          });
+          if (result !== null) return result;
+        }
+      }
+
       return runToolLoop({
         agentId,
         nodeId: agentId as unknown as NodeId,
@@ -414,6 +447,7 @@ export function createPerfReviewAgent(
         tools,
         state,
         ctx: chatCtx,
+        maxTokens: 16384,
       });
     },
   };

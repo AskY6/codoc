@@ -69,6 +69,7 @@ export interface LlmClient {
     readonly system: string;
     readonly messages: readonly LlmMessage[];
     readonly tools?: readonly LlmToolDef[];
+    readonly signal?: AbortSignal | undefined;
   }): Promise<LlmResponse>;
 }
 
