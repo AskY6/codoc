@@ -6,17 +6,25 @@ Must never import from: `@cobook/service`, `@cobook/storage`, `@cobook/storage-m
 
 ## Purpose
 
-Local file-based codoc server. Three modes:
-- `watch` — file watcher + auto-compile to .mdx
-- `mcp` — MCP stdio server for Claude Code integration
-- `compile` — one-shot compile
+Local file-based codoc server. CLI commands:
+- `codoc` (default) — unified mode: HTTP server + watch + MCP (StreamableHTTP)
+- `codoc init` — scaffold `.codoc/` directory + `codoc.config.json`
+- `codoc mcp` — MCP stdio server (Claude Code spawns this as subprocess)
+- `codoc compile` — one-shot compile
+- `codoc dag` — print DAG
 
 ## Architecture
 
 ```
-sourceDir/**/*.codoc  →  parse  →  resolve ($ref, $source)  →  compile  →  .codoc/compiled/*.mdx
-                                                                            ↑ VSCode MDX preview
-Claude Code  ←→  MCP stdio  ←→  read/write/list/search/dag tools
+Browser (Phase 1)  ←→  Hono HTTP server (:4321)
+                         ├── GET /         health check
+                         └── ALL /mcp      MCP StreamableHTTP transport
+                                ↕
+AI Client (Claude Code)  ←→  stdio MCP  (`codoc mcp`, separate process)
+
+Both modes share:
+  sourceDir/**/*.codoc  →  parse  →  resolve ($ref, $source)  →  compile  →  *.mdx
+  chokidar watch  →  debounced rebuild (300ms)
 ```
 
 ## Key decisions
@@ -26,3 +34,6 @@ Claude Code  ←→  MCP stdio  ←→  read/write/list/search/dag tools
 - Resolution is workspace-global (all siblings participate in DAG)
 - Compile output is self-contained .mdx (data exported as ES module)
 - Watch uses debounced rebuild (300ms) for batch saves
+- Unified `codoc` command starts HTTP + watch + MCP on same process
+- MCP stdio (`codoc mcp`) stays separate for Claude Code subprocess model
+- `codoc init` is idempotent — skips existing files/dirs

@@ -16,8 +16,10 @@
     "@cobook/compiler": "workspace:*",
     "@cobook/core": "workspace:*",
     "@cobook/parser": "workspace:*",
+    "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chokidar": "^4.0.0",
+    "hono": "^4.6.0",
     "yaml": "^2.7.0",
     "zod": "^3.23.0"
   },

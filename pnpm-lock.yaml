@@ -29,12 +29,18 @@ importers:
       '@cobook/parser':
         specifier: workspace:*
         version: link:../../packages/parser
+      '@hono/node-server':
+        specifier: ^1.13.0
+        version: 1.19.13(hono@4.12.12)
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.29.0(zod@3.25.76)
       chokidar:
         specifier: ^4.0.0
         version: 4.0.3
+      hono:
+        specifier: ^4.6.0
+        version: 4.12.12
       yaml:
         specifier: ^2.7.0
         version: 2.8.3

@@ -1,13 +1,13 @@
 // codoc local — CLI entry point.
 //
 // Usage:
-//   codoc watch [sourceDir]   — watch + compile (default mode)
-//   codoc mcp [sourceDir]     — start MCP server on stdio
-//   codoc compile [sourceDir] — one-shot compile and exit
-//   codoc dag [sourceDir]     — print DAG relationships and exit
+//   codoc                 — start server (HTTP + MCP + watch)
+//   codoc init            — initialize knowledge base
+//   codoc mcp [dir]       — start MCP server on stdio (for Claude Code)
+//   codoc compile [dir]   — one-shot compile and exit
+//   codoc dag [dir]       — print DAG relationships and exit
 //
-// sourceDir defaults to current working directory.
-// Output goes to .preview/ relative to sourceDir.
+// dir defaults to current working directory.
 
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -15,37 +15,54 @@ import { createSourceRegistry } from "@cobook/parser";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll, buildAstMap } from "./workspace.js";
 import { startWatcher } from "./watcher.js";
-import { startMcpServer } from "./mcp-server.js";
+import { startMcpServer, createMcpServer } from "./mcp-server.js";
+import { startHttpServer } from "./http-server.js";
+import { initWorkspace } from "./init.js";
 
 const args = process.argv.slice(2);
-const command = args[0] ?? "watch";
-const workspaceDir = resolve(args[1] ?? process.cwd());
+const command = args[0] ?? "";
+const explicitDir = command === "init" || command === "" ? args[1] : args[1];
+const workspaceDir = resolve(explicitDir ?? process.cwd());
 const sourceDir = join(workspaceDir, ".codoc");
 
-// Read outDir from codoc.config.json if present, else default to workspaceDir.
-let outDir = workspaceDir;
-try {
-  const cfg = JSON.parse(readFileSync(join(workspaceDir, "codoc.config.json"), "utf-8"));
-  if (cfg.outDir) outDir = resolve(workspaceDir, cfg.outDir);
-} catch {
-  // No config file — use default.
+// Read config.
+interface Config {
+  outDir?: string;
+  port?: number;
+}
+
+function readConfig(): Config {
+  try {
+    return JSON.parse(readFileSync(join(workspaceDir, "codoc.config.json"), "utf-8")) as Config;
+  } catch {
+    return {};
+  }
 }
 
 async function main(): Promise<void> {
+  // --- init: no workspace loading needed ---
+  if (command === "init") {
+    await initWorkspace(workspaceDir);
+    return;
+  }
+
+  const cfg = readConfig();
+  const outDir = cfg.outDir ? resolve(workspaceDir, cfg.outDir) : workspaceDir;
+  const port = cfg.port ?? 4321;
   const sourceProviders = createSourceRegistry();
+
+  // --- commands that need a loaded workspace ---
   const ws = await loadWorkspace(sourceDir, outDir, sourceProviders);
 
   switch (command) {
     case "mcp": {
-      // MCP mode: start stdio server for Claude Code integration.
-      // Also start watcher in background to keep compiled output fresh.
+      // Stdio MCP — Claude Code spawns this as a subprocess.
       startWatcher(ws);
       await startMcpServer(ws);
       break;
     }
 
     case "compile": {
-      // One-shot: compile all and exit.
       await compileAll(ws);
       console.log(`[codoc] compiled ${ws.codocs.size} file(s) → ${outDir}`);
       break;
@@ -56,12 +73,13 @@ async function main(): Promise<void> {
       break;
     }
 
-    case "watch":
     default: {
-      // Watch mode: compile on change, log to console.
+      // Unified mode: HTTP server + watch + MCP (StreamableHTTP).
       await compileAll(ws);
-      console.log(`[codoc] watching .codoc/ → ${outDir}`);
       console.log(`[codoc] ${ws.codocs.size} codoc(s) loaded`);
+
+      const mcpServer = createMcpServer(ws);
+      await startHttpServer({ port, mcpServer });
       startWatcher(ws);
       break;
     }
