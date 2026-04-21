@@ -402,7 +402,7 @@ replaced with actual numbers/strings from the referenced codocs
 before the MDX renderer sees them.
 
 **Why this slice:** the perf-review agent already produces
-codocs with `$ref` links (`calibration/` → `reviews/` → `materials/`).
+codocs with `$ref` links (`calibration/` → `reviews/` → `perf/`).
 Without resolution, the calibration matrix shows all zeros. This is
 the first time real users hit the wall — the format promised
 cross-codoc references but the runtime doesn't deliver. Presets
