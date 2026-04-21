@@ -7,8 +7,8 @@ import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
 import type { CodocAST, CodocPath, ResolveResult } from "@cobook/core";
 import { CodocPath as mkCodocPath } from "@cobook/core";
-import { parseCodoc } from "@cobook/service";
-import type { SourceRegistry } from "@cobook/service";
+import { parseCodoc } from "@cobook/parser";
+import type { SourceRegistry } from "@cobook/parser";
 import { compileCodoc } from "@cobook/compiler";
 import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
 

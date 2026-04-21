@@ -11,7 +11,7 @@
 
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { createSourceRegistry } from "@cobook/service";
+import { createSourceRegistry } from "@cobook/parser";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll, buildAstMap } from "./workspace.js";
 import { startWatcher } from "./watcher.js";

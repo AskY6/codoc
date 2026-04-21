@@ -1,8 +1,8 @@
 # @cobook/local
 
 Parent: `apps/`
-Reads from: `@cobook/core`, `@cobook/service` (parser + source registry), `@cobook/compiler`
-Must never import from: `@cobook/storage`, `@cobook/storage-memory`, `@cobook/storage-pg`, `@cobook/chat`, `@cobook/graph`
+Reads from: `@cobook/core`, `@cobook/parser` (parser + source registry), `@cobook/compiler`
+Must never import from: `@cobook/service`, `@cobook/storage`, `@cobook/storage-memory`, `@cobook/storage-pg`, `@cobook/chat`, `@cobook/graph`
 
 ## Purpose
 

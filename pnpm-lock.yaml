@@ -26,9 +26,9 @@ importers:
       '@cobook/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@cobook/service':
+      '@cobook/parser':
         specifier: workspace:*
-        version: link:../../packages/service
+        version: link:../../packages/parser
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.29.0(zod@3.25.76)
@@ -213,6 +213,25 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
 
+  packages/parser:
+    dependencies:
+      '@cobook/core':
+        specifier: workspace:*
+        version: link:../core
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.9)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
+
   packages/service:
     dependencies:
       '@cobook/chat':
@@ -224,12 +243,12 @@ importers:
       '@cobook/graph':
         specifier: workspace:*
         version: link:../graph
+      '@cobook/parser':
+        specifier: workspace:*
+        version: link:../parser
       '@cobook/storage':
         specifier: workspace:*
         version: link:../storage
-      yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
     devDependencies:
       '@cobook/storage-memory':
         specifier: workspace:*

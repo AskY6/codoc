@@ -2,7 +2,7 @@ import type { Logger } from "@cobook/graph";
 import type { Clock, Ctx as StorageCtx, Storage } from "@cobook/storage";
 import type { IdGenerator } from "./ports/id.js";
 import type { LlmConfig } from "./ports/llm.js";
-import type { SourceRegistry } from "./ports/source.js";
+import type { SourceRegistry } from "@cobook/parser";
 
 /**
  * Per-call environment for service use cases and repo modules.

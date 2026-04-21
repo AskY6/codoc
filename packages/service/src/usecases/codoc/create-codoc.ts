@@ -25,7 +25,7 @@ import type {
   CodocParseFailure,
   WorkspaceNotFound,
 } from "../../errors.js";
-import { parseCodoc } from "../../parser/index.js";
+import { parseCodoc } from "@cobook/parser";
 import { codocRepo } from "../../repo/codoc.js";
 import type { CodocListItem } from "../../types/codoc.js";
 

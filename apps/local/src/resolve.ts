@@ -4,7 +4,7 @@
 
 import type { CodocAST, CodocPath, DAG, NodeId, ResolveResult } from "@cobook/core";
 import { buildDAG, checkCycles, evaluate } from "@cobook/core";
-import type { SourceRegistry } from "@cobook/service";
+import type { SourceRegistry } from "@cobook/parser";
 
 /**
  * Resolve every data field in a single codoc against the workspace's

@@ -15,7 +15,7 @@ import type {
   CodocNotFound,
   CodocParseFailure,
 } from "../../errors.js";
-import { parseCodoc } from "../../parser/index.js";
+import { parseCodoc } from "@cobook/parser";
 import { codocRepo } from "../../repo/codoc.js";
 import type { CodocDetail } from "../../types/codoc.js";
 import { resolveDataFields, validateDAG } from "./resolve.js";

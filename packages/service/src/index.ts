@@ -46,17 +46,13 @@ export type {
   StorageUnavailable,
 } from "./errors.js";
 
-// ---- parser (boundary helper) -------------------------------------------
-export { parseCodoc } from "./parser/index.js";
-export type { ParseError } from "./parser/index.js";
+// ---- parser (re-exported from @cobook/parser) ---------------------------
+export { parseCodoc, createSourceRegistry } from "@cobook/parser";
+export type { ParseError, SourceProvider, SourceRegistry } from "@cobook/parser";
 
 // ---- ports (outbound dependencies) ------------------------------------
 export type { IdGenerator } from "./ports/id.js";
 export type { LlmConfig } from "./ports/llm.js";
-export type { SourceProvider, SourceRegistry } from "./ports/source.js";
-
-// ---- providers (built-in source provider implementations) ---------------
-export { createSourceRegistry } from "./providers/index.js";
 
 // ---- logger (concrete Logger implementations) ---------------------------
 export { createConsoleLogger, createFileLogger, composeLoggers } from "./logger.js";

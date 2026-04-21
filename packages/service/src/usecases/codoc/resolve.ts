@@ -11,7 +11,7 @@
 import type { CodocAST, CodocPath, NodeId, ResolveResult } from "@cobook/core";
 import { buildDAG, checkCycles, evaluate, parseNodeId } from "@cobook/core";
 import type { StoredCodoc } from "@cobook/storage";
-import type { SourceRegistry } from "../../ports/source.js";
+import type { SourceRegistry } from "@cobook/parser";
 
 /**
  * Convert a list of stored codocs into the `Map<CodocPath, CodocAST>`

@@ -5,7 +5,7 @@
 //   path — optional dot-separated key path to extract a nested value
 //          (e.g. "data.items" extracts `response.data.items`)
 
-import type { SourceProvider } from "../ports/source.js";
+import type { SourceProvider } from "./source.js";
 
 export const httpJsonProvider: SourceProvider = {
   name: "http-json",

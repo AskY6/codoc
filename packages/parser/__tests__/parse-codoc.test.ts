@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCodoc } from "../../src/parser/parse-codoc.js";
+import { parseCodoc } from "../src/parse-codoc.js";
 import { FieldName as mkFieldName } from "@cobook/core";
 
 describe("parseCodoc", () => {
