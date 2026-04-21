@@ -58,7 +58,7 @@ MDX body 应优先使用已有语义化组件（如 \`<MaterialHeader>\`、\`<Re
 
 ### 步骤 3 — 写入 material codoc
 调用 createCodoc：
-- path: \`materials/{姓名拼音}-{时间段}\`（例：\`materials/zhangsan-q2-2026\`）
+- path: \`perf/{姓名拼音}-{时间段}\`（例：\`perf/zhangsan-q2-2026\`）
 - title: \`材料: {姓名} — {时间段}\`
 
 content 必须使用以下格式：

@@ -281,7 +281,12 @@ export async function runAgentTurn(
   }
 
   // 10. Run the graph.
+  const { log } = ctx;
   const events: ChatEvent[] = [];
+
+  log.info({ scope: "turn", event: "start", threadId: input.threadId, workspaceId });
+
+  const turnStart = Date.now();
   const chatCtx: ChatRunContext = {
     emit: (e) => {
       events.push(e);
@@ -289,6 +294,7 @@ export async function runAgentTurn(
     },
     signal: input.signal ?? AbortSignal.timeout(120_000),
     llm,
+    log,
     mintMessageId: () => ctx.idGen.messageId(),
     modelConfig: {
       routerModel: ctx.llmConfig.routerModel,
@@ -305,12 +311,16 @@ export async function runAgentTurn(
 
   if (!runResult.ok) {
     const graphErr = runResult.error;
-    if (graphErr.kind === "nodeThrew" && graphErr.cause instanceof Error) {
-      console.error("[run-agent-turn] nodeThrew:", graphErr.cause.stack ?? graphErr.cause.message);
-    }
     const cause = graphErr.kind === "nodeThrew" && graphErr.cause
       ? (graphErr.cause instanceof Error ? graphErr.cause.message : String(graphErr.cause))
       : "";
+    log.error({
+      scope: "turn",
+      event: "error",
+      kind: graphErr.kind,
+      message: cause,
+      durationMs: Date.now() - turnStart,
+    });
     return err({
       kind: "graph-run-failed",
       message: cause ? `${graphErr.kind}: ${cause}` : graphErr.kind,
@@ -327,6 +337,14 @@ export async function runAgentTurn(
       assistantMessages.push(r.value);
     }
   }
+
+  log.info({
+    scope: "turn",
+    event: "complete",
+    threadId: input.threadId,
+    messageCount: assistantMessages.length,
+    durationMs: Date.now() - turnStart,
+  });
 
   return ok({ userMessage, assistantMessages, events });
 }

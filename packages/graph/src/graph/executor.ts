@@ -2,6 +2,7 @@ import type { Result } from "@cobook/core";
 import { err, ok } from "@cobook/core";
 import type { Graph } from "./graph.js";
 import { END, type NodeId } from "./ids.js";
+import { noopLogger } from "./logger.js";
 import type { NodeContext } from "./node.js";
 import { mergeState } from "./state.js";
 
@@ -57,10 +58,12 @@ export async function runGraph<S, E>(
 ): Promise<Result<ExecutionResult<S>, RunGraphError>> {
   const maxSteps = options?.maxSteps ?? DEFAULT_MAX_STEPS;
   const signal = options?.signal ?? ctx.signal;
+  const log = ctx.log ?? noopLogger;
 
   let state = initialState;
   let currentNodeId: NodeId = graph.entry;
   let steps = 0;
+  const runStart = Date.now();
 
   // Build edge lookup: from → Edge<S>
   const edgeMap = new Map<NodeId, (typeof graph.edges)[number]>();
@@ -70,9 +73,11 @@ export async function runGraph<S, E>(
 
   while (currentNodeId !== END) {
     if (steps >= maxSteps) {
+      log.warn({ scope: "executor", event: "max-steps", nodeId: currentNodeId, steps });
       return err({ kind: "maxStepsExceeded", lastNodeId: currentNodeId });
     }
     if (signal.aborted) {
+      log.warn({ scope: "executor", event: "aborted", nodeId: currentNodeId, steps });
       return err({ kind: "aborted", at: currentNodeId });
     }
 
@@ -83,12 +88,21 @@ export async function runGraph<S, E>(
     }
 
     // Run the node.
+    log.info({ scope: "executor", event: "node:enter", nodeId: currentNodeId, step: steps });
+    const nodeStart = Date.now();
     let partial: Partial<S>;
     try {
       partial = await node.run(state, ctx);
     } catch (cause) {
+      log.error({
+        scope: "executor",
+        event: "node:error",
+        nodeId: currentNodeId,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
       return err({ kind: "nodeThrew", at: currentNodeId, cause });
     }
+    log.info({ scope: "executor", event: "node:exit", nodeId: currentNodeId, step: steps, durationMs: Date.now() - nodeStart });
 
     // Merge the update.
     state = mergeState(state, partial, graph.reducers);
@@ -98,6 +112,7 @@ export async function runGraph<S, E>(
     const edge = edgeMap.get(currentNodeId);
     if (!edge) {
       // No edge from this node → treat as reaching end.
+      log.info({ scope: "executor", event: "run:complete", steps, reachedEnd: false, durationMs: Date.now() - runStart });
       return ok({
         state,
         reachedEnd: false,
@@ -108,6 +123,7 @@ export async function runGraph<S, E>(
 
     if (edge.kind === "static") {
       currentNodeId = edge.to;
+      log.info({ scope: "executor", event: "edge:resolve", from: node.id, to: edge.to, kind: "static" });
     } else {
       // Conditional: evaluate branches in order, first match wins.
       let matched = false;
@@ -115,15 +131,18 @@ export async function runGraph<S, E>(
         if (branch.when(state)) {
           currentNodeId = branch.to;
           matched = true;
+          log.info({ scope: "executor", event: "edge:resolve", from: node.id, to: branch.to, kind: "conditional" });
           break;
         }
       }
       if (!matched) {
+        log.warn({ scope: "executor", event: "no-matching-branch", nodeId: currentNodeId });
         return err({ kind: "noMatchingBranch", at: currentNodeId });
       }
     }
   }
 
+  log.info({ scope: "executor", event: "run:complete", steps, reachedEnd: true, durationMs: Date.now() - runStart });
   return ok({
     state,
     reachedEnd: true,

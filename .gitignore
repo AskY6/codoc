@@ -9,6 +9,7 @@ dist/
 .env
 .env.local
 test-result
+logs/
 
 # prevent accidental nested .git
 apps/**/.git

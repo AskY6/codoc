@@ -9,7 +9,7 @@
 // the iteration limit is reached.
 
 import type { AgentId, ChatMessage } from "@cobook/core";
-import type { NodeId } from "@cobook/graph";
+import { noopLogger, type NodeId } from "@cobook/graph";
 import type { ChatEvent } from "../state/events.js";
 import type { ChatState } from "../state/state.js";
 import type {
@@ -48,10 +48,18 @@ interface ToolLoopParams {
  * Run the LLM tool-call loop and return the final assistant message
  * as a `ChatMessage` plus the partial state update.
  */
+/** Retry-storm tracker: detects an agent calling the same failing tool repeatedly. */
+interface FailureRecord {
+  count: number;
+  lastInput: string; // JSON-serialised for comparison
+  lastError: string;
+}
+
 export async function runToolLoop(
   params: ToolLoopParams,
 ): Promise<Partial<ChatState>> {
   const { agentId, nodeId, model, systemPrompt, tools, state, ctx } = params;
+  const log = ctx.log ?? noopLogger;
   const messageId = ctx.mintMessageId();
 
   // Build tool defs for the LLM.
@@ -80,10 +88,16 @@ export async function runToolLoop(
   }> = [];
   const allToolResults: Array<{ name: string; output: unknown }> = [];
 
+  // Retry-storm detection: track consecutive failures per tool.
+  const failures = new Map<string, FailureRecord>();
+
   let iterations = 0;
 
   while (iterations < MAX_TOOL_ITERATIONS) {
     iterations++;
+
+    log.info({ scope: "tool-loop", event: "llm:call", agentId, model, iteration: iterations });
+    const llmStart = Date.now();
 
     const response = await ctx.llm.createMessage({
       model,
@@ -112,6 +126,39 @@ export async function runToolLoop(
           input: block.input,
         });
       }
+    }
+
+    log.info({
+      scope: "tool-loop",
+      event: "llm:response",
+      agentId,
+      iteration: iterations,
+      toolCallCount: toolUseBlocks.length,
+      hasText: fullText.length > 0,
+      stopReason: response.stop_reason,
+      durationMs: Date.now() - llmStart,
+    });
+
+    // LLM hit token limit — tool_use inputs are likely truncated.
+    // Discard tool calls and return whatever text we have.
+    if (response.stop_reason === "max_tokens" && toolUseBlocks.length > 0) {
+      log.warn({
+        scope: "tool-loop",
+        event: "tool:truncated",
+        agentId,
+        iteration: iterations,
+        discardedTools: toolUseBlocks.map((b) => b.name),
+      });
+      const finalMessage: ChatMessage = {
+        kind: "assistant",
+        id: messageId,
+        threadId: state.threadId!,
+        content: fullText || "Response was too long and got truncated. Please try a shorter request.",
+        agentId,
+        metadata: { toolCalls: allToolCalls, toolResults: allToolResults },
+      };
+      ctx.emit({ kind: "done", finalMessage });
+      return { messages: [finalMessage] };
     }
 
     // No tool calls → done.
@@ -155,6 +202,9 @@ export async function runToolLoop(
 
       allToolCalls.push({ name: toolUse.name, input: toolUse.input });
 
+      log.info({ scope: "tool-loop", event: "tool:call", agentId, tool: toolUse.name, iteration: iterations });
+      const toolStart = Date.now();
+
       // TODO: Re-enable confirmation gate once the frontend confirmation
       // UX is stable. Currently bypassed to avoid 2-min auto-deny timeouts
       // blocking agent turns silently.
@@ -188,11 +238,46 @@ export async function runToolLoop(
 
       const tool = toolMap.get(toolUse.name);
       let output: unknown;
+      let toolOk: boolean;
       if (tool) {
         const result = await tool.execute(toolUse.input, state, ctx);
+        toolOk = result.ok;
         output = result.ok ? result.value : { error: result.error.message };
       } else {
+        toolOk = false;
         output = { error: `Unknown tool: ${toolUse.name}` };
+      }
+
+      const toolDurationMs = Date.now() - toolStart;
+      log.info({ scope: "tool-loop", event: "tool:result", agentId, tool: toolUse.name, iteration: iterations, ok: toolOk, durationMs: toolDurationMs });
+
+      // Retry-storm detection.
+      if (!toolOk) {
+        const inputKey = JSON.stringify(toolUse.input);
+        const errorStr = typeof output === "object" && output !== null && "error" in output
+          ? String((output as { error: unknown }).error)
+          : "unknown";
+        const prev = failures.get(toolUse.name);
+        if (prev && prev.lastInput === inputKey) {
+          prev.count++;
+          prev.lastError = errorStr;
+        } else {
+          failures.set(toolUse.name, { count: 1, lastInput: inputKey, lastError: errorStr });
+        }
+        const record = failures.get(toolUse.name)!;
+        if (record.count >= 2) {
+          log.warn({
+            scope: "tool-loop",
+            event: "tool:retry-storm",
+            agentId,
+            tool: toolUse.name,
+            consecutiveFailures: record.count,
+            lastError: record.lastError,
+          });
+        }
+      } else {
+        // Success resets the tracker for this tool.
+        failures.delete(toolUse.name);
       }
 
       allToolResults.push({ name: toolUse.name, output });
@@ -216,6 +301,7 @@ export async function runToolLoop(
   }
 
   // Exhausted tool call limit — return what we have.
+  log.warn({ scope: "tool-loop", event: "loop:exhausted", agentId, iterations });
   const finalMessage: ChatMessage = {
     kind: "assistant",
     id: messageId,

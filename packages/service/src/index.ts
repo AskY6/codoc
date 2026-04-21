@@ -58,6 +58,10 @@ export type { SourceProvider, SourceRegistry } from "./ports/source.js";
 // ---- providers (built-in source provider implementations) ---------------
 export { createSourceRegistry } from "./providers/index.js";
 
+// ---- logger (concrete Logger implementations) ---------------------------
+export { createConsoleLogger, createFileLogger, composeLoggers } from "./logger.js";
+export { noopLogger } from "@cobook/graph";
+
 // ---- DTOs (UI-shaped use case return values) --------------------------
 export type { WorkspaceListItem } from "./types/workspace.js";
 export type { CodocDetail, CodocListItem } from "./types/codoc.js";

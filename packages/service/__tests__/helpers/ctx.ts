@@ -13,6 +13,7 @@ import type {
   ThreadId,
   WorkspaceId,
 } from "@cobook/core";
+import { noopLogger } from "@cobook/graph";
 import { SystemClock, createMemoryStorage } from "@cobook/storage-memory";
 import type { ServiceCtx } from "../../src/context.js";
 import type { IdGenerator } from "../../src/ports/id.js";
@@ -66,6 +67,7 @@ export function makeTestCtx(): TestCtxBundle {
     idGen: counterIdGenerator(),
     llmConfig: {},
     sourceProviders: new Map(),
+    log: noopLogger,
   };
   return { ctx };
 }

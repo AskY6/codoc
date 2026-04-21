@@ -190,7 +190,7 @@ async function identifyAndFetch(
 
   // Find material codocs.
   const materials = codocs.filter(
-    (c) => c.path.startsWith("materials/") || c.title?.includes("材料"),
+    (c) => c.path.startsWith("perf/") || c.title?.includes("材料"),
   );
   if (materials.length === 0) return null;
 

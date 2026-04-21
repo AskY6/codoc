@@ -8,7 +8,7 @@
 // the chosen specialist node.
 
 import type { AgentId } from "@cobook/core";
-import type { NodeContext } from "@cobook/graph";
+import { noopLogger, type NodeContext } from "@cobook/graph";
 import { ModelId } from "@cobook/graph";
 import type { ChatAgent } from "../state/aliases.js";
 import type { ChatEvent } from "../state/events.js";
@@ -53,15 +53,18 @@ Choose the agent whose description best matches the user's intent. If no special
       ctx: NodeContext<ChatEvent>,
     ): Promise<Partial<ChatState>> {
       const chatCtx = ctx as ChatRunContext;
+      const log = ctx.log ?? noopLogger;
 
       // Find the latest user message.
       const userMessages = state.messages.filter((m) => m.kind === "user");
       const latestUser = userMessages[userMessages.length - 1];
       if (!latestUser) {
         // No user message → fall through to default agent.
+        log.warn({ scope: "router", event: "classify:fallback", reason: "no-user-message" });
         return { activeAgent: availableAgents[0]?.id ?? null };
       }
 
+      const classifyStart = Date.now();
       const response = await chatCtx.llm.createMessage({
         model: chatCtx.modelConfig?.routerModel ?? "claude-haiku-4-5-20251001",
         maxTokens: 256,
@@ -91,8 +94,17 @@ Choose the agent whose description best matches the user's intent. If no special
 
       // Fallback: first agent in the list (general assistant).
       if (!chosenId) {
+        log.warn({ scope: "router", event: "classify:fallback", reason: "parse-failed-or-no-match", raw: text });
         chosenId = availableAgents[0]?.id ?? null;
       }
+
+      log.info({
+        scope: "router",
+        event: "classify",
+        chosen: chosenId,
+        candidates: availableAgents.map((a) => a.id),
+        durationMs: Date.now() - classifyStart,
+      });
 
       if (chosenId) {
         ctx.emit({

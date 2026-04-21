@@ -1,4 +1,5 @@
 import type { NodeId } from "./ids.js";
+import type { Logger } from "./logger.js";
 
 /**
  * Runtime-provided context a node uses while it runs.
@@ -10,10 +11,14 @@ import type { NodeId } from "./ids.js";
  * `signal` lets a node cooperate with cancellation — for example,
  * aborting an in-flight LLM request when the outer chat turn is
  * cancelled.
+ *
+ * `log` is an optional structured logger. When omitted the executor
+ * falls back to `noopLogger` so logging call-sites are unconditional.
  */
 export interface NodeContext<E> {
   readonly emit: (event: E) => void;
   readonly signal: AbortSignal;
+  readonly log?: Logger | undefined;
 }
 
 /**

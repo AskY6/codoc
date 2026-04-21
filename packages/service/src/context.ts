@@ -1,3 +1,4 @@
+import type { Logger } from "@cobook/graph";
 import type { Clock, Ctx as StorageCtx, Storage } from "@cobook/storage";
 import type { IdGenerator } from "./ports/id.js";
 import type { LlmConfig } from "./ports/llm.js";
@@ -26,6 +27,7 @@ export interface ServiceCtx {
   readonly idGen: IdGenerator;
   readonly llmConfig: LlmConfig;
   readonly sourceProviders: SourceRegistry;
+  readonly log: Logger;
 }
 
 /**
@@ -45,4 +47,5 @@ export const withStorageCtx = (
   idGen: ctx.idGen,
   llmConfig: ctx.llmConfig,
   sourceProviders: ctx.sourceProviders,
+  log: ctx.log,
 });

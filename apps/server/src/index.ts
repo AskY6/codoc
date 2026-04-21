@@ -10,10 +10,11 @@
 //   - Only THIS file mints a `ServiceCtx`.
 //   - Routers take a `ServiceCtx` and never see how it was built.
 
+import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { AgentId } from "@cobook/core";
 import type { ServiceCtx, LlmConfig } from "@cobook/service";
-import { createSourceRegistry } from "@cobook/service";
+import { createSourceRegistry, createConsoleLogger, createFileLogger, composeLoggers, noopLogger } from "@cobook/service";
 import { createPgStorage } from "@cobook/storage-pg";
 import { SystemClock } from "@cobook/storage-memory";
 import { Hono } from "hono";
@@ -38,6 +39,14 @@ const llmConfig: LlmConfig = {
 const storage = createPgStorage({
   connectionString: process.env["DATABASE_URL"]!,
 });
+const isDev = process.env["NODE_ENV"] !== "production";
+const log = isDev
+  ? composeLoggers(
+      createConsoleLogger(),
+      createFileLogger(join(process.cwd(), "logs", "agent"), "server"),
+    )
+  : noopLogger;
+
 const baseCtx: ServiceCtx = {
   storage,
   storageCtx: storage.ctx(),
@@ -45,6 +54,7 @@ const baseCtx: ServiceCtx = {
   idGen: new UuidIdGenerator(),
   llmConfig,
   sourceProviders: createSourceRegistry(),
+  log,
 };
 
 // ---- Seed agents (idempotent on restart) ---------------------------------

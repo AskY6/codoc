@@ -171,7 +171,7 @@ function assembleRawCodoc(
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
     .replace(/^-|-$/g, "") || "unknown";
   const periodTag = split.period.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-  const path = `materials/${namePinyin}-${periodTag}`;
+  const path = `perf/${namePinyin}-${periodTag}`;
   const title = `材料: ${split.subject} — ${split.period}`;
 
   const content = `---
@@ -225,7 +225,7 @@ function assembleCodocContent(
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
     .replace(/^-|-$/g, "") || "unknown";
   const periodTag = split.period.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-  const path = `materials/${namePinyin}-${periodTag}`;
+  const path = `perf/${namePinyin}-${periodTag}`;
   const title = `材料: ${split.subject} — ${split.period}`;
 
   const content = `---
