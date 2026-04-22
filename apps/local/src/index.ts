@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       console.log(`[codoc] ${ws.codocs.size} codoc(s) loaded`);
 
       const mcpServer = createMcpServer(ws);
-      await startHttpServer({ port, mcpServer });
+      await startHttpServer({ port, mcpServer, workspace: ws });
       startWatcher(ws);
       break;
     }

@@ -13,13 +13,18 @@ Local file-based codoc server. CLI commands:
 - `codoc compile` — one-shot compile
 - `codoc dag` — print DAG
 
+## Subtrees
+
+- `ui/` — Local web UI (Vite + React SPA). See `ui/AGENTS.md`.
+
 ## Architecture
 
 ```
-Browser (Phase 1)  ←→  Hono HTTP server (:4321)
-                         ├── GET /         health check
-                         └── ALL /mcp      MCP StreamableHTTP transport
-                                ↕
+Browser  ←→  Hono HTTP server (:4321)
+               ├── /api/*     REST API (workspace CRUD)
+               ├── /mcp       MCP StreamableHTTP transport
+               └── /*         Static SPA (React, built by Vite from ui/)
+                      ↕
 AI Client (Claude Code)  ←→  stdio MCP  (`codoc mcp`, separate process)
 
 Both modes share:
