@@ -80,6 +80,55 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// ---------------------------------------------------------------------------
+// Chat SSE — streams ChatEvent from the Claude Code SDK proxy
+// ---------------------------------------------------------------------------
+
+export type ChatEvent =
+  | { kind: "init"; sessionId: string }
+  | { kind: "text"; text: string }
+  | { kind: "tool_use"; name: string; input: Record<string, unknown> }
+  | { kind: "tool_result"; name: string }
+  | { kind: "error"; message: string }
+  | { kind: "done"; result?: string; costUsd?: number };
+
+export async function* streamChat(
+  prompt: string,
+  sessionId?: string,
+  activeCodoc?: string,
+  signal?: AbortSignal,
+): AsyncGenerator<ChatEvent> {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, sessionId, activeCodoc }),
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!; // keep incomplete line
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          yield JSON.parse(line.slice(6)) as ChatEvent;
+        } catch { /* ignore malformed */ }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// REST helpers
+// ---------------------------------------------------------------------------
+
 export const api = {
   tree: () => json<TreeNode[]>("/api/tree"),
 

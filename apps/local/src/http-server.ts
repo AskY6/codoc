@@ -16,6 +16,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Workspace } from "./workspace.js";
 import { createApiRoutes } from "./api-routes.js";
+import { createChatRoutes } from "./chat-route.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiDistDir = join(__dirname, "ui");
@@ -58,6 +59,10 @@ export async function startHttpServer(
   // ---- REST API -----------------------------------------------------------
   const apiRoutes = createApiRoutes(workspace);
   app.route("/api", apiRoutes);
+
+  // ---- Chat (Claude Code SDK proxy) --------------------------------------
+  const chatRoutes = createChatRoutes({ sourceDir: workspace.sourceDir, port });
+  app.route("/api", chatRoutes);
 
   // ---- MCP ----------------------------------------------------------------
   app.all("/mcp", async (c) => {
