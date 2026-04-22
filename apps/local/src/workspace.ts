@@ -3,7 +3,7 @@
 // Reads .codoc files from a source directory, parses them, maintains
 // an in-memory AST map for ref resolution and DAG validation.
 
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, writeFile, mkdir, unlink } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
 import type { CodocAST, CodocPath, ResolveResult } from "@cobook/core";
 import { CodocPath as mkCodocPath } from "@cobook/core";
@@ -82,11 +82,15 @@ export async function loadFile(ws: Workspace, absolutePath: string): Promise<voi
   });
 }
 
-/** Remove a codoc from the workspace (file was deleted). */
-export function removeFile(ws: Workspace, absolutePath: string): void {
+/** Remove a codoc from the workspace (file was deleted). Also cleans up the compiled .mdx output. */
+export async function removeFile(ws: Workspace, absolutePath: string): Promise<void> {
   const rel = relative(ws.sourceDir, absolutePath);
   const codocPath = mkCodocPath(rel);
   ws.codocs.delete(codocPath);
+
+  // Clean up compiled output
+  const outPath = join(ws.outDir, codocPath.replace(/\.codoc$/, ".mdx"));
+  await unlink(outPath).catch(() => {});
 }
 
 /** Re-resolve all data fields across the workspace. */

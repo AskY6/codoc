@@ -73,9 +73,9 @@ export function startWatcher(
   });
 
   watcher.on("unlink", (absPath) => {
-    handleCodocEvent(absPath, () => {
+    handleCodocEvent(absPath, async () => {
       if (absPath.endsWith(".codoc")) {
-        removeFile(ws, absPath);
+        await removeFile(ws, absPath);
       }
     });
   });

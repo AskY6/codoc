@@ -1,0 +1,48 @@
+{/* Redux Toolkit */}
+
+export const data = {
+  "name": "Redux Toolkit",
+  "repo": "reduxjs/redux-toolkit",
+  "stars": 61400,
+  "bundle_size_kb": 14,
+  "license": "MIT",
+  "first_release": "2015",
+  "features": [
+    "单向数据流 + 不可变状态树",
+    "Redux Toolkit 大幅简化 boilerplate",
+    "RTK Query 内置数据获取与缓存",
+    "Redux DevTools 时间旅行调试",
+    "庞大的中间件生态系统",
+    "SSR / React Native 全平台支持"
+  ],
+  "weaknesses": [
+    "概念负担重（actions / reducers / middleware / selectors）",
+    "Bundle size 较大（含 immer + RTK）",
+    "小项目过度工程化",
+    "学习曲线依然陡峭"
+  ]
+}
+
+export const meta = {
+  "title": "Redux Toolkit",
+  "description": "Official, opinionated toolset for efficient Redux development",
+  "tags": [
+    "candidate",
+    "redux"
+  ]
+}
+
+# Redux Toolkit
+
+<Badge value={data.stars} label="Stars" color="blue" />
+<Badge value={data.bundle_size_kb + "kb"} label="Bundle" color="amber" />
+<Badge value={data.license} label="License" color="green" />
+<Badge value={data.first_release} label="Since" color="neutral" />
+
+## Features
+
+<Table data={data.features.map((f, i) => ({ "#": i + 1, feature: f }))} />
+
+## Weaknesses
+
+<Table data={data.weaknesses.map((w, i) => ({ "#": i + 1, issue: w }))} />

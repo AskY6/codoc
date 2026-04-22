@@ -20,7 +20,7 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-async function scanDirectory(dir: string): Promise<TreeNode[]> {
+async function scanDirectory(dir: string, ext: string): Promise<TreeNode[]> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -32,12 +32,12 @@ async function scanDirectory(dir: string): Promise<TreeNode[]> {
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue; // skip hidden
     if (entry.isDirectory()) {
-      nodes.push({
-        name: entry.name,
-        type: "directory",
-        children: await scanDirectory(join(dir, entry.name)),
-      });
-    } else if (entry.name.endsWith(".codoc")) {
+      const children = await scanDirectory(join(dir, entry.name), ext);
+      // Only include directories that contain files
+      if (children.length > 0) {
+        nodes.push({ name: entry.name, type: "directory", children });
+      }
+    } else if (entry.name.endsWith(ext)) {
       nodes.push({ name: entry.name, type: "file" });
     }
   }
@@ -52,13 +52,16 @@ async function scanDirectory(dir: string): Promise<TreeNode[]> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract the codoc path from `/api/codoc/<path>` URLs. */
+/** Extract the codoc path from `/api/codoc/<path>` URLs.
+ *  Accepts both `.codoc` and `.mdx` paths — normalizes to `.codoc`. */
 function codocPathFromUrl(url: string): string {
   const pathname = new URL(url).pathname;
   const marker = "/codoc/";
   const idx = pathname.indexOf(marker);
   if (idx === -1) return "";
-  return decodeURIComponent(pathname.slice(idx + marker.length));
+  const raw = decodeURIComponent(pathname.slice(idx + marker.length));
+  // Normalize .mdx → .codoc so the UI can reference files by their output name
+  return raw.endsWith(".mdx") ? raw.replace(/\.mdx$/, ".codoc") : raw;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +74,7 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- GET /tree ----------------------------------------------------------
 
   api.get("/tree", async (c) => {
-    const tree = await scanDirectory(ws.sourceDir);
+    const tree = await scanDirectory(ws.outDir, ".mdx");
     return c.json(tree);
   });
 
@@ -150,7 +153,7 @@ export function createApiRoutes(ws: Workspace): Hono {
 
     const absolutePath = join(ws.sourceDir, codocPath);
     await unlink(absolutePath);
-    removeFile(ws, absolutePath);
+    await removeFile(ws, absolutePath);
     await resolveAll(ws);
 
     return c.json({ ok: true });
@@ -185,6 +188,38 @@ export function createApiRoutes(ws: Workspace): Hono {
     const dag = dagResult.value;
     const cycleCheck = checkCycles(dag);
 
+    // Serialize full node list
+    const nodes = Array.from(dag.nodes.values()).map((n) => ({
+      id: n.id,
+      codocPath: n.codocPath,
+      fieldName: n.fieldName,
+      kind: n.field.kind,
+    }));
+
+    // Serialize edges
+    const edges = dag.edges.map((e) => ({ from: e.from, to: e.to }));
+
+    // Group nodes by codoc for cluster visualization
+    const codocFieldMap = new Map<string, string[]>();
+    for (const n of dag.nodes.values()) {
+      let fields = codocFieldMap.get(n.codocPath);
+      if (!fields) {
+        fields = [];
+        codocFieldMap.set(n.codocPath, fields);
+      }
+      fields.push(n.fieldName);
+    }
+
+    const codocs = Array.from(codocFieldMap.entries()).map(([path, fields]) => {
+      const codoc = ws.codocs.get(mkCodocPath(path));
+      return {
+        path,
+        title: codoc?.ast.meta.title ?? null,
+        tags: codoc ? [...codoc.ast.meta.tags] : [],
+        fields,
+      };
+    });
+
     return c.json({
       ok: cycleCheck.kind === "acyclic",
       nodeCount: dag.nodes.size,
@@ -193,6 +228,9 @@ export function createApiRoutes(ws: Workspace): Hono {
         cycleCheck.kind === "cyclic"
           ? cycleCheck.cycles.map((cy) => cy.path)
           : [],
+      nodes,
+      edges,
+      codocs,
     });
   });
 

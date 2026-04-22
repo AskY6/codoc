@@ -10,6 +10,7 @@ import type { Workspace } from "./workspace.js";
 import { writeCodoc, buildAstMap } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 export function createMcpServer(ws: Workspace): McpServer {
   const server = new McpServer({
@@ -173,7 +174,189 @@ export function createMcpServer(ws: Workspace): McpServer {
     },
   );
 
+  // ---- Tool: update_data_field -----------------------------------------------
+
+  server.tool(
+    "update_data_field",
+    "Update a single data field in a codoc's frontmatter without rewriting the whole file. Creates the field if it doesn't exist.",
+    {
+      path: z.string().describe("Workspace-relative path, e.g. 'reviews/alice-q1.codoc'"),
+      field: z.string().describe("Field name to update, e.g. 'score'"),
+      value: z.unknown().describe("New value — number, string, boolean, array, or object. For $ref use { \"$ref\": \"path#data.field\" }. For $source use { \"$source\": \"provider\", ...params }."),
+    },
+    async ({ path, field, value }) => {
+      const codocPath = mkCodocPath(path);
+      const codoc = ws.codocs.get(codocPath);
+
+      if (!codoc) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          isError: true,
+        };
+      }
+
+      const updated = patchDataField(codoc.content, field, value);
+      if (!updated.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${updated.error}` }],
+          isError: true,
+        };
+      }
+
+      const writeResult = await writeCodoc(ws, codocPath, updated.value);
+      if (!writeResult.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `Updated field "${field}" in ${path}` }],
+      };
+    },
+  );
+
+  // ---- Tool: append_content -------------------------------------------------
+
+  server.tool(
+    "append_content",
+    "Append MDX content to the end of a codoc's body without touching the frontmatter.",
+    {
+      path: z.string().describe("Workspace-relative path, e.g. 'notes/demo.codoc'"),
+      content: z.string().describe("MDX content to append (e.g. a new section, component, etc.)"),
+    },
+    async ({ path, content: appendContent }) => {
+      const codocPath = mkCodocPath(path);
+      const codoc = ws.codocs.get(codocPath);
+
+      if (!codoc) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          isError: true,
+        };
+      }
+
+      const newContent = codoc.content.trimEnd() + "\n\n" + appendContent.trim() + "\n";
+
+      const writeResult = await writeCodoc(ws, codocPath, newContent);
+      if (!writeResult.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `Appended content to ${path}` }],
+      };
+    },
+  );
+
+  // ---- Tool: create_from_template -------------------------------------------
+
+  server.tool(
+    "create_from_template",
+    "Create a new codoc from a structured template. Generates the frontmatter and body automatically.",
+    {
+      path: z.string().describe("Workspace-relative path for the new file, e.g. 'reviews/bob-q1.codoc'"),
+      title: z.string().describe("Document title"),
+      tags: z.array(z.string()).optional().describe("Optional tags"),
+      data: z.record(z.unknown()).optional().describe("Optional data fields as key-value pairs"),
+      body: z.string().optional().describe("Optional MDX body content. If omitted, generates a heading from title."),
+    },
+    async ({ path, title, tags, data, body }) => {
+      const codocPath = mkCodocPath(path);
+
+      if (ws.codocs.has(codocPath)) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc already exists at "${path}". Use write_codoc or update_data_field instead.` }],
+          isError: true,
+        };
+      }
+
+      // Build frontmatter object
+      const fm: Record<string, unknown> = { title };
+      if (tags && tags.length > 0) fm.tags = tags;
+      if (data && Object.keys(data).length > 0) fm.data = data;
+
+      const yamlStr = stringifyYaml(fm, { lineWidth: 0 }).trim();
+      const mdxBody = body?.trim() || `# ${title}`;
+
+      const content = `---\n${yamlStr}\n---\n\n${mdxBody}\n`;
+
+      const writeResult = await writeCodoc(ws, codocPath, content);
+      if (!writeResult.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `Created ${path} with title "${title}"` }],
+      };
+    },
+  );
+
   return server;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Patch a single data field in the YAML frontmatter of a codoc source string.
+ * Returns the updated full source, or an error message.
+ */
+function patchDataField(
+  source: string,
+  field: string,
+  value: unknown,
+): { ok: true; value: string } | { ok: false; error: string } {
+  const trimmed = source.trimStart();
+  if (!trimmed.startsWith("---")) {
+    return { ok: false, error: "codoc has no frontmatter — cannot patch data field" };
+  }
+
+  const firstNewline = trimmed.indexOf("\n");
+  if (firstNewline === -1) {
+    return { ok: false, error: "malformed frontmatter" };
+  }
+
+  const closingIndex = trimmed.indexOf("\n---", firstNewline);
+  if (closingIndex === -1) {
+    return { ok: false, error: "unterminated frontmatter" };
+  }
+
+  const yamlStr = trimmed.slice(firstNewline + 1, closingIndex);
+  const afterClosing = closingIndex + 4; // \n---
+  const rest = trimmed.slice(afterClosing);
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(yamlStr);
+  } catch (e) {
+    return { ok: false, error: `YAML parse error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "frontmatter is not a mapping" };
+  }
+
+  const obj = { ...(parsed as Record<string, unknown>) };
+  const data = (
+    obj.data != null && typeof obj.data === "object" && !Array.isArray(obj.data)
+      ? { ...(obj.data as Record<string, unknown>) }
+      : {}
+  );
+
+  data[field] = value;
+  obj.data = data;
+
+  const newYaml = stringifyYaml(obj, { lineWidth: 0 }).trim();
+  return { ok: true, value: `---\n${newYaml}\n---${rest}` };
 }
 
 /** Start the MCP server on stdio transport. */
