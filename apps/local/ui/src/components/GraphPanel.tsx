@@ -7,11 +7,11 @@ interface GraphPanelProps {
 }
 
 // Layout constants
-const NODE_W = 200;
-const NODE_H = 48;
-const GAP_X = 80;
-const GAP_Y = 60;
-const MARGIN = 40;
+const NODE_W = 220;
+const NODE_H = 64;
+const GAP_X = 100;
+const GAP_Y = 80;
+const MARGIN = 60;
 
 interface CodocNode {
   path: string;
@@ -41,7 +41,6 @@ function computeLayout(dag: DagStatus): Layout {
   }
 
   // Build codoc-level edges from field-level edges
-  // Field edge: "a.codoc#data.x" → "b.codoc#data.y" means codoc a depends on codoc b
   const codocEdgeSet = new Set<string>();
   for (const edge of dag.edges ?? []) {
     const fromCodoc = edge.from.split("#")[0]!;
@@ -51,7 +50,7 @@ function computeLayout(dag: DagStatus): Layout {
     }
   }
 
-  // Layout: arrange in a grid, 3 columns
+  // Layout: simple grid for now
   const COLS = 3;
   const nodes: CodocNode[] = codocs.map((c, i) => ({
     path: c.path,
@@ -77,7 +76,7 @@ function computeLayout(dag: DagStatus): Layout {
   const width = MARGIN * 2 + maxCol * NODE_W + (maxCol - 1) * GAP_X;
   const height = MARGIN * 2 + rows * NODE_H + (rows - 1) * GAP_Y;
 
-  return { nodes, edges, width: Math.max(width, 400), height: Math.max(height, 200) };
+  return { nodes, edges, width: Math.max(width, 600), height: Math.max(height, 400) };
 }
 
 export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
@@ -89,53 +88,72 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
   if (!dag) {
     return (
       <div className="flex h-full items-center justify-center text-neutral-400">
-        Loading graph...
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-blue-600" />
       </div>
     );
   }
 
   if (!layout || layout.nodes.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-400">
-        No codocs in workspace
+      <div className="flex h-full flex-col items-center justify-center text-neutral-400">
+        <GraphIcon className="mb-4 h-12 w-12 opacity-20" />
+        <p className="text-sm font-medium">Workspace graph is empty</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2">
-        <span className="text-sm font-medium">Workspace Graph</span>
-        <div className="flex items-center gap-3 text-xs text-neutral-500">
-          <span>{layout.nodes.length} codoc(s)</span>
-          <span>{layout.edges.length} relation(s)</span>
+      <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
+        <div>
+          <h3 className="text-lg font-bold text-neutral-800">Workspace Graph</h3>
+          <p className="text-xs text-neutral-500">Visualizing relationships between codocs.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 ring-1 ring-blue-100">
+            {layout.nodes.length} nodes
+          </span>
+          <span className="rounded-full bg-neutral-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-600 ring-1 ring-neutral-200">
+            {layout.edges.length} edges
+          </span>
           {(dag.cycles?.length ?? 0) > 0 && (
-            <span className="rounded bg-red-50 px-2 py-0.5 text-red-600">
-              {dag.cycles!.length} cycle(s)
+            <span className="rounded-full bg-red-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-red-600 ring-1 ring-red-100 animate-pulse">
+              {dag.cycles!.length} circular refs
             </span>
           )}
         </div>
       </div>
 
       {/* SVG canvas */}
-      <div className="flex-1 overflow-auto bg-neutral-50 p-4">
+      <div className="flex-1 overflow-auto bg-neutral-50/50 p-8">
         <svg
           width={layout.width}
           height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
-          className="select-none"
+          className="mx-auto select-none"
         >
           <defs>
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+              <feOffset dx="0" dy="2" result="offsetblur" />
+              <feComponentTransfer>
+                <feFuncA type="linear" slope="0.1" />
+              </feComponentTransfer>
+              <feMerge>
+                <feMergeNode />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
             <marker
               id="arrow"
-              markerWidth="8"
-              markerHeight="6"
-              refX="8"
-              refY="3"
+              markerWidth="10"
+              markerHeight="8"
+              refX="10"
+              refY="4"
               orient="auto"
             >
-              <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
+              <path d="M0 0 L10 4 L0 8 Z" fill="#94a3b8" />
             </marker>
           </defs>
 
@@ -152,9 +170,10 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
                 key={i}
                 d={`M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`}
                 fill="none"
-                stroke="#94a3b8"
-                strokeWidth={1.5}
+                stroke="#cbd5e1"
+                strokeWidth={2}
                 markerEnd="url(#arrow)"
+                className="transition-all duration-300"
               />
             );
           })}
@@ -163,7 +182,7 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
           {layout.nodes.map((node) => (
             <g
               key={node.path}
-              className={onSelectCodoc ? "cursor-pointer" : undefined}
+              className={`group ${onSelectCodoc ? "cursor-pointer" : ""}`}
               onClick={() => onSelectCodoc?.(node.path)}
             >
               <rect
@@ -171,33 +190,53 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
                 y={node.y}
                 width={NODE_W}
                 height={NODE_H}
-                rx={8}
+                rx={12}
                 fill="white"
-                stroke="#d4d4d8"
-                strokeWidth={1}
+                stroke="#e5e7eb"
+                strokeWidth={1.5}
+                filter="url(#shadow)"
+                className="transition-all duration-200 group-hover:stroke-blue-400 group-hover:ring-4"
               />
               <text
-                x={node.x + 12}
-                y={node.y + 20}
-                fontSize={13}
-                fontWeight={600}
-                fill="#18181b"
+                x={node.x + 16}
+                y={node.y + 28}
+                fontSize={14}
+                fontWeight={700}
+                fill="#1f2937"
+                className="transition-colors group-hover:fill-blue-600"
               >
-                {node.title.length > 22 ? node.title.slice(0, 20) + "..." : node.title}
+                {node.title.length > 24 ? node.title.slice(0, 22) + "..." : node.title}
               </text>
               <text
-                x={node.x + 12}
-                y={node.y + 36}
+                x={node.x + 16}
+                y={node.y + 48}
                 fontSize={11}
-                fill="#a1a1aa"
+                fontWeight={500}
+                fill="#9ca3af"
+                className="uppercase tracking-wide"
               >
-                {node.fieldCount} field(s)
-                {node.tags.length > 0 ? ` · ${node.tags.join(", ")}` : ""}
+                {node.fieldCount} fields {node.tags.length > 0 ? `· ${node.tags[0]}` : ""}
               </text>
+              
+              {/* Highlight circle on hover */}
+              <circle 
+                cx={node.x + NODE_W - 20} 
+                cy={node.y + 20} 
+                r={4} 
+                className="fill-neutral-200 group-hover:fill-blue-500 transition-colors"
+              />
             </g>
           ))}
         </svg>
       </div>
     </div>
+  );
+}
+
+function GraphIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
   );
 }

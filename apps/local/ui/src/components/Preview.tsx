@@ -64,8 +64,10 @@ export function Preview({ view, data, componentMap }: PreviewProps) {
 
   if (view.kind === "empty") {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-400">
-        No document body
+      <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
+        <EmptyDocIcon className="mb-4 h-12 w-12 opacity-20" />
+        <p className="text-sm">This document is empty</p>
+        <p className="mt-1 text-xs opacity-60">Add some content to see the preview.</p>
       </div>
     );
   }
@@ -73,11 +75,16 @@ export function Preview({ view, data, componentMap }: PreviewProps) {
   // MDX error → show warning + markdown fallback
   if (error) {
     return (
-      <div className="p-4">
-        <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-          <span className="font-medium">MDX error:</span> {error}
+      <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-800 shadow-sm">
+          <AlertIcon className="mt-0.5 shrink-0" />
+          <div>
+            <span className="font-bold">MDX Compilation Error</span>
+            <p className="mt-1 font-mono text-xs opacity-80">{error}</p>
+            <p className="mt-3 text-xs italic opacity-60">Showing Markdown fallback below...</p>
+          </div>
         </div>
-        <div className="prose prose-sm max-w-none">
+        <div className="prose prose-neutral prose-blue max-w-none">
           <Markdown remarkPlugins={[remarkGfm]}>{view.source}</Markdown>
         </div>
       </div>
@@ -86,15 +93,42 @@ export function Preview({ view, data, componentMap }: PreviewProps) {
 
   if (!Content) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-400">
-        Rendering…
+      <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
+        <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-blue-600" />
+        <p className="text-sm font-medium">Rendering document...</p>
       </div>
     );
   }
 
   return (
-    <div className="prose prose-sm max-w-none p-4">
-      <Content components={componentMap} />
+    <div className="animate-in fade-in duration-700">
+      <div className="prose prose-neutral prose-blue max-w-none 
+        prose-headings:scroll-mt-20 prose-headings:font-bold prose-headings:tracking-tight
+        prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+        prose-pre:rounded-xl prose-pre:bg-neutral-900 prose-pre:shadow-lg
+        prose-img:rounded-xl prose-img:shadow-md">
+        <Content components={componentMap} />
+      </div>
     </div>
+  );
+}
+
+function EmptyDocIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="16" y2="17" />
+      <line x1="8" y1="9" x2="10" y2="9" />
+    </svg>
+  );
+}
+
+function AlertIcon({ className }: { className?: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
   );
 }
