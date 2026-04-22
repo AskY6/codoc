@@ -10,7 +10,7 @@ interface GraphPanelProps {
 const NODE_W = 220;
 const NODE_H = 64;
 const GAP_X = 100;
-const GAP_Y = 80;
+const GAP_Y = 40;
 const MARGIN = 60;
 
 interface CodocNode {
@@ -40,29 +40,87 @@ function computeLayout(dag: DagStatus): Layout {
     return { nodes: [], edges: [], width: 0, height: 0 };
   }
 
-  // Build codoc-level edges from field-level edges
+  // 1. Build adjacency list and find root nodes
+  // In our DAG, 'from' depends on 'to'. We want to show dependents on the left and dependencies on the right.
+  const adj = new Map<string, string[]>();
+  const incomingCount = new Map<string, number>();
+  const codocPaths = codocs.map(c => c.path);
+  
+  codocPaths.forEach(p => {
+    adj.set(p, []);
+    incomingCount.set(p, 0);
+  });
+
   const codocEdgeSet = new Set<string>();
   for (const edge of dag.edges ?? []) {
-    const fromCodoc = edge.from.split("#")[0]!;
-    const toCodoc = edge.to.split("#")[0]!;
-    if (fromCodoc !== toCodoc) {
-      codocEdgeSet.add(`${fromCodoc}|${toCodoc}`);
+    const from = edge.from.split("#")[0]!;
+    const to = edge.to.split("#")[0]!;
+    if (from !== to && adj.has(from) && adj.has(to)) {
+      if (!codocEdgeSet.has(`${from}|${to}`)) {
+        codocEdgeSet.add(`${from}|${to}`);
+        adj.get(from)!.push(to);
+        incomingCount.set(to, (incomingCount.get(to) || 0) + 1);
+      }
     }
   }
 
-  // Layout: simple grid for now
-  const COLS = 3;
-  const nodes: CodocNode[] = codocs.map((c, i) => ({
-    path: c.path,
-    title: c.title ?? c.path.replace(/\.codoc$/, ""),
-    tags: c.tags,
-    fieldCount: c.fields.length,
-    x: MARGIN + (i % COLS) * (NODE_W + GAP_X),
-    y: MARGIN + Math.floor(i / COLS) * (NODE_H + GAP_Y),
-  }));
+  // 2. Assign ranks (layers) using longest path
+  const ranks = new Map<string, number>();
+  codocPaths.forEach(p => ranks.set(p, 0));
 
-  const nodeMap = new Map(nodes.map((n) => [n.path, n]));
+  // Simple iterative rank assignment (handles cycles by limiting iterations)
+  for (let i = 0; i < codocPaths.length; i++) {
+    let changed = false;
+    for (const [from, neighbors] of adj.entries()) {
+      for (const to of neighbors) {
+        if (ranks.get(to)! <= ranks.get(from)!) {
+          ranks.set(to, ranks.get(from)! + 1);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
 
+  // 3. Group nodes by rank and calculate positions
+  const nodesByRank: Record<number, string[]> = {};
+  let maxRank = 0;
+  ranks.forEach((rank, path) => {
+    nodesByRank[rank] = nodesByRank[rank] || [];
+    nodesByRank[rank]!.push(path);
+    if (rank > maxRank) maxRank = rank;
+  });
+
+  const nodes: CodocNode[] = [];
+  const nodeMap = new Map<string, CodocNode>();
+
+  const totalLayers = maxRank + 1;
+  const layerWidths = Object.values(nodesByRank).map(group => group.length);
+  const maxLayerHeight = Math.max(...layerWidths);
+
+  Object.entries(nodesByRank).forEach(([rankStr, paths]) => {
+    const rank = parseInt(rankStr);
+    const layerHeight = paths.length;
+    
+    paths.forEach((path, i) => {
+      const codoc = codocs.find(c => c.path === path)!;
+      // Center the layer vertically relative to the tallest layer
+      const verticalOffset = (maxLayerHeight - layerHeight) * (NODE_H + GAP_Y) / 2;
+      
+      const node: CodocNode = {
+        path: codoc.path,
+        title: codoc.title ?? codoc.path.replace(/\.codoc$/, ""),
+        tags: codoc.tags,
+        fieldCount: codoc.fields.length,
+        x: MARGIN + rank * (NODE_W + GAP_X),
+        y: MARGIN + verticalOffset + i * (NODE_H + GAP_Y),
+      };
+      nodes.push(node);
+      nodeMap.set(path, node);
+    });
+  });
+
+  // 4. Create edges for the layout
   const edges: CodocEdge[] = [];
   for (const key of codocEdgeSet) {
     const [fromPath, toPath] = key.split("|");
@@ -71,12 +129,10 @@ function computeLayout(dag: DagStatus): Layout {
     if (from && to) edges.push({ from, to });
   }
 
-  const maxCol = Math.min(codocs.length, COLS);
-  const rows = Math.ceil(codocs.length / COLS);
-  const width = MARGIN * 2 + maxCol * NODE_W + (maxCol - 1) * GAP_X;
-  const height = MARGIN * 2 + rows * NODE_H + (rows - 1) * GAP_Y;
+  const width = MARGIN * 2 + totalLayers * NODE_W + (totalLayers - 1) * GAP_X;
+  const height = MARGIN * 2 + maxLayerHeight * NODE_H + (maxLayerHeight - 1) * GAP_Y;
 
-  return { nodes, edges, width: Math.max(width, 600), height: Math.max(height, 400) };
+  return { nodes, edges, width: Math.max(width, 800), height: Math.max(height, 500) };
 }
 
 export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
@@ -108,7 +164,7 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
       <div className="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
         <div>
           <h3 className="text-lg font-bold text-neutral-800">Workspace Graph</h3>
-          <p className="text-xs text-neutral-500">Visualizing relationships between codocs.</p>
+          <p className="text-xs text-neutral-500">Dependent codocs on the left, dependencies on the right.</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 ring-1 ring-blue-100">
@@ -173,7 +229,7 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
                 stroke="#cbd5e1"
                 strokeWidth={2}
                 markerEnd="url(#arrow)"
-                className="transition-all duration-300"
+                className="transition-all duration-300 hover:stroke-blue-400"
               />
             );
           })}
@@ -200,7 +256,7 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
               <text
                 x={node.x + 16}
                 y={node.y + 28}
-                fontSize={14}
+                fontSize={13}
                 fontWeight={700}
                 fill="#1f2937"
                 className="transition-colors group-hover:fill-blue-600"
@@ -210,7 +266,7 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
               <text
                 x={node.x + 16}
                 y={node.y + 48}
-                fontSize={11}
+                fontSize={10}
                 fontWeight={500}
                 fill="#9ca3af"
                 className="uppercase tracking-wide"
@@ -218,11 +274,10 @@ export function GraphPanel({ dag, onSelectCodoc }: GraphPanelProps) {
                 {node.fieldCount} fields {node.tags.length > 0 ? `· ${node.tags[0]}` : ""}
               </text>
               
-              {/* Highlight circle on hover */}
               <circle 
                 cx={node.x + NODE_W - 20} 
                 cy={node.y + 20} 
-                r={4} 
+                r={3} 
                 className="fill-neutral-200 group-hover:fill-blue-500 transition-colors"
               />
             </g>
