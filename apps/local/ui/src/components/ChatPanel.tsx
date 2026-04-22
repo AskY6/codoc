@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat } from "../api.ts";
-import type { ChatEvent } from "../api.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,14 +19,15 @@ type ChatMessage =
   | { role: "error"; text: string };
 
 // ---------------------------------------------------------------------------
-// ChatPanel
+// ChatPanel — persistent right sidebar
 // ---------------------------------------------------------------------------
 
 export interface ChatPanelProps {
   activeCodoc: string | null;
+  onClose: () => void;
 }
 
-export function ChatPanel({ activeCodoc }: ChatPanelProps) {
+export function ChatPanel({ activeCodoc, onClose }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,12 +39,12 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || loading) return;
+  const send = useCallback(async (text?: string) => {
+    const prompt = (text ?? input).trim();
+    if (!prompt || loading) return;
 
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text }]);
+    setMessages((prev) => [...prev, { role: "user", text: prompt }]);
     setLoading(true);
 
     const abort = new AbortController();
@@ -54,7 +54,7 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     let toolCalls: ToolCall[] = [];
 
     try {
-      for await (const evt of streamChat(text, sessionId, activeCodoc ?? undefined, abort.signal)) {
+      for await (const evt of streamChat(prompt, sessionId, activeCodoc ?? undefined, abort.signal)) {
         switch (evt.kind) {
           case "init":
             setSessionId(evt.sessionId);
@@ -62,6 +62,9 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
 
           case "text": {
             assistantText += evt.text;
+            toolCalls = toolCalls.map((tc) =>
+              tc.status === "running" ? { ...tc, status: "done" as const } : tc,
+            );
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last?.role === "assistant") {
@@ -141,40 +144,83 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     abortRef.current?.abort();
   };
 
+  const handleNewSession = () => {
+    setMessages([]);
+    setSessionId(undefined);
+  };
+
   const isEmpty = messages.length === 0 && !loading;
 
+  // Quick action chips — context-dependent
+  const quickActions = activeCodoc
+    ? [
+        { label: "Summarize", prompt: "Summarize this codoc concisely." },
+        { label: "Suggest fields", prompt: "What data fields should this codoc define?" },
+        { label: "Improve view", prompt: "Suggest improvements to this codoc's MDX view section." },
+      ]
+    : [
+        { label: "List codocs", prompt: "List all codocs in this workspace." },
+        { label: "Create codoc", prompt: "Help me create a new codoc." },
+      ];
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col border-l border-neutral-200 bg-white">
       {/* Header */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
-        <div className="flex items-center gap-2">
-          <ChatIcon className="text-neutral-400" />
-          <h2 className="text-sm font-semibold text-neutral-700">Chat</h2>
-          {activeCodoc && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
-              {activeCodoc}
-            </span>
-          )}
+      <header className="shrink-0 border-b border-neutral-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AgentIcon />
+            <span className="text-sm font-semibold text-neutral-800">Codoc agent</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {sessionId && (
+              <button
+                type="button"
+                onClick={handleNewSession}
+                className="rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+              >
+                New
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+            >
+              <XIcon />
+            </button>
+          </div>
         </div>
-        {sessionId && (
-          <button
-            type="button"
-            className="text-xs text-neutral-400 hover:text-neutral-600"
-            onClick={() => {
-              setMessages([]);
-              setSessionId(undefined);
-            }}
-          >
-            New session
-          </button>
+        {activeCodoc && (
+          <p className="mt-0.5 text-xs text-neutral-400">
+            scoped to {activeCodoc.replace(/\.codoc$/, "")}
+          </p>
         )}
       </header>
 
+      {/* Quick action chips — shown when empty */}
+      {isEmpty && (
+        <div className="shrink-0 border-b border-neutral-100 px-4 py-3">
+          <div className="flex flex-wrap gap-2">
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => void send(action.prompt)}
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
-      <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
         {isEmpty && (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400">
-            <ChatIcon className="h-10 w-10 mb-3 text-neutral-200" />
+            <AgentIcon size={40} className="mb-3 opacity-20" />
             <p className="text-sm font-medium">Ask anything about your codocs</p>
             <p className="mt-1 text-xs opacity-60">
               Powered by Claude Code &mdash; uses codoc MCP tools
@@ -197,14 +243,14 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t border-neutral-200 bg-neutral-50/50 p-3">
+      {/* Input area with context chips */}
+      <div className="shrink-0 border-t border-neutral-200 bg-neutral-50/50 p-3">
         <div className="flex gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Claude to read, update, or create codocs..."
+            placeholder="Ask the agent, / for commands..."
             rows={1}
             className="flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
@@ -212,21 +258,37 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
             <button
               type="button"
               onClick={handleStop}
-              className="rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600"
+              className="shrink-0 rounded-xl bg-red-500 p-2.5 text-white hover:bg-red-600"
+              title="Stop"
             >
-              Stop
+              <StopIcon />
             </button>
           ) : (
             <button
               type="button"
-              onClick={send}
+              onClick={() => void send()}
               disabled={!input.trim()}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="shrink-0 rounded-xl bg-blue-600 p-2.5 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Send"
             >
-              Send
+              <SendIcon />
             </button>
           )}
         </div>
+
+        {/* Context chips */}
+        {activeCodoc && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-600">
+              <FileIcon />
+              {activeCodoc.replace(/\.codoc$/, "")}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1 text-xs font-medium text-neutral-500">
+              <ToolIcon />
+              Tools
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -250,7 +312,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     case "assistant":
       return (
         <div className="flex justify-start">
-          <div className="max-w-[85%] space-y-2">
+          <div className="max-w-[90%] space-y-2">
             {message.toolCalls.length > 0 && (
               <div className="space-y-1">
                 {message.toolCalls.map((tc, i) => (
@@ -269,7 +331,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
     case "error":
       return (
-        <div className="mx-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
           {message.text}
         </div>
       );
@@ -312,10 +374,43 @@ function ToolCallChip({ tc }: { tc: ToolCall }) {
 // Icons
 // ---------------------------------------------------------------------------
 
-function ChatIcon({ className }: { className?: string }) {
+function AgentIcon({ size = 18, className }: { size?: number; className?: string }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className ?? "text-amber-500"}>
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
     </svg>
   );
 }

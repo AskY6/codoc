@@ -2,28 +2,26 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "./api.ts";
 import type { TreeNode, CodocDetail, DagStatus, WorkspaceInfo } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
-import { Preview } from "./components/Preview.tsx";
-import { DataPanel } from "./components/DataPanel.tsx";
+import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
 import { ComponentPanel } from "./components/ComponentPanel.tsx";
 import { ChatPanel } from "./components/ChatPanel.tsx";
 import { useCustomComponents } from "./custom-components.ts";
 
 // ---------------------------------------------------------------------------
-// Focus — the single piece of state that decides what the main panel shows
+// Focus — what the center panel shows (chat is separate, always right)
 // ---------------------------------------------------------------------------
 
 type Focus =
   | { kind: "codoc"; path: string }
   | { kind: "graph" }
   | { kind: "component"; name: string }
-  | { kind: "chat" }
   | { kind: "none" };
 
-type DocTab = "preview" | "data";
+type SidebarTab = "codocs" | "chats";
 
 // ---------------------------------------------------------------------------
-// Root — check workspace status, show picker or workspace UI
+// Root
 // ---------------------------------------------------------------------------
 
 export function App() {
@@ -32,9 +30,7 @@ export function App() {
   const checkWorkspace = useCallback(async () => {
     try {
       setWsInfo(await api.workspace());
-    } catch {
-      // Server not ready yet
-    }
+    } catch { /* server not ready */ }
   }, []);
 
   useEffect(() => {
@@ -53,11 +49,11 @@ export function App() {
     return <WorkspacePicker onOpen={() => void checkWorkspace()} />;
   }
 
-  return <WorkspaceApp workspaceName={wsInfo.name!} />;
+  return <WorkspaceApp workspaceName={wsInfo.name!} onSwitchWorkspace={() => setWsInfo({ active: false })} />;
 }
 
 // ---------------------------------------------------------------------------
-// Workspace picker — shown when no workspace is open
+// Workspace picker
 // ---------------------------------------------------------------------------
 
 function WorkspacePicker({ onOpen }: { onOpen: () => void }) {
@@ -127,17 +123,32 @@ function WorkspacePicker({ onOpen }: { onOpen: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace UI — the main app once a workspace is open
+// Helpers
 // ---------------------------------------------------------------------------
 
-function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
+function countFiles(nodes: TreeNode[]): number {
+  let n = 0;
+  for (const node of nodes) {
+    if (node.type === "file") n++;
+    else if (node.children) n += countFiles(node.children);
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace UI — 3-panel layout
+// ---------------------------------------------------------------------------
+
+function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: string; onSwitchWorkspace: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [focus, setFocus] = useState<Focus>({ kind: "none" });
   const [codoc, setCodoc] = useState<CodocDetail | null>(null);
-  const [docTab, setDocTab] = useState<DocTab>("preview");
   const [error, setError] = useState<string | null>(null);
   const [dagData, setDagData] = useState<DagStatus | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatKey, setChatKey] = useState(0);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("codocs");
   const components = useCustomComponents(0);
 
   // --- Data loading --------------------------------------------------------
@@ -189,7 +200,7 @@ function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
     return () => clearInterval(id);
   }, [codocPath, fetchCodoc]);
 
-  // --- Navigation helpers --------------------------------------------------
+  // --- Actions -------------------------------------------------------------
 
   const selectCodoc = useCallback((path: string) => {
     setFocus({ kind: "codoc", path });
@@ -209,9 +220,21 @@ function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
     }
   }, [loadTree, selectCodoc]);
 
-  // --- Sidebar active state ------------------------------------------------
+  const handleSaveCodoc = useCallback(async (content: string) => {
+    if (!codocPath) return;
+    await api.writeCodoc(codocPath, content);
+  }, [codocPath]);
 
-  const sidebarItems: { id: string; label: string; active: boolean; icon: React.ReactNode; onClick: () => void }[] = [
+  const handleNewChat = useCallback(() => {
+    setChatOpen(true);
+    setChatKey((k) => k + 1);
+  }, []);
+
+  // --- Sidebar items -------------------------------------------------------
+
+  const fileCount = countFiles(tree);
+
+  const sidebarNav: { id: string; label: string; active: boolean; icon: React.ReactNode; onClick: () => void }[] = [
     {
       id: "graph",
       label: "Graph",
@@ -226,80 +249,136 @@ function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
       icon: <LayersIcon />,
       onClick: () => setFocus({ kind: "component", name: "" }),
     },
-    {
-      id: "chat",
-      label: "Chat",
-      active: focus.kind === "chat",
-      icon: <ChatSidebarIcon />,
-      onClick: () => setFocus({ kind: "chat" }),
-    },
-  ];
-
-  // --- DocTabs -------------------------------------------------------------
-
-  const docTabs: { id: DocTab; label: string }[] = [
-    { id: "preview", label: "Preview" },
-    { id: "data", label: "Data" },
   ];
 
   // --- Render --------------------------------------------------------------
 
   return (
     <div className="flex h-screen bg-neutral-100 text-neutral-900 antialiased">
-      {/* Sidebar */}
-      <aside className="flex w-64 flex-col border-r border-neutral-200 bg-neutral-50 shadow-sm">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-          <h1 className="text-lg font-bold tracking-tight text-blue-600" title={workspaceName}>{workspaceName}</h1>
+      {/* ── Left Sidebar ─────────────────────────────────────────────── */}
+      <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50">
+        {/* Workspace header */}
+        <div className="border-b border-neutral-200 px-4 py-3">
           <button
-            onClick={handleNewCodoc}
-            className="rounded-md bg-blue-600 p-1.5 text-white transition-colors hover:bg-blue-700"
-            title="New Codoc"
+            onClick={onSwitchWorkspace}
+            className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 -mx-2 transition-colors hover:bg-neutral-200/50"
+            title="Switch workspace"
           >
-            <PlusIcon />
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-600 text-xs font-bold text-white">
+              {workspaceName.charAt(0).toUpperCase()}
+            </span>
+            <div className="flex-1 text-left">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-neutral-400">Workspace</div>
+              <div className="text-sm font-semibold text-neutral-800 truncate">{workspaceName}</div>
+            </div>
+            <ChevronDownIcon className="h-4 w-4 text-neutral-300 group-hover:text-neutral-500" />
           </button>
         </div>
 
-        {/* Search */}
-        <div className="px-3 py-2">
+        {/* New chat + Search */}
+        <div className="space-y-1 px-3 py-2">
+          <button
+            type="button"
+            onClick={handleNewChat}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-neutral-600 transition-colors hover:bg-neutral-200/50"
+          >
+            <PlusIcon size={16} />
+            <span className="font-medium">New chat</span>
+          </button>
+
           <div className="relative">
             <SearchIcon className="absolute left-2.5 top-2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Search files..."
+              placeholder="Search..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-9 pr-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
+            <kbd className="absolute right-2.5 top-1.5 rounded border border-neutral-200 bg-neutral-50 px-1 py-0.5 text-[9px] font-medium text-neutral-400">
+              /
+            </kbd>
           </div>
         </div>
 
-        {/* Codoc tree */}
-        <nav className="flex-1 overflow-auto px-2 py-1">
-          {tree.length > 0 ? (
-            <FileTree
-              tree={tree}
-              selectedPath={codocPath}
-              onSelect={selectCodoc}
-              searchTerm={searchTerm}
-            />
+        {/* Tab switcher: Codocs | Chats */}
+        <div className="flex border-b border-neutral-200 px-3">
+          <button
+            type="button"
+            className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
+              sidebarTab === "codocs"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-neutral-400 hover:text-neutral-600"
+            }`}
+            onClick={() => setSidebarTab("codocs")}
+          >
+            Codocs <span className="ml-1 text-neutral-400">{fileCount}</span>
+          </button>
+          <button
+            type="button"
+            className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
+              sidebarTab === "chats"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-neutral-400 hover:text-neutral-600"
+            }`}
+            onClick={() => setSidebarTab("chats")}
+          >
+            Chats
+          </button>
+        </div>
+
+        {/* Tab content */}
+        <nav className="flex-1 overflow-auto">
+          {sidebarTab === "codocs" ? (
+            <>
+              <div className="flex items-center justify-between px-4 py-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                  Files
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNewCodoc}
+                  className="rounded p-0.5 text-neutral-400 hover:bg-neutral-200/50 hover:text-neutral-600"
+                  title="New Codoc"
+                >
+                  <PlusIcon size={14} />
+                </button>
+              </div>
+              <div className="px-2 pb-2">
+                {tree.length > 0 ? (
+                  <FileTree
+                    tree={tree}
+                    selectedPath={codocPath}
+                    onSelect={selectCodoc}
+                    searchTerm={searchTerm}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-10 opacity-40">
+                    <FileIcon className="mb-2 h-8 w-8" />
+                    <p className="text-xs">No files found</p>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 opacity-40">
-              <FileIcon className="mb-2 h-8 w-8" />
-              <p className="text-xs">No files found</p>
+            <div className="flex flex-col items-center justify-center py-10 text-neutral-400">
+              <ChatBubbleIcon className="mb-2 h-8 w-8 opacity-20" />
+              <p className="text-xs font-medium">No saved chats yet</p>
+              <p className="mt-1 text-[10px] opacity-60">Start a conversation to see it here.</p>
             </div>
           )}
         </nav>
 
-        {/* Peer navigation: Graph / Components */}
-        <div className="border-t border-neutral-200 bg-neutral-50/80 p-3 space-y-1">
-          {sidebarItems.map((item) => (
+        {/* Bottom nav: Graph / Components */}
+        <div className="border-t border-neutral-200 p-2 space-y-0.5">
+          {sidebarNav.map((item) => (
             <button
               key={item.id}
               type="button"
               className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-all ${
                 item.active
                   ? "bg-blue-600 text-white font-medium shadow-md shadow-blue-200"
-                  : "text-neutral-600 hover:bg-neutral-200/60"
+                  : "text-neutral-600 hover:bg-neutral-200/50"
               }`}
               onClick={item.onClick}
             >
@@ -309,113 +388,101 @@ function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
               {item.label}
             </button>
           ))}
+
+          {/* Chat toggle */}
+          <button
+            type="button"
+            className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-all ${
+              chatOpen
+                ? "bg-blue-600 text-white font-medium shadow-md shadow-blue-200"
+                : "text-neutral-600 hover:bg-neutral-200/50"
+            }`}
+            onClick={() => setChatOpen((open) => !open)}
+          >
+            <span className={chatOpen ? "text-white" : "text-neutral-400"}>
+              <ChatBubbleIcon />
+            </span>
+            Chat
+          </button>
         </div>
       </aside>
 
-      {/* Main content panel — renders whatever has focus */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-white">
-        {error && (
-          <div className="mx-4 mt-4 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 shadow-sm animate-in fade-in slide-in-from-top-2">
-            <span className="flex items-center gap-2">
-              <AlertIcon />
-              {error}
-            </span>
-            <button
-              type="button"
-              className="rounded-full p-1 hover:bg-red-100"
-              onClick={() => setError(null)}
-            >
-              <XIcon />
-            </button>
-          </div>
-        )}
-
-        {focus.kind === "chat" ? (
-          <ChatPanel activeCodoc={codocPath} />
-        ) : focus.kind === "graph" ? (
-          <GraphPanel dag={dagData} onSelectCodoc={selectCodoc} />
-        ) : focus.kind === "component" ? (
-          <ComponentPanel
-            builtinRegistry={components.builtinRegistry}
-            customRegistry={components.customRegistry}
-            errors={components.errors}
-          />
-        ) : codoc ? (
-          <div className="flex h-full flex-col">
-            {/* Header */}
-            <header className="flex h-14 items-center justify-between border-b border-neutral-200 px-6">
-              <div className="flex items-center gap-3">
-                <FileIcon className="text-blue-500" />
-                <h2 className="text-base font-semibold text-neutral-800">
-                  {codoc.meta.title ?? codoc.path}
-                </h2>
-                {codoc.meta.tags.length > 0 && (
-                  <div className="ml-2 flex gap-1.5">
-                    {codoc.meta.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] font-medium text-neutral-500 uppercase tracking-wider"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex rounded-lg bg-neutral-100 p-1">
-                {docTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`rounded-md px-4 py-1.5 text-xs font-medium transition-all ${
-                      docTab === tab.id
-                        ? "bg-white text-blue-600 shadow-sm"
-                        : "text-neutral-500 hover:text-neutral-700"
-                    }`}
-                    onClick={() => setDocTab(tab.id)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </header>
-
-            {/* Content Container */}
-            <div className="flex-1 overflow-auto bg-neutral-50/30">
-              <div className="mx-auto min-h-full max-w-5xl bg-white shadow-sm ring-1 ring-neutral-200">
-                {docTab === "preview" && (
-                  <div className="p-10">
-                    <Preview view={codoc.view} data={codoc.data} componentMap={components.componentMap} />
-                  </div>
-                )}
-                {docTab === "data" && (
-                  <div className="p-6">
-                    <DataPanel data={codoc.data} />
-                  </div>
-                )}
-              </div>
+      {/* ── Center + Right ───────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Center: main content panel */}
+        <main className="flex flex-1 flex-col overflow-hidden bg-white">
+          {error && (
+            <div className="mx-4 mt-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+              <span className="flex items-center gap-2">
+                <AlertIcon />
+                {error}
+              </span>
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-red-100"
+                onClick={() => setError(null)}
+              >
+                <XIcon />
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-neutral-400">
-            <div className="mb-4 rounded-full bg-neutral-50 p-6 ring-1 ring-neutral-200/50">
-              <LogoIcon className="h-12 w-12 text-neutral-200" />
+          )}
+
+          {focus.kind === "graph" ? (
+            <GraphPanel dag={dagData} onSelectCodoc={selectCodoc} />
+          ) : focus.kind === "component" ? (
+            <ComponentPanel
+              builtinRegistry={components.builtinRegistry}
+              customRegistry={components.customRegistry}
+              errors={components.errors}
+            />
+          ) : codoc ? (
+            <DocumentPanel
+              codoc={codoc}
+              workspaceName={workspaceName}
+              componentMap={components.componentMap}
+              onSave={handleSaveCodoc}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center text-neutral-400">
+              <div className="mb-4 rounded-full bg-neutral-50 p-6 ring-1 ring-neutral-200/50">
+                <LogoIcon className="h-12 w-12 text-neutral-200" />
+              </div>
+              <p className="text-sm font-medium">Select a codoc to begin</p>
+              <p className="mt-1 text-xs opacity-60">Your workspace is ready.</p>
             </div>
-            <p className="text-sm font-medium">Select a codoc to begin</p>
-            <p className="mt-1 text-xs opacity-60">Your workspace is ready.</p>
-          </div>
+          )}
+        </main>
+
+        {/* Right: persistent chat panel */}
+        {chatOpen && (
+          <aside className="w-96 shrink-0">
+            <ChatPanel
+              key={chatKey}
+              activeCodoc={codocPath}
+              onClose={() => setChatOpen(false)}
+            />
+          </aside>
         )}
-      </main>
+      </div>
     </div>
   );
 }
 
-// --- Icons ---
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
 
-function PlusIcon() {
+function ChevronDownIcon({ className }: { className?: string }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function PlusIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   );
@@ -441,6 +508,14 @@ function LayersIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
+    </svg>
+  );
+}
+
+function ChatBubbleIcon({ className }: { className?: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -473,14 +548,6 @@ function XIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function ChatSidebarIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
