@@ -74,7 +74,7 @@ function FileTreeNode({
         }`}
         onClick={() => onSelect(path)}
       >
-        <span className="w-4 text-center text-xs text-neutral-400">\u25A0</span>
+        <span className="w-4 text-center text-xs text-neutral-400">{"\u25A0"}</span>
         <span className="truncate">{node.name}</span>
       </button>
     </li>
