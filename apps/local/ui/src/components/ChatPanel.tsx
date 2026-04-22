@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { streamChat } from "../api.ts";
 import type { ChatEvent } from "../api.ts";
 
@@ -6,10 +8,15 @@ import type { ChatEvent } from "../api.ts";
 // Types
 // ---------------------------------------------------------------------------
 
+interface ToolCall {
+  name: string;
+  status: "running" | "done";
+  input?: Record<string, unknown>;
+}
+
 type ChatMessage =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string }
-  | { role: "tool"; name: string; status: "running" | "done" }
+  | { role: "assistant"; text: string; toolCalls: ToolCall[] }
   | { role: "error"; text: string };
 
 // ---------------------------------------------------------------------------
@@ -17,7 +24,6 @@ type ChatMessage =
 // ---------------------------------------------------------------------------
 
 export interface ChatPanelProps {
-  /** Currently focused codoc path, if any */
   activeCodoc: string | null;
 }
 
@@ -29,7 +35,6 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -46,12 +51,71 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     abortRef.current = abort;
 
     let assistantText = "";
+    let toolCalls: ToolCall[] = [];
 
     try {
       for await (const evt of streamChat(text, sessionId, activeCodoc ?? undefined, abort.signal)) {
-        handleEvent(evt, assistantText, (updated) => {
-          assistantText = updated;
-        });
+        switch (evt.kind) {
+          case "init":
+            setSessionId(evt.sessionId);
+            break;
+
+          case "text": {
+            assistantText += evt.text;
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { role: "assistant", text: assistantText, toolCalls }];
+              }
+              return [...prev, { role: "assistant", text: assistantText, toolCalls }];
+            });
+            break;
+          }
+
+          case "tool_use": {
+            toolCalls = [...toolCalls, { name: evt.name, status: "running", input: evt.input }];
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { role: "assistant", text: assistantText, toolCalls }];
+              }
+              return [...prev, { role: "assistant", text: assistantText, toolCalls }];
+            });
+            break;
+          }
+
+          case "tool_result": {
+            toolCalls = toolCalls.map((tc) =>
+              tc.name === evt.name && tc.status === "running"
+                ? { ...tc, status: "done" as const }
+                : tc,
+            );
+            setMessages((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.role === "assistant") {
+                return [...prev.slice(0, -1), { role: "assistant", text: assistantText, toolCalls }];
+              }
+              return prev;
+            });
+            break;
+          }
+
+          case "done":
+            if (evt.result && !assistantText) {
+              setMessages((prev) => [
+                ...prev,
+                { role: "assistant", text: evt.result!, toolCalls },
+              ]);
+            }
+            break;
+
+          case "error":
+            setMessages((prev) => [
+              ...prev,
+              { role: "error", text: evt.message },
+            ]);
+            break;
+        }
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -66,74 +130,6 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     }
   }, [input, loading, sessionId, activeCodoc]);
 
-  function handleEvent(
-    evt: ChatEvent,
-    currentText: string,
-    setText: (t: string) => void,
-  ) {
-    switch (evt.kind) {
-      case "init":
-        setSessionId(evt.sessionId);
-        break;
-
-      case "text": {
-        const next = currentText + evt.text;
-        setText(next);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return [...prev.slice(0, -1), { role: "assistant", text: next }];
-          }
-          return [...prev, { role: "assistant", text: next }];
-        });
-        break;
-      }
-
-      case "tool_use":
-        setMessages((prev) => [
-          ...prev,
-          { role: "tool", name: evt.name, status: "running" },
-        ]);
-        break;
-
-      case "tool_result":
-        setMessages((prev) => {
-          let idx = -1;
-          for (let i = prev.length - 1; i >= 0; i--) {
-            const m = prev[i]!;
-            if (m.role === "tool" && m.name === evt.name && m.status === "running") {
-              idx = i;
-              break;
-            }
-          }
-          if (idx >= 0) {
-            const copy = [...prev];
-            copy[idx] = { role: "tool", name: evt.name, status: "done" };
-            return copy;
-          }
-          return prev;
-        });
-        break;
-
-      case "done":
-        // Final result — if there's a result text and no assistant text yet, show it
-        if (evt.result && !currentText) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", text: evt.result! },
-          ]);
-        }
-        break;
-
-      case "error":
-        setMessages((prev) => [
-          ...prev,
-          { role: "error", text: evt.message },
-        ]);
-        break;
-    }
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -145,15 +141,17 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
     abortRef.current?.abort();
   };
 
+  const isEmpty = messages.length === 0 && !loading;
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="flex h-14 items-center justify-between border-b border-neutral-200 px-6">
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
         <div className="flex items-center gap-2">
-          <ChatIcon className="text-blue-500" />
-          <h2 className="text-base font-semibold text-neutral-800">Chat</h2>
+          <ChatIcon className="text-neutral-400" />
+          <h2 className="text-sm font-semibold text-neutral-700">Chat</h2>
           {activeCodoc && (
-            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-medium text-blue-600">
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
               {activeCodoc}
             </span>
           )}
@@ -173,8 +171,8 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto px-6 py-4 space-y-3">
-        {messages.length === 0 && (
+      <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
+        {isEmpty && (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400">
             <ChatIcon className="h-10 w-10 mb-3 text-neutral-200" />
             <p className="text-sm font-medium">Ask anything about your codocs</p>
@@ -188,10 +186,11 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
           <MessageBubble key={i} message={msg} />
         ))}
 
-        {loading && (
-          <div className="flex items-center gap-2 text-xs text-neutral-400">
-            <Spinner />
-            <span>Thinking...</span>
+        {loading && messages[messages.length - 1]?.role !== "assistant" && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl rounded-bl-sm bg-neutral-100 px-4 py-2.5 text-sm text-neutral-500 animate-pulse">
+              Thinking...
+            </div>
           </div>
         )}
 
@@ -199,7 +198,7 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-neutral-200 bg-neutral-50/50 p-4">
+      <div className="border-t border-neutral-200 bg-neutral-50/50 p-3">
         <div className="flex gap-2">
           <textarea
             value={input}
@@ -207,13 +206,13 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
             onKeyDown={handleKeyDown}
             placeholder="Ask Claude to read, update, or create codocs..."
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
           {loading ? (
             <button
               type="button"
               onClick={handleStop}
-              className="rounded-lg bg-red-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600"
+              className="rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600"
             >
               Stop
             </button>
@@ -222,7 +221,7 @@ export function ChatPanel({ activeCodoc }: ChatPanelProps) {
               type="button"
               onClick={send}
               disabled={!input.trim()}
-              className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Send
             </button>
@@ -242,7 +241,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     case "user":
       return (
         <div className="flex justify-end">
-          <div className="max-w-[80%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-2.5 text-sm text-white">
+          <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-blue-600 px-4 py-2.5 text-sm text-white whitespace-pre-wrap">
             {message.text}
           </div>
         </div>
@@ -251,27 +250,62 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     case "assistant":
       return (
         <div className="flex justify-start">
-          <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-neutral-100 px-4 py-2.5 text-sm text-neutral-800 whitespace-pre-wrap">
-            {message.text}
+          <div className="max-w-[85%] space-y-2">
+            {message.toolCalls.length > 0 && (
+              <div className="space-y-1">
+                {message.toolCalls.map((tc, i) => (
+                  <ToolCallChip key={i} tc={tc} />
+                ))}
+              </div>
+            )}
+            {message.text && (
+              <div className="rounded-2xl rounded-bl-sm bg-neutral-100 px-4 py-2.5 text-sm prose prose-sm prose-neutral max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-pre:bg-neutral-800 prose-pre:text-neutral-100 prose-ul:my-1 prose-ol:my-1 prose-code:before:content-none prose-code:after:content-none">
+                <Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown>
+              </div>
+            )}
           </div>
-        </div>
-      );
-
-    case "tool":
-      return (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-1.5 text-xs text-amber-700">
-          {message.status === "running" ? <Spinner /> : <CheckIcon />}
-          <span className="font-mono">{message.name}</span>
         </div>
       );
 
     case "error":
       return (
-        <div className="rounded-lg bg-red-50 border border-red-100 px-4 py-2.5 text-sm text-red-700">
+        <div className="mx-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
           {message.text}
         </div>
       );
   }
+}
+
+// ---------------------------------------------------------------------------
+// ToolCallChip
+// ---------------------------------------------------------------------------
+
+function ToolCallChip({ tc }: { tc: ToolCall }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+      >
+        {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+        <ToolIcon />
+        <span className="font-mono">{tc.name}</span>
+        {tc.status === "done" ? (
+          <span className="text-green-600">done</span>
+        ) : (
+          <span className="text-neutral-400 animate-pulse">running</span>
+        )}
+      </button>
+      {expanded && tc.input && (
+        <pre className="mt-1 ml-4 rounded bg-neutral-100 p-2 text-xs text-neutral-500 overflow-x-auto">
+          {JSON.stringify(tc.input, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -280,35 +314,32 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 function ChatIcon({ className }: { className?: string }) {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
 
-function CheckIcon() {
+function ToolIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
     </svg>
   );
 }
 
-function Spinner() {
+function ChevronRightIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" className="animate-spin text-current">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
-      <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" />
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
