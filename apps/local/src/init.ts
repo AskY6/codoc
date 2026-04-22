@@ -1,28 +1,28 @@
-// codoc init — scaffold a new knowledge base.
+// codoc init — scaffold a new workspace.
 //
 // Creates:
-//   .codoc/           (vault directory)
-//   codoc.config.json (configuration)
+//   ~/.codoc/<name>/              (workspace directory)
+//   ~/.codoc/<name>/codoc.config.json (configuration)
 //
 // Idempotent: skips existing files/directories without overwriting.
 
 import { mkdir, writeFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 const DEFAULT_CONFIG = {
   port: 4321,
 };
 
 export async function initWorkspace(workspaceDir: string): Promise<void> {
-  const codocDir = join(workspaceDir, ".codoc");
   const configPath = join(workspaceDir, "codoc.config.json");
+  const name = basename(workspaceDir);
 
-  // Create .codoc/ directory
-  const dirCreated = await mkdirIfMissing(codocDir);
+  // Create workspace directory
+  const dirCreated = await mkdirIfMissing(workspaceDir);
   if (dirCreated) {
-    console.log("[codoc] created .codoc/");
+    console.log(`[codoc] created workspace ${name}/`);
   } else {
-    console.log("[codoc] .codoc/ already exists");
+    console.log(`[codoc] workspace ${name}/ already exists`);
   }
 
   // Create codoc.config.json

@@ -6,13 +6,7 @@
 import { Hono } from "hono";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-
-export interface ChatRouteOptions {
-  /** Absolute path to the .codoc workspace root */
-  readonly sourceDir: string;
-  /** Port the codoc HTTP server is listening on (for MCP endpoint) */
-  readonly port: number;
-}
+import type { Workspace } from "./workspace.js";
 
 /** Thin envelope sent to the browser over SSE. */
 export type ChatEvent =
@@ -23,10 +17,19 @@ export type ChatEvent =
   | { kind: "error"; message: string }
   | { kind: "done"; result?: string; costUsd?: number };
 
-export function createChatRoutes(options: ChatRouteOptions): Hono {
+export function createChatRoutes(
+  state: { workspace: Workspace | null },
+  port: number,
+): Hono {
   const app = new Hono();
 
   app.post("/chat", async (c) => {
+    if (!state.workspace) {
+      return c.json({ error: "no workspace open" }, 503);
+    }
+
+    const sourceDir = state.workspace.sourceDir;
+
     const body = await c.req.json<{
       prompt: string;
       sessionId?: string;
@@ -61,7 +64,7 @@ export function createChatRoutes(options: ChatRouteOptions): Hono {
             prompt,
             options: {
               systemPrompt,
-              cwd: options.sourceDir,
+              cwd: sourceDir,
               ...(sessionId ? { resume: sessionId } : {}),
               maxTurns: 20,
               permissionMode: "acceptEdits",
@@ -70,7 +73,7 @@ export function createChatRoutes(options: ChatRouteOptions): Hono {
               mcpServers: {
                 codoc: {
                   type: "http",
-                  url: `http://localhost:${options.port}/mcp`,
+                  url: `http://localhost:${port}/mcp`,
                 },
               },
             },

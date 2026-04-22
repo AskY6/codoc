@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./api.ts";
-import type { TreeNode, CodocDetail, DagStatus } from "./api.ts";
+import type { TreeNode, CodocDetail, DagStatus, WorkspaceInfo } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
 import { Preview } from "./components/Preview.tsx";
 import { DataPanel } from "./components/DataPanel.tsx";
@@ -22,7 +22,115 @@ type Focus =
 
 type DocTab = "preview" | "data";
 
+// ---------------------------------------------------------------------------
+// Root — check workspace status, show picker or workspace UI
+// ---------------------------------------------------------------------------
+
 export function App() {
+  const [wsInfo, setWsInfo] = useState<WorkspaceInfo | null>(null);
+
+  const checkWorkspace = useCallback(async () => {
+    try {
+      setWsInfo(await api.workspace());
+    } catch {
+      // Server not ready yet
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkWorkspace();
+  }, [checkWorkspace]);
+
+  if (!wsInfo) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-neutral-100">
+        <p className="text-sm text-neutral-400">Connecting...</p>
+      </div>
+    );
+  }
+
+  if (!wsInfo.active) {
+    return <WorkspacePicker onOpen={() => void checkWorkspace()} />;
+  }
+
+  return <WorkspaceApp workspaceName={wsInfo.name!} />;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace picker — shown when no workspace is open
+// ---------------------------------------------------------------------------
+
+function WorkspacePicker({ onOpen }: { onOpen: () => void }) {
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [opening, setOpening] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.workspaces().then((names) => {
+      setWorkspaces(names);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const openWorkspace = async (name: string) => {
+    setOpening(name);
+    try {
+      await api.openWorkspace(name);
+      onOpen();
+    } catch (e) {
+      console.error("Failed to open workspace:", e);
+      setOpening(null);
+    }
+  };
+
+  return (
+    <div className="flex h-screen flex-col items-center justify-center bg-neutral-100">
+      <div className="w-full max-w-md px-6">
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-bold tracking-tight text-blue-600">codoc</h1>
+          <p className="mt-2 text-sm text-neutral-500">Select a workspace</p>
+        </div>
+
+        {loading ? (
+          <p className="text-center text-sm text-neutral-400">Loading...</p>
+        ) : workspaces.length === 0 ? (
+          <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-sm text-neutral-500">No workspaces found</p>
+            <p className="mt-1 text-xs text-neutral-400">
+              Create one with: <code className="rounded bg-neutral-100 px-1.5 py-0.5">codoc init &lt;name&gt;</code>
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {workspaces.map((name) => (
+              <button
+                key={name}
+                type="button"
+                disabled={opening !== null}
+                onClick={() => void openWorkspace(name)}
+                className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white px-5 py-4 text-left shadow-sm transition-all hover:border-blue-300 hover:shadow-md disabled:opacity-50"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-500">
+                  <LogoIcon className="h-5 w-5" />
+                </span>
+                <span className="flex-1 text-sm font-medium text-neutral-800">{name}</span>
+                {opening === name && (
+                  <span className="text-xs text-neutral-400">Opening...</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace UI — the main app once a workspace is open
+// ---------------------------------------------------------------------------
+
+function WorkspaceApp({ workspaceName }: { workspaceName: string }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [focus, setFocus] = useState<Focus>({ kind: "none" });
@@ -141,7 +249,7 @@ export function App() {
       {/* Sidebar */}
       <aside className="flex w-64 flex-col border-r border-neutral-200 bg-neutral-50 shadow-sm">
         <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-          <h1 className="text-lg font-bold tracking-tight text-blue-600">codoc</h1>
+          <h1 className="text-lg font-bold tracking-tight text-blue-600" title={workspaceName}>{workspaceName}</h1>
           <button
             onClick={handleNewCodoc}
             className="rounded-md bg-blue-600 p-1.5 text-white transition-colors hover:bg-blue-700"

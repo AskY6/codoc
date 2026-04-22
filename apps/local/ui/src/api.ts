@@ -126,10 +126,32 @@ export async function* streamChat(
 }
 
 // ---------------------------------------------------------------------------
+// Workspace management
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceInfo {
+  active: boolean;
+  name?: string;
+  codocCount?: number;
+}
+
+// ---------------------------------------------------------------------------
 // REST helpers
 // ---------------------------------------------------------------------------
 
 export const api = {
+  /** List available workspace names under ~/.codoc/ */
+  workspaces: () => json<string[]>("/api/workspaces"),
+
+  /** Get current workspace status. */
+  workspace: () => json<WorkspaceInfo>("/api/workspace"),
+
+  /** Open a workspace by name. */
+  openWorkspace: (name: string) =>
+    json<{ ok: boolean; codocCount: number }>(`/api/workspaces/${encodeURIComponent(name)}/open`, {
+      method: "POST",
+    }),
+
   tree: () => json<TreeNode[]>("/api/tree"),
 
   codocs: () => json<CodocListItem[]>("/api/codocs"),

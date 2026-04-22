@@ -1,96 +1,149 @@
-// codoc local — CLI entry point.
+// codoc — CLI entry point.
 //
 // Usage:
-//   codoc                 — start server (HTTP + MCP + watch)
-//   codoc init            — initialize knowledge base
-//   codoc mcp [dir]       — start MCP server on stdio (for Claude Code)
-//   codoc compile [dir]   — one-shot compile and exit
-//   codoc dag [dir]       — print DAG relationships and exit
+//   codoc start [workspace]  — start server (HTTP + MCP + watch)
+//   codoc init <workspace>   — initialize a new workspace
+//   codoc mcp <workspace>    — start MCP server on stdio
+//   codoc compile <workspace> — one-shot compile and exit
+//   codoc dag <workspace>    — print DAG relationships and exit
 //
-// dir defaults to current working directory.
+// Workspaces live under ~/.codoc/<name>/
 
+import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { createSourceRegistry } from "@cobook/parser";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll, buildAstMap } from "./workspace.js";
+import type { Workspace } from "./workspace.js";
 import { startWatcher } from "./watcher.js";
-import { startMcpServer, createMcpServer } from "./mcp-server.js";
+import { startMcpServer } from "./mcp-server.js";
 import { startHttpServer } from "./http-server.js";
 import { initWorkspace } from "./init.js";
 
+const CODOC_HOME = join(homedir(), ".codoc");
+
 const args = process.argv.slice(2);
 const command = args[0] ?? "";
-const explicitDir = command === "init" || command === "" ? args[1] : args[1];
-const workspaceDir = resolve(explicitDir ?? process.cwd());
-const sourceDir = join(workspaceDir, ".codoc");
+const workspaceName = args[1];
 
-// Read config.
+function resolveWorkspaceDir(name: string): string {
+  return join(CODOC_HOME, name);
+}
+
+// Read config from workspace directory.
 interface Config {
   outDir?: string;
   port?: number;
 }
 
-function readConfig(): Config {
+function readConfig(workspaceDir: string): Config {
   try {
-    return JSON.parse(readFileSync(join(workspaceDir, "codoc.config.json"), "utf-8")) as Config;
+    return JSON.parse(
+      readFileSync(join(workspaceDir, "codoc.config.json"), "utf-8"),
+    ) as Config;
   } catch {
     return {};
   }
 }
 
-async function main(): Promise<void> {
-  // --- init: no workspace loading needed ---
-  if (command === "init") {
-    await initWorkspace(workspaceDir);
-    return;
-  }
-
-  const cfg = readConfig();
+/** Load a workspace by name, resolving paths under ~/.codoc/<name>. */
+async function openWorkspace(name: string) {
+  const workspaceDir = resolveWorkspaceDir(name);
+  const cfg = readConfig(workspaceDir);
   const outDir = cfg.outDir ? resolve(workspaceDir, cfg.outDir) : workspaceDir;
   const port = cfg.port ?? 4321;
   const sourceProviders = createSourceRegistry();
+  const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
+  return { ws, workspaceDir, outDir, port };
+}
 
-  // --- commands that need a loaded workspace ---
-  const ws = await loadWorkspace(sourceDir, outDir, sourceProviders);
-
+async function main(): Promise<void> {
   switch (command) {
+    case "init": {
+      if (!workspaceName) {
+        console.error("Usage: codoc init <workspace>");
+        process.exit(1);
+      }
+      await initWorkspace(resolveWorkspaceDir(workspaceName));
+      break;
+    }
+
+    case "start": {
+      if (!workspaceName) {
+        // No workspace specified — start server with workspace picker UI.
+        const cfg = readConfig(CODOC_HOME); // global config fallback
+        const port = cfg.port ?? 4321;
+        await startHttpServer({ port });
+        break;
+      }
+
+      const { ws, port } = await openWorkspace(workspaceName);
+      await compileAll(ws);
+      console.log(`[codoc] ${ws.codocs.size} codoc(s) loaded from ${workspaceName}`);
+      await startHttpServer({ port, initialWorkspace: { name: workspaceName, workspace: ws } });
+      break;
+    }
+
     case "mcp": {
-      // Stdio MCP — Claude Code spawns this as a subprocess.
+      if (!workspaceName) {
+        console.error("Usage: codoc mcp <workspace>");
+        process.exit(1);
+      }
+      const { ws } = await openWorkspace(workspaceName);
       startWatcher(ws);
       await startMcpServer(ws);
       break;
     }
 
     case "compile": {
+      if (!workspaceName) {
+        console.error("Usage: codoc compile <workspace>");
+        process.exit(1);
+      }
+      const { ws, outDir } = await openWorkspace(workspaceName);
       await compileAll(ws);
       console.log(`[codoc] compiled ${ws.codocs.size} file(s) → ${outDir}`);
       break;
     }
 
     case "dag": {
+      if (!workspaceName) {
+        console.error("Usage: codoc dag <workspace>");
+        process.exit(1);
+      }
+      const { ws } = await openWorkspace(workspaceName);
       printDAG(ws);
       break;
     }
 
     default: {
-      // Unified mode: HTTP server + watch + MCP (StreamableHTTP).
-      await compileAll(ws);
-      console.log(`[codoc] ${ws.codocs.size} codoc(s) loaded`);
-
-      const mcpServer = createMcpServer(ws);
-      await startHttpServer({ port, mcpServer, workspace: ws });
-      startWatcher(ws);
+      console.log("Usage: codoc <command> [workspace]\n");
+      console.log("Commands:");
+      console.log("  start [workspace]   Start server (list workspaces if none given)");
+      console.log("  init <workspace>    Initialize a new workspace");
+      console.log("  mcp <workspace>     Start MCP server on stdio");
+      console.log("  compile <workspace> One-shot compile");
+      console.log("  dag <workspace>     Print DAG relationships");
+      console.log(`\nWorkspaces: ${CODOC_HOME}`);
       break;
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// DAG command
+// Helpers
 // ---------------------------------------------------------------------------
 
-import type { Workspace } from "./workspace.js";
+async function listWorkspaces(): Promise<string[]> {
+  try {
+    const entries = await readdir(CODOC_HOME, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
 
 function printDAG(ws: Workspace): void {
   const astMap = buildAstMap(ws);

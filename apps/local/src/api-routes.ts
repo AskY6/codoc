@@ -68,20 +68,31 @@ function codocPathFromUrl(url: string): string {
 // Route factory
 // ---------------------------------------------------------------------------
 
-export function createApiRoutes(ws: Workspace): Hono {
+export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
   const api = new Hono();
+
+  /** Return 503 if no workspace is open. */
+  function ws(c: { json: (data: unknown, status: number) => Response }): Workspace | null {
+    if (!state.workspace) {
+      c.json({ error: "no workspace open" }, 503);
+      return null;
+    }
+    return state.workspace;
+  }
 
   // ---- GET /tree ----------------------------------------------------------
 
   api.get("/tree", async (c) => {
-    const tree = await scanDirectory(ws.outDir, ".mdx");
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    const tree = await scanDirectory(w.outDir, ".mdx");
     return c.json(tree);
   });
 
   // ---- GET /codocs --------------------------------------------------------
 
   api.get("/codocs", (c) => {
-    const items = Array.from(ws.codocs.values()).map((codoc) => ({
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    const items = Array.from(w.codocs.values()).map((codoc) => ({
       path: codoc.path,
       title: codoc.ast.meta.title,
       tags: [...codoc.ast.meta.tags],
@@ -94,9 +105,10 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- GET /codoc/:path+ --------------------------------------------------
 
   api.get("/codoc/*", (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
     const path = codocPathFromUrl(c.req.url);
     const codocPath = mkCodocPath(path);
-    const codoc = ws.codocs.get(codocPath);
+    const codoc = w.codocs.get(codocPath);
 
     if (!codoc) {
       return c.json({ error: `codoc not found: "${path}"` }, 404);
@@ -125,6 +137,7 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- PUT /codoc/:path+ --------------------------------------------------
 
   api.put("/codoc/*", async (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
     const path = codocPathFromUrl(c.req.url);
     const codocPath = mkCodocPath(path);
     const body = await c.req.json<{ content: string }>();
@@ -133,7 +146,7 @@ export function createApiRoutes(ws: Workspace): Hono {
       return c.json({ error: "missing content field" }, 400);
     }
 
-    const result = await writeCodoc(ws, codocPath, body.content);
+    const result = await writeCodoc(w, codocPath, body.content);
     if (!result.ok) {
       return c.json({ error: result.error }, 400);
     }
@@ -144,17 +157,18 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- DELETE /codoc/:path+ ------------------------------------------------
 
   api.delete("/codoc/*", async (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
     const path = codocPathFromUrl(c.req.url);
     const codocPath = mkCodocPath(path);
 
-    if (!ws.codocs.has(codocPath)) {
+    if (!w.codocs.has(codocPath)) {
       return c.json({ error: `codoc not found: "${path}"` }, 404);
     }
 
-    const absolutePath = join(ws.sourceDir, codocPath);
+    const absolutePath = join(w.sourceDir, codocPath);
     await unlink(absolutePath);
-    await removeFile(ws, absolutePath);
-    await resolveAll(ws);
+    await removeFile(w, absolutePath);
+    await resolveAll(w);
 
     return c.json({ ok: true });
   });
@@ -162,8 +176,9 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- GET /components ----------------------------------------------------
 
   api.get("/components", (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
     return c.json(
-      ws.customComponents.map((entry) =>
+      w.customComponents.map((entry) =>
         entry.kind === "ok"
           ? { kind: "ok" as const, name: entry.component.name, code: entry.component.code }
           : { kind: "error" as const, name: entry.error.name, error: entry.error.error },
@@ -174,7 +189,8 @@ export function createApiRoutes(ws: Workspace): Hono {
   // ---- GET /dag -----------------------------------------------------------
 
   api.get("/dag", (c) => {
-    const astMap = buildAstMap(ws);
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    const astMap = buildAstMap(w);
     const dagResult = buildDAG(astMap);
 
     if (!dagResult.ok) {
@@ -211,7 +227,7 @@ export function createApiRoutes(ws: Workspace): Hono {
     }
 
     const codocs = Array.from(codocFieldMap.entries()).map(([path, fields]) => {
-      const codoc = ws.codocs.get(mkCodocPath(path));
+      const codoc = w.codocs.get(mkCodocPath(path));
       return {
         path,
         title: codoc?.ast.meta.title ?? null,
