@@ -41,12 +41,34 @@ export type CustomComponentEntry =
   | { kind: "ok"; name: string; code: string }
   | { kind: "error"; name: string; error: string };
 
+export interface DagNode {
+  id: string;
+  codocPath: string;
+  fieldName: string;
+  kind: "static" | "ref" | "source";
+}
+
+export interface DagEdge {
+  from: string;
+  to: string;
+}
+
+export interface DagCodoc {
+  path: string;
+  title: string | null;
+  tags: string[];
+  fields: string[];
+}
+
 export interface DagStatus {
   ok: boolean;
   nodeCount?: number;
   edgeCount?: number;
   cycles?: string[][];
   unknownTargets?: Array<{ from: string; target: string }>;
+  nodes?: DagNode[];
+  edges?: DagEdge[];
+  codocs?: DagCodoc[];
 }
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
