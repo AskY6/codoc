@@ -37,6 +37,10 @@ export interface CodocDetail {
   data: Record<string, DataFieldInfo>;
 }
 
+export type CustomComponentEntry =
+  | { kind: "ok"; name: string; code: string }
+  | { kind: "error"; name: string; error: string };
+
 export interface DagStatus {
   ok: boolean;
   nodeCount?: number;
@@ -72,6 +76,8 @@ export const api = {
     json<{ ok: boolean }>(`/api/codoc/${encodeURI(path)}`, {
       method: "DELETE",
     }),
+
+  components: () => json<CustomComponentEntry[]>("/api/components"),
 
   dag: () => json<DagStatus>("/api/dag"),
 };

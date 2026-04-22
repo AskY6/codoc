@@ -156,6 +156,18 @@ export function createApiRoutes(ws: Workspace): Hono {
     return c.json({ ok: true });
   });
 
+  // ---- GET /components ----------------------------------------------------
+
+  api.get("/components", (c) => {
+    return c.json(
+      ws.customComponents.map((entry) =>
+        entry.kind === "ok"
+          ? { kind: "ok" as const, name: entry.component.name, code: entry.component.code }
+          : { kind: "error" as const, name: entry.error.name, error: entry.error.error },
+      ),
+    );
+  });
+
   // ---- GET /dag -----------------------------------------------------------
 
   api.get("/dag", (c) => {

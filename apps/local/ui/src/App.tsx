@@ -6,6 +6,7 @@ import { Editor } from "./components/Editor.tsx";
 import { Preview } from "./components/Preview.tsx";
 import { DataPanel } from "./components/DataPanel.tsx";
 import { ComponentPanel } from "./components/ComponentPanel.tsx";
+import { useCustomComponents } from "./custom-components.ts";
 
 type Tab = "editor" | "preview" | "data" | "components";
 
@@ -15,6 +16,8 @@ export function App() {
   const [codoc, setCodoc] = useState<CodocDetail | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("editor");
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { builtinRegistry, customRegistry, componentMap, errors: componentErrors } = useCustomComponents(refreshKey);
 
   // Load file tree
   const loadTree = useCallback(async () => {
@@ -56,6 +59,7 @@ export function App() {
     }
     // Reload
     setCodoc(await api.codoc(selectedPath));
+    setRefreshKey((k) => k + 1);
     void loadTree();
   }, [selectedPath, loadTree]);
 
@@ -159,11 +163,16 @@ export function App() {
                 />
               )}
               {activeTab === "preview" && (
-                <Preview view={codoc.view} data={codoc.data} />
+                <Preview view={codoc.view} data={codoc.data} componentMap={componentMap} />
               )}
               {activeTab === "data" && <DataPanel data={codoc.data} />}
               {activeTab === "components" && (
-                <ComponentPanel onInsert={handleInsertSnippet} />
+                <ComponentPanel
+                  builtinRegistry={builtinRegistry}
+                  customRegistry={customRegistry}
+                  errors={componentErrors}
+                  onInsert={handleInsertSnippet}
+                />
               )}
             </div>
           </>

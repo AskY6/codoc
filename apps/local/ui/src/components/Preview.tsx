@@ -1,15 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { componentMap } from "./builtin/index.ts";
 import type { DataFieldInfo } from "../api.ts";
 
 interface PreviewProps {
   view: { kind: "mdx"; source: string } | { kind: "empty" };
   data: Record<string, DataFieldInfo>;
+  componentMap: Record<string, ComponentType<Record<string, unknown>>>;
 }
 
-export function Preview({ view, data }: PreviewProps) {
+export function Preview({ view, data, componentMap }: PreviewProps) {
   const [Content, setContent] = useState<React.ComponentType<{
     components?: Record<string, React.ComponentType<Record<string, unknown>>>;
   }> | null>(null);

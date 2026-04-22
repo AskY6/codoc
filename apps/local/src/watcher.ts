@@ -2,7 +2,7 @@
 
 import { watch } from "chokidar";
 import type { Workspace } from "./workspace.js";
-import { loadFile, removeFile, resolveAll, compileAll } from "./workspace.js";
+import { loadFile, removeFile, resolveAll, compileAll, loadComponents } from "./workspace.js";
 
 export interface WatcherOptions {
   readonly debounceMs?: number;
@@ -54,20 +54,30 @@ export function startWatcher(
     ignoreInitial: true,
   });
 
+  function handleCodocEvent(absPath: string, action: () => void | Promise<void>): void {
+    if (absPath.endsWith(".codoc")) {
+      void Promise.resolve(action()).then(scheduleRebuild);
+    } else if (absPath.endsWith(".tsx")) {
+      void loadComponents(ws).then(() => {
+        console.log(`[codoc] reloaded custom components`);
+      });
+    }
+  }
+
   watcher.on("add", (absPath) => {
-    if (!absPath.endsWith(".codoc")) return;
-    void loadFile(ws, absPath).then(scheduleRebuild);
+    handleCodocEvent(absPath, () => loadFile(ws, absPath));
   });
 
   watcher.on("change", (absPath) => {
-    if (!absPath.endsWith(".codoc")) return;
-    void loadFile(ws, absPath).then(scheduleRebuild);
+    handleCodocEvent(absPath, () => loadFile(ws, absPath));
   });
 
   watcher.on("unlink", (absPath) => {
-    if (!absPath.endsWith(".codoc")) return;
-    removeFile(ws, absPath);
-    scheduleRebuild();
+    handleCodocEvent(absPath, () => {
+      if (absPath.endsWith(".codoc")) {
+        removeFile(ws, absPath);
+      }
+    });
   });
 
   return {

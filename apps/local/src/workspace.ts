@@ -11,6 +11,8 @@ import { parseCodoc } from "@cobook/parser";
 import type { SourceRegistry } from "@cobook/parser";
 import { compileCodoc } from "@cobook/compiler";
 import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
+import type { CustomComponentEntry } from "./components.js";
+import { scanComponents } from "./components.js";
 
 export interface LocalCodoc {
   readonly path: CodocPath;
@@ -28,6 +30,8 @@ export interface Workspace {
   readonly codocs: Map<CodocPath, LocalCodoc>;
   /** Source providers for $source fields */
   readonly sourceProviders: SourceRegistry;
+  /** Custom components loaded from .codoc/components/*.tsx */
+  customComponents: CustomComponentEntry[];
 }
 
 /** Initialize workspace from a directory. */
@@ -41,6 +45,7 @@ export async function loadWorkspace(
     outDir,
     codocs: new Map(),
     sourceProviders,
+    customComponents: [],
   };
 
   const files = await findCodocFiles(sourceDir);
@@ -50,6 +55,9 @@ export async function loadWorkspace(
 
   // Resolve all after initial load
   await resolveAll(ws);
+
+  // Load custom components
+  await loadComponents(ws);
 
   return ws;
 }
@@ -150,6 +158,12 @@ export function buildAstMap(ws: Workspace): ReadonlyMap<CodocPath, CodocAST> {
     m.set(path, codoc.ast);
   }
   return m;
+}
+
+/** Scan and compile custom components from .codoc/components/. */
+export async function loadComponents(ws: Workspace): Promise<void> {
+  const componentsDir = join(ws.sourceDir, "components");
+  ws.customComponents = await scanComponents(componentsDir);
 }
 
 // ---------------------------------------------------------------------------

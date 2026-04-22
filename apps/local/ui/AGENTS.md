@@ -15,17 +15,20 @@ under `/api`.
 ```
 ui/
 ├── src/
-│   ├── main.tsx           — React entry (mounts <App/>)
-│   ├── App.tsx            — Layout: sidebar + tabbed content area
-│   ├── api.ts             — Typed fetch wrapper for /api/* endpoints
+│   ├── main.tsx               — React entry (mounts <App/>)
+│   ├── App.tsx                — Layout: sidebar + tabbed content area
+│   ├── api.ts                 — Typed fetch wrapper for /api/* endpoints
+│   ├── custom-components.ts   — CJS evaluator + useCustomComponents hook
 │   └── components/
-│       ├── FileTree.tsx   — Recursive directory tree sidebar
-│       ├── Editor.tsx     — Plain textarea editor with save
-│       ├── Preview.tsx    — Markdown rendering (react-markdown)
-│       └── DataPanel.tsx  — Data field table (kind + resolved status)
+│       ├── FileTree.tsx       — Recursive directory tree sidebar
+│       ├── Editor.tsx         — Plain textarea editor with save
+│       ├── Preview.tsx        — MDX rendering (builtin + custom components)
+│       ├── DataPanel.tsx      — Data field table (kind + resolved status)
+│       ├── ComponentPanel.tsx — Component browser (builtin + custom sections)
+│       └── builtin/           — Built-in MDX components + registry
 ├── index.html
-├── vite.config.ts         — Vite config (builds to ../dist/ui/)
-└── tsconfig.json          — Browser-targeted TS config
+├── vite.config.ts             — Vite config (builds to ../dist/ui/)
+└── tsconfig.json              — Browser-targeted TS config
 ```
 
 ## Conventions

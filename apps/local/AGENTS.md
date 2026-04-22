@@ -32,6 +32,19 @@ Both modes share:
   chokidar watch  →  debounced rebuild (300ms)
 ```
 
+## Custom components
+
+Users create `.tsx` files in `.codoc/components/`. The server:
+1. Scans and compiles them to CJS via esbuild (react externalized)
+2. Serves compiled code via `GET /api/components`
+3. Watches `.tsx` changes and recompiles (via chokidar, same watcher as codocs)
+
+The client evaluates CJS in-browser with a mock `require()` that provides
+react from the app's loaded modules, then merges custom components with
+built-ins for MDX rendering and the component panel.
+
+Key files: `src/components.ts` (scanner/compiler), `ui/src/custom-components.ts` (evaluator/hook).
+
 ## Key decisions
 
 - No storage layer — files ARE the persistence
@@ -42,3 +55,4 @@ Both modes share:
 - Unified `codoc` command starts HTTP + watch + MCP on same process
 - MCP stdio (`codoc mcp`) stays separate for Claude Code subprocess model
 - `codoc init` is idempotent — skips existing files/dirs
+- Custom component metadata via optional `export const meta` convention
