@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Workspace } from "./workspace.js";
+import { createMcpServer } from "./mcp-server.js";
 
 /** Thin envelope sent to the browser over SSE. */
 export type ChatEvent =
@@ -19,7 +20,6 @@ export type ChatEvent =
 
 export function createChatRoutes(
   state: { workspace: Workspace | null },
-  port: number,
 ): Hono {
   const app = new Hono();
 
@@ -60,28 +60,38 @@ export function createChatRoutes(
         };
 
         try {
+          // Fresh MCP server per query — each SDK session needs its own instance.
+          const chatMcp = state.workspace ? createMcpServer(state.workspace) : null;
+
           const q = query({
             prompt,
             options: {
               systemPrompt,
               cwd: sourceDir,
+              pathToClaudeCodeExecutable: "claude",
               ...(sessionId ? { resume: sessionId } : {}),
               maxTurns: 20,
               permissionMode: "acceptEdits",
               allowedTools: ["mcp__codoc__*"],
               tools: [], // disable built-in tools — only MCP
-              mcpServers: {
-                codoc: {
-                  type: "http",
-                  url: `http://localhost:${port}/mcp`,
-                },
-              },
+              ...(chatMcp
+                ? {
+                    mcpServers: {
+                      codoc: {
+                        type: "sdk" as const,
+                        name: "codoc",
+                        instance: chatMcp,
+                      },
+                    },
+                  }
+                : {}),
             },
           });
 
           for await (const msg of q) {
-            const event = toEvent(msg);
-            if (event) send(event);
+            for (const event of toEvents(msg)) {
+              send(event);
+            }
           }
         } catch (err) {
           send({
@@ -110,30 +120,30 @@ export function createChatRoutes(
 // Map SDK messages to thin ChatEvent envelopes the UI cares about.
 // ---------------------------------------------------------------------------
 
-function toEvent(msg: SDKMessage): ChatEvent | null {
+function toEvents(msg: SDKMessage): ChatEvent[] {
   switch (msg.type) {
     case "system":
       if (msg.subtype === "init") {
-        return { kind: "init", sessionId: msg.session_id };
+        return [{ kind: "init", sessionId: msg.session_id }];
       }
-      return null;
+      return [];
 
     case "assistant": {
-      // Extract text and tool_use blocks from the Anthropic message.
+      const events: ChatEvent[] = [];
       const blocks = msg.message.content;
       for (const block of blocks) {
         if (block.type === "tool_use") {
-          return {
+          events.push({
             kind: "tool_use",
             name: block.name,
             input: block.input as Record<string, unknown>,
-          };
+          });
         }
         if (block.type === "text" && block.text) {
-          return { kind: "text", text: block.text };
+          events.push({ kind: "text", text: block.text });
         }
       }
-      return null;
+      return events;
     }
 
     case "result": {
@@ -142,10 +152,10 @@ function toEvent(msg: SDKMessage): ChatEvent | null {
         event.result = msg.result;
         event.costUsd = msg.total_cost_usd;
       }
-      return event;
+      return [event];
     }
 
     default:
-      return null;
+      return [];
   }
 }

@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "0.2.117",
     "@cobook/compiler": "workspace:*",
     "@cobook/core": "workspace:*",
     "@cobook/parser": "workspace:*",

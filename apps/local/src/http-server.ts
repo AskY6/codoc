@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -143,7 +144,7 @@ export async function startHttpServer(
   app.route("/api", apiRoutes);
 
   // ---- Chat (Claude Code SDK proxy) --------------------------------------
-  const chatRoutes = createChatRoutes(state, port);
+  const chatRoutes = createChatRoutes(state);
   app.route("/api", chatRoutes);
 
   // ---- MCP ----------------------------------------------------------------
@@ -190,8 +191,13 @@ export async function startHttpServer(
     );
   }
 
+  const actualPort = await findFreePort(port);
+  if (actualPort !== port) {
+    console.log(`[codoc] port ${port} in use, using ${actualPort}`);
+  }
+
   return new Promise((resolve) => {
-    const server = serve({ fetch: app.fetch, port }, (info) => {
+    const server = serve({ fetch: app.fetch, port: actualPort }, (info) => {
       console.log(`[codoc] server listening on http://localhost:${info.port}`);
       console.log(`[codoc] MCP endpoint: http://localhost:${info.port}/mcp`);
       if (hasUi) {
@@ -200,6 +206,25 @@ export async function startHttpServer(
       resolve({ port: info.port, close: () => server.close() });
     });
   });
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port);
+  });
+}
+
+async function findFreePort(preferred: number, maxAttempts = 10): Promise<number> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await isPortFree(preferred + i)) return preferred + i;
+  }
+  throw new Error(`no free port found in range ${preferred}–${preferred + maxAttempts - 1}`);
 }
 
 // ---------------------------------------------------------------------------
