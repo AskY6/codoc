@@ -5,8 +5,9 @@ import { FileTree } from "./components/FileTree.tsx";
 import { Editor } from "./components/Editor.tsx";
 import { Preview } from "./components/Preview.tsx";
 import { DataPanel } from "./components/DataPanel.tsx";
+import { ComponentPanel } from "./components/ComponentPanel.tsx";
 
-type Tab = "editor" | "preview" | "data";
+type Tab = "editor" | "preview" | "data" | "components";
 
 export function App() {
   const [tree, setTree] = useState<TreeNode[]>([]);
@@ -58,10 +59,19 @@ export function App() {
     void loadTree();
   }, [selectedPath, loadTree]);
 
+  // Snippet insertion: ComponentPanel → Editor
+  const [pendingSnippet, setPendingSnippet] = useState<string | null>(null);
+
+  const handleInsertSnippet = useCallback((snippet: string) => {
+    setPendingSnippet(snippet);
+    setActiveTab("editor");
+  }, []);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "editor", label: "Editor" },
     { id: "preview", label: "Preview" },
     { id: "data", label: "Data" },
+    { id: "components", label: "Components" },
   ];
 
   return (
@@ -141,10 +151,20 @@ export function App() {
             {/* Content */}
             <div className="flex-1 overflow-auto">
               {activeTab === "editor" && (
-                <Editor content={codoc.content} onSave={handleSave} />
+                <Editor
+                  content={codoc.content}
+                  onSave={handleSave}
+                  pendingSnippet={pendingSnippet}
+                  onSnippetConsumed={() => setPendingSnippet(null)}
+                />
               )}
-              {activeTab === "preview" && <Preview view={codoc.view} />}
+              {activeTab === "preview" && (
+                <Preview view={codoc.view} data={codoc.data} />
+              )}
               {activeTab === "data" && <DataPanel data={codoc.data} />}
+              {activeTab === "components" && (
+                <ComponentPanel onInsert={handleInsertSnippet} />
+              )}
             </div>
           </>
         ) : (

@@ -1,4 +1,5 @@
 import type { DataFieldInfo } from "../api.ts";
+import { recommendFor } from "./builtin/index.ts";
 
 interface DataPanelProps {
   data: Record<string, DataFieldInfo>;
@@ -23,7 +24,8 @@ export function DataPanel({ data }: DataPanelProps) {
             <th className="pb-2 pr-4 font-medium">Field</th>
             <th className="pb-2 pr-4 font-medium">Kind</th>
             <th className="pb-2 pr-4 font-medium">Status</th>
-            <th className="pb-2 font-medium">Value</th>
+            <th className="pb-2 pr-4 font-medium">Value</th>
+            <th className="pb-2 font-medium">Components</th>
           </tr>
         </thead>
         <tbody>
@@ -36,8 +38,11 @@ export function DataPanel({ data }: DataPanelProps) {
               <td className="py-2 pr-4">
                 <StatusBadge resolved={field.resolved} />
               </td>
-              <td className="py-2 font-mono text-xs">
+              <td className="py-2 pr-4 font-mono text-xs">
                 <ResolvedValue resolved={field.resolved} />
+              </td>
+              <td className="py-2 text-xs">
+                <Recommendations resolved={field.resolved} />
               </td>
             </tr>
           ))}
@@ -81,4 +86,22 @@ function ResolvedValue({ resolved }: { resolved: DataFieldInfo["resolved"] }) {
   if (val === null || val === undefined) return <span className="text-neutral-400">null</span>;
   if (typeof val === "object") return <>{JSON.stringify(val)}</>;
   return <>{String(val)}</>;
+}
+
+function Recommendations({ resolved }: { resolved: DataFieldInfo["resolved"] }) {
+  if (!resolved || resolved.kind !== "ready") return null;
+  const names = recommendFor(resolved.value);
+  if (names.length === 0) return <span className="text-neutral-300">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {names.map((name) => (
+        <span
+          key={name}
+          className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600"
+        >
+          {name}
+        </span>
+      ))}
+    </div>
+  );
 }

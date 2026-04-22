@@ -3,9 +3,11 @@ import { useState, useEffect, useCallback } from "react";
 interface EditorProps {
   content: string;
   onSave: (content: string) => Promise<void>;
+  pendingSnippet?: string | null;
+  onSnippetConsumed?: () => void;
 }
 
-export function Editor({ content, onSave }: EditorProps) {
+export function Editor({ content, onSave, pendingSnippet, onSnippetConsumed }: EditorProps) {
   const [value, setValue] = useState(content);
   const [saving, setSaving] = useState(false);
   const dirty = value !== content;
@@ -13,6 +15,14 @@ export function Editor({ content, onSave }: EditorProps) {
   useEffect(() => {
     setValue(content);
   }, [content]);
+
+  // Append snippet from ComponentPanel
+  useEffect(() => {
+    if (pendingSnippet) {
+      setValue((prev) => prev + pendingSnippet);
+      onSnippetConsumed?.();
+    }
+  }, [pendingSnippet, onSnippetConsumed]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
