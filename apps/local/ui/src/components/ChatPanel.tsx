@@ -99,8 +99,8 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
     );
   }, [slashQuery]);
 
-  // --- Auto-fill @path when activeCodoc changes ----------------------------
-  const prevActiveCodoc = useRef(activeCodoc);
+  // --- Auto-fill @path when activeCodoc changes (incl. on mount) -----------
+  const prevActiveCodoc = useRef<string | null>(null);
   useEffect(() => {
     if (
       activeCodoc &&
