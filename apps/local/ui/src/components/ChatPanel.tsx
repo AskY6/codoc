@@ -1,13 +1,21 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat } from "../api.ts";
-import type { CodocListItem } from "../api.ts";
+import type { CodocListItem, ImageAttachment } from "../api.ts";
 import {
   PromptInput,
   PromptInputTextarea,
   PromptInputFooter,
+  PromptInputHeader,
   PromptInputSubmit,
+  PromptInputTools,
+  PromptInputActionMenu,
+  PromptInputActionMenuTrigger,
+  PromptInputActionMenuContent,
+  PromptInputActionAddAttachments,
+  PromptInputActionAddScreenshot,
+  usePromptInputAttachments,
 } from "./ai-elements/prompt-input";
 import {
   MentionPopover,
@@ -28,9 +36,27 @@ interface ToolCall {
 }
 
 type ChatMessage =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; images?: ImageAttachment[] | undefined }
   | { role: "assistant"; text: string; toolCalls: ToolCall[] }
   | { role: "error"; text: string };
+
+// ---------------------------------------------------------------------------
+// Slash commands
+// ---------------------------------------------------------------------------
+
+interface SlashCommand {
+  name: string;
+  description: string;
+  prompt: string;
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { name: "list", description: "List all codocs", prompt: "List all codocs in this workspace." },
+  { name: "create", description: "Create a new codoc", prompt: "Help me create a new codoc." },
+  { name: "search", description: "Search codoc contents", prompt: "Search across all codocs for: " },
+  { name: "diagnose", description: "Run diagnostics", prompt: "Run diagnose_codoc on all codocs and report issues." },
+  { name: "dag", description: "Show dependency graph", prompt: "Show the DAG status and report any cycles or issues." },
+];
 
 // ---------------------------------------------------------------------------
 // ChatPanel — persistent right sidebar
@@ -61,15 +87,61 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
 
   const mentionItems = useMentionItems(codocs, mentionQuery);
 
+  // --- Slash command state -------------------------------------------------
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashIndex, setSlashIndex] = useState(0);
+
+  const filteredCommands = useMemo(() => {
+    const q = slashQuery.toLowerCase();
+    return SLASH_COMMANDS.filter(
+      (c) => c.name.includes(q) || c.description.toLowerCase().includes(q),
+    );
+  }, [slashQuery]);
+
+  // --- Auto-fill @path when activeCodoc changes ----------------------------
+  const prevActiveCodoc = useRef(activeCodoc);
+  useEffect(() => {
+    if (
+      activeCodoc &&
+      activeCodoc !== prevActiveCodoc.current &&
+      input === "" &&
+      messages.length === 0
+    ) {
+      const prefill = `@${activeCodoc} `;
+      setInput(prefill);
+      // Place cursor after the pre-filled mention
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current;
+        if (ta) {
+          ta.selectionStart = prefill.length;
+          ta.selectionEnd = prefill.length;
+          ta.focus();
+        }
+      });
+    }
+    prevActiveCodoc.current = activeCodoc;
+  }, [activeCodoc, input, messages.length]);
+
   useEffect(() => {
     setMentionIndex(0);
   }, [mentionItems]);
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [filteredCommands]);
 
   const closeMention = useCallback(() => {
     setMentionOpen(false);
     setMentionQuery("");
     setMentionIndex(0);
     setMentionTriggerPos(null);
+  }, []);
+
+  const closeSlash = useCallback(() => {
+    setSlashOpen(false);
+    setSlashQuery("");
+    setSlashIndex(0);
   }, []);
 
   const insertMention = useCallback(
@@ -83,7 +155,6 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
       const newValue = before + mentionText + after;
       const cursorPos = before.length + mentionText.length;
 
-      // Use native setter to trigger React's onChange
       const nativeSetter = Object.getOwnPropertyDescriptor(
         HTMLTextAreaElement.prototype,
         "value",
@@ -109,15 +180,18 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
 
   // --- Send ----------------------------------------------------------------
   const send = useCallback(
-    async (text?: string) => {
+    async (text?: string, images?: ImageAttachment[]) => {
       const prompt = (text ?? input).trim();
       if (!prompt || loading) return;
 
-      // Parse @mentions from the message text
       const mentions = parseMentionedCodocs(prompt, codocs);
 
       setInput("");
-      setMessages((prev) => [...prev, { role: "user", text: prompt }]);
+      closeSlash();
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", text: prompt, images: images?.length ? images : undefined },
+      ]);
       setLoading(true);
 
       const abort = new AbortController();
@@ -131,6 +205,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
           prompt,
           sessionId,
           mentions.length > 0 ? mentions : undefined,
+          images,
           abort.signal,
         )) {
           switch (evt.kind) {
@@ -233,7 +308,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         abortRef.current = null;
       }
     },
-    [input, loading, sessionId, codocs],
+    [input, loading, sessionId, codocs, closeSlash],
   );
 
   const handleStop = () => {
@@ -245,9 +320,10 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
     setSessionId(undefined);
   };
 
-  // --- Mention keyboard navigation -----------------------------------------
+  // --- Keyboard navigation (mentions + slash commands) ---------------------
   const handleTextareaKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Mention popover navigation
       if (mentionOpen) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -274,11 +350,45 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
           return;
         }
       }
+
+      // Slash command popover navigation
+      if (slashOpen) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashIndex((i) => (i + 1) % Math.max(filteredCommands.length, 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashIndex((i) =>
+            i <= 0 ? Math.max(filteredCommands.length - 1, 0) : i - 1,
+          );
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          if (filteredCommands.length > 0) {
+            e.preventDefault();
+            const cmd = filteredCommands[slashIndex]!;
+            closeSlash();
+            setInput("");
+            void send(cmd.prompt);
+            return;
+          }
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeSlash();
+          return;
+        }
+      }
     },
-    [mentionOpen, mentionItems, mentionIndex, insertMention, closeMention],
+    [
+      mentionOpen, mentionItems, mentionIndex, insertMention, closeMention,
+      slashOpen, filteredCommands, slashIndex, closeSlash, send,
+    ],
   );
 
-  // --- Mention trigger detection -------------------------------------------
+  // --- Trigger detection (@mentions + /commands) ---------------------------
   const handleTextareaChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const ta = e.currentTarget;
@@ -286,7 +396,19 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
       const text = ta.value;
       setInput(text);
 
-      // Find the last `@` before cursor preceded by whitespace or at start
+      // Slash command: `/` at the very start of input
+      if (text.startsWith("/")) {
+        const q = text.slice(1, pos);
+        if (!/\s/.test(q)) {
+          setSlashOpen(true);
+          setSlashQuery(q);
+          closeMention();
+          return;
+        }
+      }
+      if (slashOpen) closeSlash();
+
+      // @mention: `@` preceded by whitespace or at start
       let triggerIdx = -1;
       for (let i = pos - 1; i >= 0; i--) {
         if (text[i] === "@") {
@@ -307,10 +429,9 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         closeMention();
       }
     },
-    [mentionOpen, closeMention],
+    [mentionOpen, closeMention, slashOpen, closeSlash],
   );
 
-  // --- Ref callback for textarea -------------------------------------------
   const textareaRefCallback = useCallback(
     (node: HTMLTextAreaElement | null) => {
       textareaRef.current = node;
@@ -320,7 +441,6 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
 
   const isEmpty = messages.length === 0 && !loading;
 
-  // Quick actions — inject @mention for codoc-scoped actions
   const quickActions = activeCodoc
     ? [
         {
@@ -341,9 +461,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         { label: "Create codoc", prompt: "Help me create a new codoc." },
       ];
 
-  const chatStatus = loading
-    ? ("streaming" as const)
-    : ("ready" as const);
+  const chatStatus = loading ? ("streaming" as const) : ("ready" as const);
 
   return (
     <div className="flex h-full flex-col border-l border-neutral-200 bg-white">
@@ -377,7 +495,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         </div>
       </header>
 
-      {/* Quick action chips — shown when empty */}
+      {/* Quick action chips */}
       {isEmpty && (
         <div className="shrink-0 border-b border-neutral-100 px-4 py-3">
           <div className="flex flex-wrap gap-2">
@@ -400,9 +518,19 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         {isEmpty && (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400">
             <AgentIcon size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">Ask anything about your codocs</p>
+            <p className="text-sm font-medium">
+              Ask anything about your codocs
+            </p>
             <p className="mt-1 text-xs opacity-60">
-              Type <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1 py-0.5 text-[10px]">@</kbd> to mention a codoc
+              Type{" "}
+              <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1 py-0.5 text-[10px]">
+                @
+              </kbd>{" "}
+              to mention &middot;{" "}
+              <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1 py-0.5 text-[10px]">
+                /
+              </kbd>{" "}
+              for commands
             </p>
           </div>
         )}
@@ -422,38 +550,162 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input area with mention popover */}
+      {/* Input area */}
       <div className="shrink-0 border-t border-neutral-200 bg-neutral-50/50 p-3 relative">
+        {/* Mention popover */}
         <MentionPopover
           open={mentionOpen}
           items={mentionItems}
           activeIndex={mentionIndex}
           onSelect={insertMention}
         />
+
+        {/* Slash command popover */}
+        <SlashCommandPopover
+          open={slashOpen}
+          commands={filteredCommands}
+          activeIndex={slashIndex}
+          onSelect={(cmd) => {
+            closeSlash();
+            setInput("");
+            void send(cmd.prompt);
+          }}
+        />
+
         <PromptInput
-          onSubmit={({ text }) => void send(text)}
+          onSubmit={({ text, files }) => {
+            // Convert file data URLs to ImageAttachment[] for the API
+            const images: ImageAttachment[] = files
+              .filter((f) => f.mediaType?.startsWith("image/"))
+              .map((f) => ({ dataUrl: f.url, name: f.filename ?? "image" }));
+            void send(text, images.length > 0 ? images : undefined);
+          }}
+          accept="image/*"
           className="rounded-xl border border-neutral-200 bg-white shadow-sm focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400"
         >
+          <AttachmentPreview />
           <PromptInputTextarea
             ref={textareaRefCallback}
             value={input}
             onChange={handleTextareaChange}
             onKeyDown={handleTextareaKeyDown}
-            onBlur={closeMention}
+            onBlur={() => {
+              closeMention();
+              closeSlash();
+            }}
             placeholder={
               activeCodoc
-                ? `Ask about ${activeCodoc.replace(/\.codoc$/, "")}, type @ to mention...`
-                : "Ask the agent, type @ to mention codocs..."
+                ? `Ask about ${activeCodoc.replace(/\.codoc$/, "")}, @ to mention, / for commands...`
+                : "Ask the agent, @ to mention, / for commands..."
             }
             className="min-h-10 border-none shadow-none focus-visible:ring-0"
           />
-          <PromptInputFooter className="justify-end border-none px-2 py-1">
-            <PromptInputSubmit
-              status={chatStatus}
-              onStop={handleStop}
-            />
+          <PromptInputFooter className="justify-between border-none px-2 py-1">
+            <PromptInputTools>
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger tooltip="Attach" />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments label="Add image" />
+                  <PromptInputActionAddScreenshot label="Take screenshot" />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
+            </PromptInputTools>
+            <PromptInputSubmit status={chatStatus} onStop={handleStop} />
           </PromptInputFooter>
         </PromptInput>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AttachmentPreview — shows image thumbnails above textarea
+// ---------------------------------------------------------------------------
+
+function AttachmentPreview() {
+  const attachments = usePromptInputAttachments();
+  if (attachments.files.length === 0) return null;
+
+  return (
+    <PromptInputHeader className="gap-2 border-none px-3 pt-2">
+      {attachments.files.map((file) => (
+        <div key={file.id} className="group relative">
+          {file.mediaType?.startsWith("image/") && file.url ? (
+            <img
+              src={file.url}
+              alt={file.filename ?? "attachment"}
+              className="h-16 w-16 rounded-lg border border-neutral-200 object-cover"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 text-[10px] text-neutral-400">
+              {file.filename?.split(".").pop() ?? "file"}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => attachments.remove(file.id)}
+            className="absolute -right-1 -top-1 hidden rounded-full bg-neutral-800 p-0.5 text-white group-hover:block"
+          >
+            <XIcon size={10} />
+          </button>
+        </div>
+      ))}
+    </PromptInputHeader>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SlashCommandPopover
+// ---------------------------------------------------------------------------
+
+function SlashCommandPopover({
+  open,
+  commands,
+  activeIndex,
+  onSelect,
+}: {
+  open: boolean;
+  commands: SlashCommand[];
+  activeIndex: number;
+  onSelect: (cmd: SlashCommand) => void;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const active = listRef.current?.querySelector("[data-active='true']");
+    active?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex]);
+
+  if (!open || commands.length === 0) return null;
+
+  return (
+    <div className="absolute bottom-full left-0 mb-1 w-72 z-50 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+      <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+        Commands
+      </div>
+      <div ref={listRef} className="max-h-56 overflow-y-auto">
+        {commands.map((cmd, i) => (
+          <button
+            key={cmd.name}
+            data-active={i === activeIndex}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onSelect(cmd);
+            }}
+            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+              i === activeIndex
+                ? "bg-blue-50 text-blue-700"
+                : "text-neutral-700 hover:bg-neutral-50"
+            }`}
+          >
+            <SlashIcon />
+            <div className="flex-1 min-w-0">
+              <div className="font-mono text-xs">/{cmd.name}</div>
+              <div className="text-xs text-neutral-400">{cmd.description}</div>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -474,8 +726,22 @@ function MessageBubble({
     case "user":
       return (
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-blue-600 px-4 py-2.5 text-sm text-white whitespace-pre-wrap">
-            {renderMentions(message.text, codocs)}
+          <div className="max-w-[85%] space-y-2">
+            {message.images && message.images.length > 0 && (
+              <div className="flex justify-end gap-1">
+                {message.images.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img.dataUrl}
+                    alt={img.name}
+                    className="h-20 rounded-lg border border-blue-400/30 object-cover"
+                  />
+                ))}
+              </div>
+            )}
+            <div className="rounded-2xl rounded-br-sm bg-blue-600 px-4 py-2.5 text-sm text-white whitespace-pre-wrap">
+              {renderMentions(message.text, codocs)}
+            </div>
           </div>
         </div>
       );
@@ -553,69 +819,39 @@ function AgentIcon({
   className?: string;
 }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className ?? "text-amber-500"}
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className ?? "text-amber-500"}>
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );
 }
 
-function XIcon() {
+function XIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
 
 function ToolIcon() {
   return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  );
+}
+
+function SlashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-neutral-400">
+      <line x1="7" y1="22" x2="17" y2="2" />
     </svg>
   );
 }
 
 function ChevronRightIcon() {
   return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6" />
     </svg>
   );
@@ -623,16 +859,7 @@ function ChevronRightIcon() {
 
 function ChevronDownIcon() {
   return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
     </svg>
   );

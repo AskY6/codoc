@@ -92,16 +92,22 @@ export type ChatEvent =
   | { kind: "error"; message: string }
   | { kind: "done"; result?: string; costUsd?: number };
 
+export interface ImageAttachment {
+  dataUrl: string;
+  name: string;
+}
+
 export async function* streamChat(
   prompt: string,
   sessionId?: string,
   mentions?: string[],
+  images?: ImageAttachment[],
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, sessionId, mentions }),
+    body: JSON.stringify({ prompt, sessionId, mentions, images }),
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);

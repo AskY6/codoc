@@ -1,14 +1,31 @@
 // chat-route — SSE endpoint that proxies user messages to Claude Code via the Agent SDK.
 //
-// POST /api/chat  { prompt, sessionId?, activeCodoc? }
+// POST /api/chat  { prompt, sessionId?, mentions?, images? }
 //   → text/event-stream of JSON-encoded SDK messages
 
 import { Hono } from "hono";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Workspace } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { createMcpServer } from "./mcp-server.js";
+
+interface ImagePayload {
+  dataUrl: string;
+  name: string;
+}
+
+/** Inline content block types matching Anthropic API MessageParam.content */
+type ContentBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: {
+        type: "base64";
+        media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+        data: string;
+      };
+    };
 
 /** Thin envelope sent to the browser over SSE. */
 export type ChatEvent =
@@ -35,9 +52,11 @@ export function createChatRoutes(
       prompt: string;
       sessionId?: string;
       mentions?: string[];
+      images?: ImagePayload[];
     }>();
 
     const { prompt, sessionId } = body;
+    const images = body.images ?? [];
     // Normalize .mdx → .codoc so the LLM uses the correct path with MCP tools
     const mentions = (body.mentions ?? []).map((m) =>
       m.replace(/\.mdx$/, ".codoc"),
@@ -52,6 +71,9 @@ export function createChatRoutes(
       mentions.length > 0
         ? buildMentionsPrompt(mentions, state.workspace!, prompt)
         : prompt;
+
+    // Build multimodal prompt if images are attached
+    const hasImages = images.length > 0;
 
     const systemPrompt = [
       "You are operating a codoc knowledge base via MCP tools.",
@@ -73,8 +95,13 @@ export function createChatRoutes(
           // Fresh MCP server per query — each SDK session needs its own instance.
           const chatMcp = state.workspace ? createMcpServer(state.workspace) : null;
 
+          // When images are attached, build a multimodal SDKUserMessage
+          const sdkPrompt = hasImages
+            ? buildMultimodalPrompt(augmentedPrompt, images)
+            : augmentedPrompt;
+
           const q = query({
-            prompt: augmentedPrompt,
+            prompt: sdkPrompt,
             options: {
               systemPrompt,
               cwd: sourceDir,
@@ -146,6 +173,46 @@ function buildMentionsPrompt(
   }
   if (blocks.length === 0) return userPrompt;
   return blocks.join("\n\n") + "\n\n" + userPrompt;
+}
+
+// ---------------------------------------------------------------------------
+// Multimodal — build SDKUserMessage with image content blocks
+// ---------------------------------------------------------------------------
+
+function buildMultimodalPrompt(
+  text: string,
+  images: ImagePayload[],
+): AsyncIterable<SDKUserMessage> {
+  const contentBlocks: ContentBlock[] = [];
+
+  for (const img of images) {
+    // data URL format: data:image/png;base64,<data>
+    const match = img.dataUrl.match(
+      /^data:(image\/[a-z+]+);base64,(.+)$/i,
+    );
+    if (match) {
+      contentBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: match[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+          data: match[2]!,
+        },
+      });
+    }
+  }
+
+  contentBlocks.push({ type: "text", text });
+
+  const msg: SDKUserMessage = {
+    type: "user",
+    message: { role: "user", content: contentBlocks as SDKUserMessage["message"]["content"] },
+    parent_tool_use_id: null,
+  };
+
+  return (async function* () {
+    yield msg;
+  })();
 }
 
 // ---------------------------------------------------------------------------
