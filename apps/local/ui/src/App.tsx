@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./api.ts";
-import type { TreeNode, CodocDetail, DagStatus, WorkspaceInfo } from "./api.ts";
+import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
 import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
@@ -141,6 +141,7 @@ function countFiles(nodes: TreeNode[]): number {
 
 function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: string; onSwitchWorkspace: () => void }) {
   const [tree, setTree] = useState<TreeNode[]>([]);
+  const [codocList, setCodocList] = useState<CodocListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [focus, setFocus] = useState<Focus>({ kind: "none" });
   const [codoc, setCodoc] = useState<CodocDetail | null>(null);
@@ -161,6 +162,12 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     }
   }, []);
 
+  const loadCodocs = useCallback(async () => {
+    try {
+      setCodocList(await api.codocs());
+    } catch { /* not critical */ }
+  }, []);
+
   const loadDag = useCallback(async () => {
     try {
       setDagData(await api.dag());
@@ -170,9 +177,10 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   useEffect(() => {
     void loadTree();
     void loadDag();
-    const id = setInterval(() => { void loadTree(); void loadDag(); }, 3000);
+    void loadCodocs();
+    const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); }, 3000);
     return () => clearInterval(id);
-  }, [loadTree, loadDag]);
+  }, [loadTree, loadDag, loadCodocs]);
 
   // Load codoc detail when a codoc is focused
   const codocPath = focus.kind === "codoc" ? focus.path : null;
@@ -459,6 +467,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
           <aside className="w-96 shrink-0">
             <ChatPanel
               key={chatKey}
+              codocs={codocList}
               activeCodoc={codocPath}
               onClose={() => setChatOpen(false)}
             />

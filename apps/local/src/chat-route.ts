@@ -34,23 +34,24 @@ export function createChatRoutes(
     const body = await c.req.json<{
       prompt: string;
       sessionId?: string;
-      activeCodoc?: string;
+      mentions?: string[];
     }>();
 
     const { prompt, sessionId } = body;
     // Normalize .mdx → .codoc so the LLM uses the correct path with MCP tools
-    const activeCodoc = body.activeCodoc
-      ? body.activeCodoc.replace(/\.mdx$/, ".codoc")
-      : undefined;
+    const mentions = (body.mentions ?? []).map((m) =>
+      m.replace(/\.mdx$/, ".codoc"),
+    );
     if (!prompt) {
       return c.json({ error: "prompt is required" }, 400);
     }
 
-    // @mention pattern: attach active codoc content to the user message,
+    // @mention pattern: attach mentioned codoc content to the user message,
     // like Claude Code's @file — content travels with the message, not system prompt.
-    const augmentedPrompt = activeCodoc
-      ? buildMentionPrompt(activeCodoc, state.workspace!, prompt)
-      : prompt;
+    const augmentedPrompt =
+      mentions.length > 0
+        ? buildMentionsPrompt(mentions, state.workspace!, prompt)
+        : prompt;
 
     const systemPrompt = [
       "You are operating a codoc knowledge base via MCP tools.",
@@ -126,20 +127,25 @@ export function createChatRoutes(
 }
 
 // ---------------------------------------------------------------------------
-// @mention — attach active codoc to the user message (like Claude Code's @file)
+// @mentions — attach mentioned codocs to the user message (like Claude Code's @file)
 // ---------------------------------------------------------------------------
 
-function buildMentionPrompt(
-  codocPath: string,
+function buildMentionsPrompt(
+  mentions: string[],
   ws: Workspace,
   userPrompt: string,
 ): string {
-  const codoc = ws.codocs.get(mkCodocPath(codocPath));
-  if (!codoc) return userPrompt;
-
-  // Attach content as a context block preceding the user's actual question.
-  // This mirrors Claude Code's @file pattern: content is part of the message.
-  return `@${codocPath}:\n<codoc path="${codocPath}">\n${codoc.content}</codoc>\n\n${userPrompt}`;
+  const blocks: string[] = [];
+  for (const path of mentions) {
+    const codoc = ws.codocs.get(mkCodocPath(path));
+    if (codoc) {
+      blocks.push(
+        `@${path}:\n<codoc path="${path}">\n${codoc.content}</codoc>`,
+      );
+    }
+  }
+  if (blocks.length === 0) return userPrompt;
+  return blocks.join("\n\n") + "\n\n" + userPrompt;
 }
 
 // ---------------------------------------------------------------------------
