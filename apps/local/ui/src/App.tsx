@@ -359,7 +359,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
             }`}
             onClick={() => setSidebarTab("chats")}
           >
-            Chats
+            Chats{chatMetas.length > 0 && <span className="ml-1 text-neutral-400">{chatMetas.length}</span>}
           </button>
         </div>
 

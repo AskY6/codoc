@@ -517,7 +517,17 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatP
 
       {/* Messages */}
       <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
-        {isEmpty && (
+        {isEmpty && (resumeSession ? (
+          <div className="flex flex-col items-center justify-center h-full text-neutral-400">
+            <HistoryIcon className="mb-3 opacity-20" />
+            <p className="text-sm font-medium">Continuing conversation</p>
+            <p className="mt-1 text-xs opacity-60 text-center px-4">
+              Previous messages are stored in Claude Code.
+              <br />
+              Send a message to continue where you left off.
+            </p>
+          </div>
+        ) : (
           <div className="flex flex-col items-center justify-center h-full text-neutral-400">
             <AgentIcon size={40} className="mb-3 opacity-20" />
             <p className="text-sm font-medium">
@@ -535,7 +545,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatP
               for commands
             </p>
           </div>
-        )}
+        ))}
 
         {messages.map((msg, i) => (
           <MessageBubble key={i} message={msg} codocs={codocs} />
@@ -839,6 +849,14 @@ function ToolIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+  );
+}
+
+function HistoryIcon({ className }: { className?: string }) {
+  return (
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" />
     </svg>
   );
 }
