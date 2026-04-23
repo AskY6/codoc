@@ -9,7 +9,8 @@ import type { Workspace } from "./workspace.js";
 import { writeCodoc, buildAstMap, removeFile, resolveAll } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
-import { loadChatMetas, deleteChatMeta, readSessionMessages } from "./chat-meta.js";
+import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
+import type { ProviderRegistry } from "./providers/registry.js";
 
 // ---------------------------------------------------------------------------
 // Tree types
@@ -69,8 +70,17 @@ function codocPathFromUrl(url: string): string {
 // Route factory
 // ---------------------------------------------------------------------------
 
-export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
+export function createApiRoutes(
+  state: { workspace: Workspace | null },
+  registry: ProviderRegistry,
+): Hono {
   const api = new Hono();
+
+  // ---- GET /providers -------------------------------------------------------
+
+  api.get("/providers", (c) => {
+    return c.json(registry.info);
+  });
 
   /** Return 503 if no workspace is open. */
   function ws(c: { json: (data: unknown, status: number) => Response }): Workspace | null {
@@ -264,7 +274,19 @@ export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
 
   api.get("/chats/:sessionId/messages", async (c) => {
     const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
-    const messages = await readSessionMessages(w.sourceDir, c.req.param("sessionId"));
+    const sessionId = c.req.param("sessionId");
+
+    // Look up the provider for this chat from stored meta
+    const metas = await loadChatMetas(w.sourceDir);
+    const meta = metas.find((m) => m.sessionId === sessionId);
+    const providerId = meta?.provider ?? "claude-code";
+    const provider = registry.get(providerId);
+
+    if (!provider) {
+      return c.json({ error: `provider "${providerId}" not available` }, 503);
+    }
+
+    const messages = await provider.readHistory(sessionId, w.sourceDir);
     return c.json(messages);
   });
 

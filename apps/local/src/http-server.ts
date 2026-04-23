@@ -23,6 +23,8 @@ import { createApiRoutes } from "./api-routes.js";
 import { createChatRoutes } from "./chat-route.js";
 import { createMcpServer } from "./mcp-server.js";
 import { startWatcher } from "./watcher.js";
+import { createProviderRegistry } from "./providers/registry.js";
+import type { ProviderRegistry } from "./providers/registry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiDistDir = join(__dirname, "ui");
@@ -71,6 +73,13 @@ export async function startHttpServer(
     mcpTransport: null,
     watcher: null,
   };
+
+  // Detect available CLI providers in parallel.
+  const registry = await createProviderRegistry();
+  const availableNames = registry.info
+    .filter((p) => p.available)
+    .map((p) => p.name);
+  console.log(`[codoc] providers: ${availableNames.length > 0 ? availableNames.join(", ") : "none detected"}`);
 
   // If initial workspace provided, set up MCP and watcher.
   if (state.workspace) {
@@ -140,11 +149,11 @@ export async function startHttpServer(
   });
 
   // ---- REST API -----------------------------------------------------------
-  const apiRoutes = createApiRoutes(state);
+  const apiRoutes = createApiRoutes(state, registry);
   app.route("/api", apiRoutes);
 
-  // ---- Chat (Claude Code SDK proxy) --------------------------------------
-  const chatRoutes = createChatRoutes(state);
+  // ---- Chat (provider-aware proxy) ---------------------------------------
+  const chatRoutes = createChatRoutes(state, registry);
   app.route("/api", chatRoutes);
 
   // ---- MCP ----------------------------------------------------------------

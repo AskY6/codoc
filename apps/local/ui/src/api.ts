@@ -92,6 +92,12 @@ export type ChatEvent =
   | { kind: "error"; message: string }
   | { kind: "done"; result?: string; costUsd?: number };
 
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  available: boolean;
+}
+
 export interface ImageAttachment {
   dataUrl: string;
   name: string;
@@ -103,11 +109,12 @@ export async function* streamChat(
   mentions?: string[],
   images?: ImageAttachment[],
   signal?: AbortSignal,
+  provider?: string,
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, sessionId, mentions, images }),
+    body: JSON.stringify({ provider, prompt, sessionId, mentions, images }),
     ...(signal ? { signal } : {}),
   });
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
@@ -143,6 +150,7 @@ export interface WorkspaceInfo {
 
 export interface ChatMeta {
   sessionId: string;
+  provider: string;
   title: string;
   createdAt: string;
   lastActiveAt: string;
@@ -160,6 +168,9 @@ export interface SessionMessage {
 // ---------------------------------------------------------------------------
 
 export const api = {
+  /** List available CLI providers. */
+  providers: () => json<ProviderInfo[]>("/api/providers"),
+
   /** List available workspace names under ~/.codoc/ */
   workspaces: () => json<string[]>("/api/workspaces"),
 

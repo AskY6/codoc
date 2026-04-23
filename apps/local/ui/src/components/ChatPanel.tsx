@@ -66,10 +66,14 @@ export interface ChatPanelProps {
   codocs: CodocListItem[];
   activeCodoc: string | null;
   onClose: () => void;
-  resumeSession?: { sessionId: string; title: string };
+  resumeSession?: { sessionId: string; title: string; provider?: string | undefined } | undefined;
+  /** Provider ID for this chat session (locked once conversation starts). */
+  provider: string;
+  /** Display name of the provider. */
+  providerName?: string | undefined;
 }
 
-export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatPanelProps) {
+export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provider, providerName }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -225,6 +229,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatP
           mentions.length > 0 ? mentions : undefined,
           images,
           abort.signal,
+          provider,
         )) {
           switch (evt.kind) {
             case "init":
@@ -489,7 +494,10 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatP
           <div className="flex items-center gap-2">
             <AgentIcon />
             <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]">
-              {resumeSession ? resumeSession.title : "Codoc agent"}
+              {resumeSession ? resumeSession.title : (providerName ?? "Chat")}
+            </span>
+            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+              {providerName ?? provider}
             </span>
           </div>
           <div className="flex items-center gap-1">

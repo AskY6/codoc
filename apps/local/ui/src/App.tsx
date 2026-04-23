@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./api.ts";
-import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo, ChatMeta } from "./api.ts";
+import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo, ChatMeta, ProviderInfo } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
 import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
@@ -163,7 +163,10 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   const [chatKey, setChatKey] = useState(0);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("codocs");
   const [chatMetas, setChatMetas] = useState<ChatMeta[]>([]);
-  const [resumeSession, setResumeSession] = useState<{ sessionId: string; title: string } | undefined>();
+  const [resumeSession, setResumeSession] = useState<{ sessionId: string; title: string; provider?: string } | undefined>();
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [chatProvider, setChatProvider] = useState<string>("claude-code");
+  const [showProviderPicker, setShowProviderPicker] = useState(false);
   const components = useCustomComponents(0);
 
   // --- Data loading --------------------------------------------------------
@@ -194,14 +197,29 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     } catch { /* not critical */ }
   }, []);
 
+  const loadProviders = useCallback(async () => {
+    try {
+      const list = await api.providers();
+      setProviders(list);
+      // Default to first available provider
+      const first = list.find((p) => p.available);
+      if (first) setChatProvider((prev) => {
+        // Only set default if current selection is not available
+        const current = list.find((p) => p.id === prev && p.available);
+        return current ? prev : first.id;
+      });
+    } catch { /* not critical */ }
+  }, []);
+
   useEffect(() => {
     void loadTree();
     void loadDag();
     void loadCodocs();
     void loadChats();
+    void loadProviders();
     const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); void loadChats(); }, 3000);
     return () => clearInterval(id);
-  }, [loadTree, loadDag, loadCodocs, loadChats]);
+  }, [loadTree, loadDag, loadCodocs, loadChats, loadProviders]);
 
   // Load codoc detail when a codoc is focused
   const codocPath = focus.kind === "codoc" ? focus.path : null;
@@ -255,13 +273,29 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   }, [codocPath]);
 
   const handleNewChat = useCallback(() => {
+    const available = providers.filter((p) => p.available);
+    if (available.length > 1) {
+      // Multiple providers — show picker
+      setShowProviderPicker(true);
+    } else {
+      // Single or no provider — start immediately
+      setResumeSession(undefined);
+      setChatOpen(true);
+      setChatKey((k) => k + 1);
+    }
+  }, [providers]);
+
+  const handlePickProvider = useCallback((id: string) => {
+    setChatProvider(id);
+    setShowProviderPicker(false);
     setResumeSession(undefined);
     setChatOpen(true);
     setChatKey((k) => k + 1);
   }, []);
 
   const handleResumeChat = useCallback((meta: ChatMeta) => {
-    setResumeSession({ sessionId: meta.sessionId, title: meta.title });
+    setChatProvider(meta.provider ?? "claude-code");
+    setResumeSession({ sessionId: meta.sessionId, title: meta.title, provider: meta.provider });
     setChatOpen(true);
     setChatKey((k) => k + 1);
   }, []);
@@ -405,7 +439,14 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
                   onClick={() => handleResumeChat(meta)}
                   className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-200/50"
                 >
-                  <span className="text-sm text-neutral-700 truncate">{meta.title}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-neutral-700 truncate flex-1">{meta.title}</span>
+                    {meta.provider && meta.provider !== "claude-code" && (
+                      <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-400">
+                        {providers.find((p) => p.id === meta.provider)?.name ?? meta.provider}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
                 </button>
               ))}
@@ -513,8 +554,39 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
               activeCodoc={codocPath}
               onClose={() => setChatOpen(false)}
               resumeSession={resumeSession}
+              provider={chatProvider}
+              providerName={providers.find((p) => p.id === chatProvider)?.name}
             />
           </aside>
+        )}
+
+        {/* Provider picker overlay */}
+        {showProviderPicker && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+            <div className="w-80 rounded-xl border border-neutral-200 bg-white p-5 shadow-xl">
+              <h3 className="text-sm font-semibold text-neutral-800 mb-3">Choose a provider</h3>
+              <div className="space-y-2">
+                {providers.filter((p) => p.available).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handlePickProvider(p.id)}
+                    className="flex w-full items-center gap-3 rounded-lg border border-neutral-200 px-4 py-3 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
+                  >
+                    <ProviderIcon id={p.id} />
+                    <span className="text-sm font-medium text-neutral-800">{p.name}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProviderPicker(false)}
+                className="mt-3 w-full rounded-lg py-2 text-xs text-neutral-400 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -602,5 +674,20 @@ function XIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
+  );
+}
+
+function ProviderIcon({ id }: { id: string }) {
+  const colors: Record<string, string> = {
+    "claude-code": "bg-amber-100 text-amber-600",
+    "codex": "bg-emerald-100 text-emerald-600",
+    "kiro": "bg-violet-100 text-violet-600",
+  };
+  const cls = colors[id] ?? "bg-neutral-100 text-neutral-500";
+  const label = id.charAt(0).toUpperCase();
+  return (
+    <span className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold ${cls}`}>
+      {label}
+    </span>
   );
 }
