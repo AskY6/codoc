@@ -149,6 +149,12 @@ export interface ChatMeta {
   mentions: string[];
 }
 
+export interface SessionMessage {
+  role: "user" | "assistant";
+  text: string;
+  toolCalls?: { name: string; status: "done" }[];
+}
+
 // ---------------------------------------------------------------------------
 // REST helpers
 // ---------------------------------------------------------------------------
@@ -190,6 +196,10 @@ export const api = {
 
   /** List chat metadata sorted by most recent. */
   chats: () => json<ChatMeta[]>("/api/chats"),
+
+  /** Load session message history for a chat. */
+  chatMessages: (sessionId: string) =>
+    json<SessionMessage[]>(`/api/chats/${encodeURIComponent(sessionId)}/messages`),
 
   /** Delete a chat meta entry by session ID. */
   deleteChat: (sessionId: string) =>

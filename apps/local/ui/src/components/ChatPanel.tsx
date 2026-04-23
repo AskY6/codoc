@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { streamChat } from "../api.ts";
+import { streamChat, api } from "../api.ts";
 import type { CodocListItem, ImageAttachment } from "../api.ts";
 import {
   PromptInput,
@@ -124,6 +124,22 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatP
     }
     prevActiveCodoc.current = activeCodoc;
   }, [activeCodoc, input, messages.length]);
+
+  // --- Load history when resuming a session ----------------------------------
+  useEffect(() => {
+    if (!resumeSession) return;
+    let cancelled = false;
+    api.chatMessages(resumeSession.sessionId).then((history) => {
+      if (cancelled || history.length === 0) return;
+      const restored: ChatMessage[] = history.map((m) =>
+        m.role === "user"
+          ? { role: "user" as const, text: m.text }
+          : { role: "assistant" as const, text: m.text, toolCalls: (m.toolCalls ?? []).map((tc) => ({ name: tc.name, status: tc.status as "done" })) },
+      );
+      setMessages(restored);
+    }).catch(() => { /* session file missing — keep empty */ });
+    return () => { cancelled = true; };
+  }, [resumeSession]);
 
   useEffect(() => {
     setMentionIndex(0);

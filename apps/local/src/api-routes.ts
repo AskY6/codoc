@@ -9,7 +9,7 @@ import type { Workspace } from "./workspace.js";
 import { writeCodoc, buildAstMap, removeFile, resolveAll } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
-import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
+import { loadChatMetas, deleteChatMeta, readSessionMessages } from "./chat-meta.js";
 
 // ---------------------------------------------------------------------------
 // Tree types
@@ -258,6 +258,14 @@ export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
     const metas = await loadChatMetas(w.sourceDir);
     metas.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
     return c.json(metas);
+  });
+
+  // ---- GET /chats/:sessionId/messages ----------------------------------------
+
+  api.get("/chats/:sessionId/messages", async (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    const messages = await readSessionMessages(w.sourceDir, c.req.param("sessionId"));
+    return c.json(messages);
   });
 
   // ---- DELETE /chats/:sessionId ---------------------------------------------
