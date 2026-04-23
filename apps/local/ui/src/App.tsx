@@ -441,6 +441,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
               workspaceName={workspaceName}
               componentMap={components.componentMap}
               onSave={handleSaveCodoc}
+              onChat={handleNewChat}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center text-neutral-400">

@@ -2,6 +2,7 @@ import { useState, useEffect, type ComponentType } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { DataFieldInfo } from "../api.ts";
+import { ErrorBoundary } from "./ErrorBoundary.tsx";
 
 interface PreviewProps {
   view: { kind: "mdx"; source: string } | { kind: "empty" };
@@ -102,13 +103,19 @@ export function Preview({ view, data, componentMap }: PreviewProps) {
 
   return (
     <div className="animate-in fade-in duration-700">
-      <div className="prose prose-neutral prose-blue max-w-none 
-        prose-headings:scroll-mt-20 prose-headings:font-bold prose-headings:tracking-tight
-        prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-        prose-pre:rounded-xl prose-pre:bg-neutral-900 prose-pre:shadow-lg
-        prose-img:rounded-xl prose-img:shadow-md">
-        <Content components={componentMap} />
-      </div>
+      <ErrorBoundary
+        fallback={(err, reset) => (
+          <RenderError error={err} source={view.source} onRetry={reset} />
+        )}
+      >
+        <div className="prose prose-neutral prose-blue max-w-none
+          prose-headings:scroll-mt-20 prose-headings:font-bold prose-headings:tracking-tight
+          prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+          prose-pre:rounded-xl prose-pre:bg-neutral-900 prose-pre:shadow-lg
+          prose-img:rounded-xl prose-img:shadow-md">
+          <Content components={componentMap} />
+        </div>
+      </ErrorBoundary>
     </div>
   );
 }
@@ -122,6 +129,30 @@ function EmptyDocIcon({ className }: { className?: string }) {
       <line x1="8" y1="17" x2="16" y2="17" />
       <line x1="8" y1="9" x2="10" y2="9" />
     </svg>
+  );
+}
+
+function RenderError({ error, source, onRetry }: { error: Error; source: string; onRetry: () => void }) {
+  return (
+    <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+      <div className="mb-8 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50/50 p-4 text-sm text-red-800 shadow-sm">
+        <AlertIcon className="mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <span className="font-bold">Render Error</span>
+          <p className="mt-1 break-all font-mono text-xs opacity-80">{error.message}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 rounded-md bg-red-100 px-3 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-200"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+      <div className="prose prose-neutral prose-blue max-w-none">
+        <Markdown remarkPlugins={[remarkGfm]}>{source}</Markdown>
+      </div>
+    </div>
   );
 }
 

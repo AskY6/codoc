@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Workspace } from "./workspace.js";
+import { CodocPath as mkCodocPath } from "@cobook/core";
 import { createMcpServer } from "./mcp-server.js";
 
 /** Thin envelope sent to the browser over SSE. */
@@ -36,17 +37,25 @@ export function createChatRoutes(
       activeCodoc?: string;
     }>();
 
-    const { prompt, sessionId, activeCodoc } = body;
+    const { prompt, sessionId } = body;
+    // Normalize .mdx → .codoc so the LLM uses the correct path with MCP tools
+    const activeCodoc = body.activeCodoc
+      ? body.activeCodoc.replace(/\.mdx$/, ".codoc")
+      : undefined;
     if (!prompt) {
       return c.json({ error: "prompt is required" }, 400);
     }
 
+    // @mention pattern: attach active codoc content to the user message,
+    // like Claude Code's @file — content travels with the message, not system prompt.
+    const augmentedPrompt = activeCodoc
+      ? buildMentionPrompt(activeCodoc, state.workspace!, prompt)
+      : prompt;
+
     const systemPrompt = [
       "You are operating a codoc knowledge base via MCP tools.",
-      "Use the codoc MCP tools (list_codocs, read_codoc, write_codoc, search_codocs, update_data_field, append_content, create_from_template, dag_status) to fulfill requests.",
-      activeCodoc
-        ? `The user is currently viewing: ${activeCodoc}`
-        : "No specific codoc is in focus.",
+      "Available tools: list_codocs, read_codoc, write_codoc, search_codocs, update_data_field, append_content, create_from_template, dag_status, diagnose_codoc.",
+      "When the user @mentions a codoc, its content is attached to their message. Work with it directly — do NOT re-read it or list all codocs.",
     ].join("\n");
 
     const encoder = new TextEncoder();
@@ -64,7 +73,7 @@ export function createChatRoutes(
           const chatMcp = state.workspace ? createMcpServer(state.workspace) : null;
 
           const q = query({
-            prompt,
+            prompt: augmentedPrompt,
             options: {
               systemPrompt,
               cwd: sourceDir,
@@ -114,6 +123,23 @@ export function createChatRoutes(
   });
 
   return app;
+}
+
+// ---------------------------------------------------------------------------
+// @mention — attach active codoc to the user message (like Claude Code's @file)
+// ---------------------------------------------------------------------------
+
+function buildMentionPrompt(
+  codocPath: string,
+  ws: Workspace,
+  userPrompt: string,
+): string {
+  const codoc = ws.codocs.get(mkCodocPath(codocPath));
+  if (!codoc) return userPrompt;
+
+  // Attach content as a context block preceding the user's actual question.
+  // This mirrors Claude Code's @file pattern: content is part of the message.
+  return `@${codocPath}:\n<codoc path="${codocPath}">\n${codoc.content}</codoc>\n\n${userPrompt}`;
 }
 
 // ---------------------------------------------------------------------------

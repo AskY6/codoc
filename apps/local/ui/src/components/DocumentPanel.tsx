@@ -14,13 +14,14 @@ export interface DocumentPanelProps {
   workspaceName: string;
   componentMap: Record<string, ComponentType<Record<string, unknown>>>;
   onSave: (content: string) => Promise<void>;
+  onChat: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // DocumentPanel — center panel with breadcrumb, mode tabs, content, status bar
 // ---------------------------------------------------------------------------
 
-export function DocumentPanel({ codoc, workspaceName, componentMap, onSave }: DocumentPanelProps) {
+export function DocumentPanel({ codoc, workspaceName, componentMap, onSave, onChat }: DocumentPanelProps) {
   const [mode, setMode] = useState<DocMode>("preview");
   const [editValue, setEditValue] = useState(codoc.content);
   const [saving, setSaving] = useState(false);
@@ -78,23 +79,34 @@ export function DocumentPanel({ codoc, workspaceName, componentMap, onSave }: Do
   return (
     <div className="flex h-full flex-col bg-white">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 px-6 py-2.5 text-sm">
-        {breadcrumb.map((seg, i) => (
-          <Fragment key={i}>
-            {i > 0 && <ChevronRightIcon className="text-neutral-300" />}
-            <span
-              className={
-                i === breadcrumb.length - 1
-                  ? "font-semibold text-neutral-800 truncate"
-                  : "text-neutral-400 truncate"
-              }
-            >
-              {i === breadcrumb.length - 1
-                ? codoc.meta.title ?? seg
-                : seg}
-            </span>
-          </Fragment>
-        ))}
+      <div className="flex items-center justify-between px-6 py-2.5 text-sm">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {breadcrumb.map((seg, i) => (
+            <Fragment key={i}>
+              {i > 0 && <ChevronRightIcon className="text-neutral-300" />}
+              <span
+                className={
+                  i === breadcrumb.length - 1
+                    ? "font-semibold text-neutral-800 truncate"
+                    : "text-neutral-400 truncate"
+                }
+              >
+                {i === breadcrumb.length - 1
+                  ? codoc.meta.title ?? seg
+                  : seg}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onChat}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+          title="Chat about this codoc"
+        >
+          <ChatIcon />
+          Chat
+        </button>
       </div>
 
       {/* Mode tabs */}
@@ -248,6 +260,14 @@ function DatabaseIcon() {
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
