@@ -148,10 +148,10 @@ export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
 
     const result = await writeCodoc(w, codocPath, body.content);
     if (!result.ok) {
-      return c.json({ error: result.error }, 400);
+      return c.json({ ok: false, diagnostics: result.diagnostics }, 400);
     }
 
-    return c.json({ ok: true });
+    return c.json({ ok: true, diagnostics: result.diagnostics });
   });
 
   // ---- DELETE /codoc/:path+ ------------------------------------------------

@@ -13,6 +13,8 @@ import { compileCodoc } from "@cobook/compiler";
 import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
 import type { CustomComponentEntry } from "./components.js";
 import { scanComponents } from "./components.js";
+import { diagnoseCodoc } from "./diagnose.js";
+import type { Diagnostic } from "./diagnose.js";
 
 export interface LocalCodoc {
   readonly path: CodocPath;
@@ -131,28 +133,55 @@ export async function compileOne(ws: Workspace, codoc: LocalCodoc): Promise<void
   await writeFile(outPath, mdx, "utf-8");
 }
 
-/** Write a codoc source file and reload it. */
+export type WriteResult =
+  | { ok: true; diagnostics: readonly Diagnostic[] }
+  | { ok: false; diagnostics: readonly Diagnostic[] };
+
+/** Write a codoc source file and reload it.
+ *  Runs MDX diagnostics before writing — errors block the write. */
 export async function writeCodoc(
   ws: Workspace,
   codocPath: CodocPath,
   content: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  // Validate parse before writing
+): Promise<WriteResult> {
+  // 1. Parse
   const result = parseCodoc(content);
   if (!result.ok) {
-    return { ok: false, error: `Parse error: ${result.error.kind}` };
+    return {
+      ok: false,
+      diagnostics: [{
+        severity: "error",
+        message: `Parse error: ${result.error.kind}`,
+      }],
+    };
   }
 
+  // 2. Diagnose MDX body
+  const ctx = {
+    customComponentNames: new Set(
+      ws.customComponents
+        .filter((c) => c.kind === "ok")
+        .map((c) => c.component.name),
+    ),
+  };
+  const diagnostics = diagnoseCodoc(result.value, ctx);
+  const hasErrors = diagnostics.some((d) => d.severity === "error");
+
+  if (hasErrors) {
+    return { ok: false, diagnostics };
+  }
+
+  // 3. Write (only warnings or clean)
   const absolutePath = join(ws.sourceDir, codocPath);
   await mkdir(dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, content, "utf-8");
 
-  // Reload into workspace
+  // 4. Reload
   await loadFile(ws, absolutePath);
   await resolveAll(ws);
   await compileAll(ws);
 
-  return { ok: true };
+  return { ok: true, diagnostics };
 }
 
 /** Build the AST lookup map from current workspace state. */

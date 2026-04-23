@@ -6,11 +6,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { Workspace } from "./workspace.js";
+import type { Workspace, WriteResult } from "./workspace.js";
 import { writeCodoc, buildAstMap } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { diagnoseCodoc } from "./diagnose.js";
+import type { Diagnostic } from "./diagnose.js";
 
 export function createMcpServer(ws: Workspace): McpServer {
   const server = new McpServer({
@@ -76,7 +78,7 @@ export function createMcpServer(ws: Workspace): McpServer {
 
   server.tool(
     "write_codoc",
-    "Write or update a codoc file. Content is the full source (YAML frontmatter + MDX body).",
+    "Write or update a codoc file. Content is the full source (YAML frontmatter + MDX body). Validates MDX before writing — errors block the write.",
     {
       path: z.string().describe("Workspace-relative path, e.g. 'reviews/alice-q1.codoc'"),
       content: z.string().describe("Full codoc source content"),
@@ -84,17 +86,7 @@ export function createMcpServer(ws: Workspace): McpServer {
     async ({ path, content }) => {
       const codocPath = mkCodocPath(path);
       const result = await writeCodoc(ws, codocPath, content);
-
-      if (!result.ok) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
-          isError: true,
-        };
-      }
-
-      return {
-        content: [{ type: "text" as const, text: `Written and compiled: ${path}` }],
-      };
+      return writeResultToMcp(result, `Written and compiled: ${path}`);
     },
   );
 
@@ -174,6 +166,45 @@ export function createMcpServer(ws: Workspace): McpServer {
     },
   );
 
+  // ---- Tool: diagnose_codoc ---------------------------------------------------
+
+  server.tool(
+    "diagnose_codoc",
+    "Run MDX diagnostics on a codoc to check for unknown components, missing imports, and invalid data references. Does not modify the file.",
+    { path: z.string().describe("Workspace-relative path, e.g. 'decision.codoc'") },
+    async ({ path }) => {
+      const codocPath = mkCodocPath(path);
+      const codoc = ws.codocs.get(codocPath);
+
+      if (!codoc) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          isError: true,
+        };
+      }
+
+      const ctx = {
+        customComponentNames: new Set(
+          ws.customComponents
+            .filter((c) => c.kind === "ok")
+            .map((c) => c.component.name),
+        ),
+      };
+      const diagnostics = diagnoseCodoc(codoc.ast, ctx);
+
+      if (diagnostics.length === 0) {
+        return {
+          content: [{ type: "text" as const, text: `No issues found in ${path}` }],
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: formatDiagnostics(path, diagnostics) }],
+        isError: diagnostics.some((d) => d.severity === "error"),
+      };
+    },
+  );
+
   // ---- Tool: update_data_field -----------------------------------------------
 
   server.tool(
@@ -203,17 +234,8 @@ export function createMcpServer(ws: Workspace): McpServer {
         };
       }
 
-      const writeResult = await writeCodoc(ws, codocPath, updated.value);
-      if (!writeResult.ok) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
-          isError: true,
-        };
-      }
-
-      return {
-        content: [{ type: "text" as const, text: `Updated field "${field}" in ${path}` }],
-      };
+      const result = await writeCodoc(ws, codocPath, updated.value);
+      return writeResultToMcp(result, `Updated field "${field}" in ${path}`);
     },
   );
 
@@ -238,18 +260,8 @@ export function createMcpServer(ws: Workspace): McpServer {
       }
 
       const newContent = codoc.content.trimEnd() + "\n\n" + appendContent.trim() + "\n";
-
-      const writeResult = await writeCodoc(ws, codocPath, newContent);
-      if (!writeResult.ok) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
-          isError: true,
-        };
-      }
-
-      return {
-        content: [{ type: "text" as const, text: `Appended content to ${path}` }],
-      };
+      const result = await writeCodoc(ws, codocPath, newContent);
+      return writeResultToMcp(result, `Appended content to ${path}`);
     },
   );
 
@@ -284,18 +296,8 @@ export function createMcpServer(ws: Workspace): McpServer {
       const mdxBody = body?.trim() || `# ${title}`;
 
       const content = `---\n${yamlStr}\n---\n\n${mdxBody}\n`;
-
-      const writeResult = await writeCodoc(ws, codocPath, content);
-      if (!writeResult.ok) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${writeResult.error}` }],
-          isError: true,
-        };
-      }
-
-      return {
-        content: [{ type: "text" as const, text: `Created ${path} with title "${title}"` }],
-      };
+      const result = await writeCodoc(ws, codocPath, content);
+      return writeResultToMcp(result, `Created ${path} with title "${title}"`);
     },
   );
 
@@ -357,6 +359,36 @@ function patchDataField(
 
   const newYaml = stringifyYaml(obj, { lineWidth: 0 }).trim();
   return { ok: true, value: `---\n${newYaml}\n---${rest}` };
+}
+
+/** Convert a WriteResult into an MCP tool response. */
+function writeResultToMcp(
+  result: WriteResult,
+  successHeader: string,
+): { content: Array<{ type: "text"; text: string }>; isError?: boolean } {
+  if (!result.ok) {
+    return {
+      content: [{ type: "text" as const, text: formatDiagnostics("Write blocked", result.diagnostics) }],
+      isError: true,
+    };
+  }
+
+  const warnings = result.diagnostics.filter((d) => d.severity === "warning");
+  const msg = warnings.length > 0
+    ? formatDiagnostics(successHeader, warnings)
+    : successHeader;
+
+  return { content: [{ type: "text" as const, text: msg }] };
+}
+
+/** Format diagnostics into a human-readable (and LLM-readable) string. */
+function formatDiagnostics(header: string, diagnostics: readonly Diagnostic[]): string {
+  const lines = [header];
+  for (const d of diagnostics) {
+    const loc = d.line != null ? `:${d.line}${d.column != null ? `:${d.column}` : ""}` : "";
+    lines.push(`  [${d.severity}]${loc} ${d.message}`);
+  }
+  return lines.join("\n");
 }
 
 /** Start the MCP server on stdio transport. */

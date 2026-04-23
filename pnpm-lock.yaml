@@ -35,6 +35,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.13(hono@4.12.12)
+      '@mdx-js/mdx':
+        specifier: ^3.1.1
+        version: 3.1.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.29.0(zod@3.25.76)
@@ -57,9 +60,6 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.117
         version: 0.2.117(zod@3.25.76)
-      '@mdx-js/mdx':
-        specifier: ^3.1.1
-        version: 3.1.1
       '@tailwindcss/typography':
         specifier: ^0.5.0
         version: 0.5.19(tailwindcss@4.2.2)
@@ -375,7 +375,6 @@ packages:
 
   '@anthropic-ai/claude-agent-sdk-darwin-arm64@0.2.117':
     resolution: {integrity: sha512-ZeC/Lz8XMKQ5w+GmjTziPR8bSSarBtNCJMkMAYRT9ekNmyXSWXEwGLENe5TDDmtpzNNzAB1mQNuIYoqTsqgV3w==}
-    cpu: [arm64]
     os: [darwin]
 
   '@anthropic-ai/claude-agent-sdk-darwin-x64@0.2.117':
