@@ -3,6 +3,7 @@
 // Usage:
 //   codoc start [workspace]  — start server (HTTP + MCP + watch)
 //   codoc init <workspace>   — initialize a new workspace
+//   codoc add <component|--all> [workspace] — add component to workspace
 //   codoc mcp <workspace>    — start MCP server on stdio
 //   codoc compile <workspace> — one-shot compile and exit
 //   codoc dag <workspace>    — print DAG relationships and exit
@@ -21,6 +22,7 @@ import { startWatcher } from "./watcher.js";
 import { startMcpServer } from "./mcp-server.js";
 import { startHttpServer } from "./http-server.js";
 import { initWorkspace } from "./init.js";
+import { addComponent } from "./add.js";
 
 const CODOC_HOME = join(homedir(), ".codoc");
 
@@ -67,6 +69,26 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       await initWorkspace(resolveWorkspaceDir(workspaceName));
+      break;
+    }
+
+    case "add": {
+      const componentArg = args[1];
+      if (!componentArg) {
+        console.error("Usage: codoc add <component|--all|--list> [workspace]");
+        process.exit(1);
+      }
+      if (componentArg === "--list") {
+        await addComponent("--list", "");
+        break;
+      }
+      const wsArg = args[2];
+      if (!wsArg) {
+        console.error("Usage: codoc add <component|--all> <workspace>");
+        process.exit(1);
+      }
+      const targetDir = join(resolveWorkspaceDir(wsArg), "components");
+      await addComponent(componentArg, targetDir);
       break;
     }
 
@@ -121,11 +143,12 @@ async function main(): Promise<void> {
     default: {
       console.log("Usage: codoc <command> [workspace]\n");
       console.log("Commands:");
-      console.log("  start [workspace]   Start server (list workspaces if none given)");
-      console.log("  init <workspace>    Initialize a new workspace");
-      console.log("  mcp <workspace>     Start MCP server on stdio");
-      console.log("  compile <workspace> One-shot compile");
-      console.log("  dag <workspace>     Print DAG relationships");
+      console.log("  start [workspace]          Start server");
+      console.log("  init <workspace>           Initialize a new workspace");
+      console.log("  add <component> <workspace>  Add a component (or --all)");
+      console.log("  mcp <workspace>            Start MCP server on stdio");
+      console.log("  compile <workspace>        One-shot compile");
+      console.log("  dag <workspace>            Print DAG relationships");
       console.log(`\nWorkspaces: ${CODOC_HOME}`);
       break;
     }
