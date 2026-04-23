@@ -9,6 +9,7 @@ import type { Workspace } from "./workspace.js";
 import { writeCodoc, buildAstMap, removeFile, resolveAll } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
+import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 
 // ---------------------------------------------------------------------------
 // Tree types
@@ -248,6 +249,23 @@ export function createApiRoutes(state: { workspace: Workspace | null }): Hono {
       edges,
       codocs,
     });
+  });
+
+  // ---- GET /chats ----------------------------------------------------------
+
+  api.get("/chats", async (c) => {
+    const w = ws(c); if (!w) return c.json([], 200);
+    const metas = await loadChatMetas(w.sourceDir);
+    metas.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+    return c.json(metas);
+  });
+
+  // ---- DELETE /chats/:sessionId ---------------------------------------------
+
+  api.delete("/chats/:sessionId", async (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    const deleted = await deleteChatMeta(w.sourceDir, c.req.param("sessionId"));
+    return c.json({ ok: deleted });
   });
 
   return api;

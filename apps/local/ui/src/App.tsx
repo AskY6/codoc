@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "./api.ts";
-import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo } from "./api.ts";
+import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo, ChatMeta } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
 import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
@@ -126,6 +126,18 @@ function WorkspacePicker({ onOpen }: { onOpen: () => void }) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 function countFiles(nodes: TreeNode[]): number {
   let n = 0;
   for (const node of nodes) {
@@ -150,6 +162,8 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   const [chatOpen, setChatOpen] = useState(false);
   const [chatKey, setChatKey] = useState(0);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("codocs");
+  const [chatMetas, setChatMetas] = useState<ChatMeta[]>([]);
+  const [resumeSession, setResumeSession] = useState<{ sessionId: string; title: string } | undefined>();
   const components = useCustomComponents(0);
 
   // --- Data loading --------------------------------------------------------
@@ -174,13 +188,20 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     } catch { /* not critical */ }
   }, []);
 
+  const loadChats = useCallback(async () => {
+    try {
+      setChatMetas(await api.chats());
+    } catch { /* not critical */ }
+  }, []);
+
   useEffect(() => {
     void loadTree();
     void loadDag();
     void loadCodocs();
-    const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); }, 3000);
+    void loadChats();
+    const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); void loadChats(); }, 3000);
     return () => clearInterval(id);
-  }, [loadTree, loadDag, loadCodocs]);
+  }, [loadTree, loadDag, loadCodocs, loadChats]);
 
   // Load codoc detail when a codoc is focused
   const codocPath = focus.kind === "codoc" ? focus.path : null;
@@ -234,6 +255,13 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   }, [codocPath]);
 
   const handleNewChat = useCallback(() => {
+    setResumeSession(undefined);
+    setChatOpen(true);
+    setChatKey((k) => k + 1);
+  }, []);
+
+  const handleResumeChat = useCallback((meta: ChatMeta) => {
+    setResumeSession({ sessionId: meta.sessionId, title: meta.title });
     setChatOpen(true);
     setChatKey((k) => k + 1);
   }, []);
@@ -368,6 +396,20 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
                 )}
               </div>
             </>
+          ) : chatMetas.length > 0 ? (
+            <div className="px-2 py-2 space-y-0.5">
+              {chatMetas.map((meta) => (
+                <button
+                  key={meta.sessionId}
+                  type="button"
+                  onClick={() => handleResumeChat(meta)}
+                  className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-200/50"
+                >
+                  <span className="text-sm text-neutral-700 truncate">{meta.title}</span>
+                  <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
+                </button>
+              ))}
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-neutral-400">
               <ChatBubbleIcon className="mb-2 h-8 w-8 opacity-20" />
@@ -470,6 +512,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
               codocs={codocList}
               activeCodoc={codocPath}
               onClose={() => setChatOpen(false)}
+              resumeSession={resumeSession}
             />
           </aside>
         )}

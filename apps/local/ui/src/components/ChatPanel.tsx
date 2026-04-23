@@ -66,13 +66,14 @@ export interface ChatPanelProps {
   codocs: CodocListItem[];
   activeCodoc: string | null;
   onClose: () => void;
+  resumeSession?: { sessionId: string; title: string };
 }
 
-export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
+export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | undefined>();
+  const [sessionId, setSessionId] = useState<string | undefined>(resumeSession?.sessionId);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -106,7 +107,8 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
       activeCodoc &&
       activeCodoc !== prevActiveCodoc.current &&
       input === "" &&
-      messages.length === 0
+      messages.length === 0 &&
+      !resumeSession
     ) {
       const prefill = `@${activeCodoc} `;
       setInput(prefill);
@@ -470,8 +472,8 @@ export function ChatPanel({ codocs, activeCodoc, onClose }: ChatPanelProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AgentIcon />
-            <span className="text-sm font-semibold text-neutral-800">
-              Codoc agent
+            <span className="text-sm font-semibold text-neutral-800 truncate max-w-[180px]">
+              {resumeSession ? resumeSession.title : "Codoc agent"}
             </span>
           </div>
           <div className="flex items-center gap-1">

@@ -141,6 +141,14 @@ export interface WorkspaceInfo {
   codocCount?: number;
 }
 
+export interface ChatMeta {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  lastActiveAt: string;
+  mentions: string[];
+}
+
 // ---------------------------------------------------------------------------
 // REST helpers
 // ---------------------------------------------------------------------------
@@ -179,4 +187,13 @@ export const api = {
   components: () => json<CustomComponentEntry[]>("/api/components"),
 
   dag: () => json<DagStatus>("/api/dag"),
+
+  /** List chat metadata sorted by most recent. */
+  chats: () => json<ChatMeta[]>("/api/chats"),
+
+  /** Delete a chat meta entry by session ID. */
+  deleteChat: (sessionId: string) =>
+    json<{ ok: boolean }>(`/api/chats/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    }),
 };

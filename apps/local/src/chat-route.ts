@@ -9,6 +9,7 @@ import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { Workspace } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { createMcpServer } from "./mcp-server.js";
+import { upsertChatMeta } from "./chat-meta.js";
 
 interface ImagePayload {
   dataUrl: string;
@@ -126,6 +127,13 @@ export function createChatRoutes(
           });
 
           for await (const msg of q) {
+            // Persist chat meta on session init (fire-and-forget)
+            if (msg.type === "system" && msg.subtype === "init") {
+              void upsertChatMeta(sourceDir, msg.session_id, {
+                title: prompt.slice(0, 60),
+                mentions,
+              });
+            }
             for (const event of toEvents(msg)) {
               send(event);
             }
