@@ -208,21 +208,27 @@ async function readKiroSessionMessages(
       continue;
     }
 
-    const type = entry.type as string | undefined;
+    const kind = entry.kind as string | undefined;
+    const data = entry.data as Record<string, unknown> | undefined;
+    if (!data) continue;
 
-    if (type === "AssistantMessage") {
-      const content = entry.content as string | undefined;
-      const toolUses = entry.toolUse as Array<{ name: string }> | undefined;
+    const contentBlocks = data.content as Array<{ kind: string; data: string }> | undefined;
+    const text = contentBlocks
+      ?.filter((b) => b.kind === "text" && b.data)
+      .map((b) => b.data)
+      .join("\n") ?? "";
+
+    if (kind === "AssistantMessage") {
+      const toolUses = data.toolUse as Array<{ name: string }> | undefined;
       const toolCalls = toolUses?.map((t) => ({ name: t.name, status: "done" as const }));
-      if (content) {
-        const msg: SessionMessage = { role: "assistant", text: content };
+      if (text) {
+        const msg: SessionMessage = { role: "assistant", text };
         if (toolCalls && toolCalls.length > 0) msg.toolCalls = toolCalls;
         messages.push(msg);
       }
-    } else if (type === "UserMessage" || type === "HumanMessage") {
-      const content = entry.content as string | undefined;
-      if (content) {
-        messages.push({ role: "user", text: content });
+    } else if (kind === "Prompt" || kind === "UserMessage" || kind === "HumanMessage") {
+      if (text) {
+        messages.push({ role: "user", text });
       }
     }
   }

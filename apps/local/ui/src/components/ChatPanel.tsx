@@ -546,7 +546,7 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
             <HistoryIcon className="mb-3 opacity-20" />
             <p className="text-sm font-medium">Continuing conversation</p>
             <p className="mt-1 text-xs opacity-60 text-center px-4">
-              Previous messages are stored in Claude Code.
+              Previous messages are stored in {providerName ?? provider}.
               <br />
               Send a message to continue where you left off.
             </p>
