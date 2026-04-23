@@ -138,8 +138,8 @@ function claudeProjectDir(cwd: string): string {
 }
 
 async function readClaudeSessionMessages(
-  cwd: string,
   sessionId: string,
+  cwd: string,
 ): Promise<SessionMessage[]> {
   const sessionFile = join(claudeProjectDir(cwd), `${sessionId}.jsonl`);
   let raw: string;
