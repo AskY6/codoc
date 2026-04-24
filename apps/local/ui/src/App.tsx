@@ -189,7 +189,11 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
 
   const loadDag = useCallback(async () => {
     try {
-      setDagData(await api.dag());
+      const next = await api.dag();
+      setDagData((prev) => {
+        if (prev && JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        return next;
+      });
     } catch { /* not critical */ }
   }, []);
 
