@@ -7,6 +7,7 @@ import { GraphPanel } from "./components/GraphPanel.tsx";
 import { ComponentPanel } from "./components/ComponentPanel.tsx";
 import { ChatPanel } from "./components/ChatPanel.tsx";
 import { useCustomComponents } from "./custom-components.ts";
+import { ConfirmDialog } from "./components/ConfirmDialog.tsx";
 
 // ---------------------------------------------------------------------------
 // Focus — what the center panel shows (chat is separate, always right)
@@ -169,6 +170,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     localStorage.getItem("codoc:lastProvider") ?? "claude-code",
   );
   const [showProviderPicker, setShowProviderPicker] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: "codoc"; path: string } | { kind: "chat"; sessionId: string; title: string } | null>(null);
   const components = useCustomComponents(0);
 
   // --- Data loading --------------------------------------------------------
@@ -258,6 +260,35 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   const selectCodoc = useCallback((path: string) => {
     setFocus({ kind: "codoc", path });
   }, []);
+
+  const requestDeleteCodoc = useCallback((path: string) => {
+    setPendingDelete({ kind: "codoc", path });
+  }, []);
+
+  const requestDeleteChat = useCallback((sessionId: string, title: string) => {
+    setPendingDelete({ kind: "chat", sessionId, title });
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    setPendingDelete(null);
+    try {
+      if (pendingDelete.kind === "codoc") {
+        await api.deleteCodoc(pendingDelete.path);
+        if (focus.kind === "codoc" && focus.path === pendingDelete.path) {
+          setFocus({ kind: "none" });
+        }
+        await loadTree();
+        await loadCodocs();
+        await loadDag();
+      } else {
+        await api.deleteChat(pendingDelete.sessionId);
+        await loadChats();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }, [pendingDelete, focus, loadTree, loadCodocs, loadDag, loadChats]);
 
   const handleNewCodoc = useCallback(async () => {
     const name = window.prompt("Enter new codoc name (e.g. notes/my-doc.codoc)");
@@ -419,6 +450,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
                     tree={tree}
                     selectedPath={codocPath}
                     onSelect={selectCodoc}
+                    onDelete={requestDeleteCodoc}
                     searchTerm={searchTerm}
                   />
                 ) : (
@@ -459,22 +491,37 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
               {chatMetas.length > 0 ? (
                 <div className="px-2 space-y-0.5">
                   {chatMetas.map((meta) => (
-                    <button
+                    <div
                       key={meta.sessionId}
-                      type="button"
-                      onClick={() => handleResumeChat(meta)}
-                      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-200/50"
+                      className="group flex w-full items-center rounded-lg px-3 py-2 transition-colors hover:bg-neutral-200/50"
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm text-neutral-700 truncate flex-1">{meta.title}</span>
-                        {meta.provider && meta.provider !== "claude-code" && (
-                          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-400">
-                            {providers.find((p) => p.id === meta.provider)?.name ?? meta.provider}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResumeChat(meta)}
+                        className="flex flex-1 flex-col gap-0.5 text-left min-w-0"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-neutral-700 truncate flex-1">{meta.title}</span>
+                          {meta.provider && meta.provider !== "claude-code" && (
+                            <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-400">
+                              {providers.find((p) => p.id === meta.provider)?.name ?? meta.provider}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="ml-1 shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-100 hover:text-red-500"
+                        title="Delete chat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          requestDeleteChat(meta.sessionId, meta.title);
+                        }}
+                      >
+                        <XIcon />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -587,6 +634,21 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
             />
           </aside>
         )}
+
+        {/* Delete confirmation dialog */}
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          title={pendingDelete?.kind === "codoc" ? "Delete codoc" : "Delete chat"}
+          description={
+            pendingDelete?.kind === "codoc"
+              ? `"${pendingDelete.path}" will be permanently deleted. This cannot be undone.`
+              : pendingDelete?.kind === "chat"
+                ? `"${pendingDelete.title}" will be permanently deleted. This cannot be undone.`
+                : ""
+          }
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setPendingDelete(null)}
+        />
 
         {/* Provider picker overlay */}
         {showProviderPicker && (

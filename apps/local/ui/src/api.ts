@@ -41,6 +41,20 @@ export type CustomComponentEntry =
   | { kind: "ok"; name: string; code: string }
   | { kind: "error"; name: string; error: string };
 
+export interface EnhancementSuggestion {
+  name: string;
+  template: string;
+  isBuiltin: boolean;
+}
+
+export interface Enhancement {
+  field: string;
+  valueType: string;
+  currentUsage: "not-referenced" | "raw-expression" | "already-enhanced";
+  suggestions: EnhancementSuggestion[];
+  reason: string;
+}
+
 export interface DagNode {
   id: string;
   codocPath: string;
@@ -204,6 +218,9 @@ export const api = {
   components: () => json<CustomComponentEntry[]>("/api/components"),
 
   dag: () => json<DagStatus>("/api/dag"),
+
+  enhancements: (path: string) =>
+    json<Enhancement[]>(`/api/codoc/${encodeURI(path)}/enhancements`),
 
   /** List chat metadata sorted by most recent. */
   chats: () => json<ChatMeta[]>("/api/chats"),

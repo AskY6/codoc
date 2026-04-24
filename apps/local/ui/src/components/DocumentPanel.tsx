@@ -184,7 +184,15 @@ export function DocumentPanel({ codoc, workspaceName, componentMap, onSave, onCh
 
         {mode === "data" && (
           <div className="h-full overflow-auto p-6">
-            <DataPanel data={codoc.data} />
+            <DataPanel
+              data={codoc.data}
+              codocPath={codoc.path}
+              content={editValue}
+              onApply={(newContent) => {
+                setEditValue(newContent);
+                void onSave(newContent);
+              }}
+            />
           </div>
         )}
       </div>

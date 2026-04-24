@@ -83,7 +83,7 @@ export async function startHttpServer(
 
   // If initial workspace provided, set up MCP and watcher.
   if (state.workspace) {
-    await setupMcp(state);
+    await setupMcp(state, registry);
     state.watcher = startWatcher(state.workspace);
   }
 
@@ -141,7 +141,7 @@ export async function startHttpServer(
     state.workspaceName = name;
 
     // Set up MCP and watcher.
-    await setupMcp(state);
+    await setupMcp(state, registry);
     state.watcher = startWatcher(ws);
 
     console.log(`[codoc] opened workspace: ${name} (${ws.codocs.size} codocs)`);
@@ -249,9 +249,9 @@ async function listWorkspaceNames(): Promise<string[]> {
   }
 }
 
-async function setupMcp(state: AppState): Promise<void> {
+async function setupMcp(state: AppState, registry?: ProviderRegistry): Promise<void> {
   if (!state.workspace) return;
-  const mcpServer = createMcpServer(state.workspace);
+  const mcpServer = createMcpServer(state.workspace, registry);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
   });

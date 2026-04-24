@@ -13,8 +13,16 @@ import { buildDAG, checkCycles } from "@cobook/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { diagnoseCodoc } from "./diagnose.js";
 import type { Diagnostic } from "./diagnose.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
+import type { ComponentMeta } from "./recognize.js";
+import { writeFile, mkdir, unlink } from "node:fs/promises";
+import { join, basename } from "node:path";
+import * as esbuild from "esbuild";
+import { loadComponents, removeFile, resolveAll } from "./workspace.js";
+import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
+import type { ProviderRegistry } from "./providers/registry.js";
 
-export function createMcpServer(ws: Workspace): McpServer {
+export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): McpServer {
   const server = new McpServer({
     name: "codoc-local",
     version: "0.0.1",
@@ -86,7 +94,7 @@ export function createMcpServer(ws: Workspace): McpServer {
     async ({ path, content }) => {
       const codocPath = mkCodocPath(path);
       const result = await writeCodoc(ws, codocPath, content);
-      return writeResultToMcp(result, `Written and compiled: ${path}`);
+      return writeResultToMcp(result, `Written and compiled: ${path}`, ws, codocPath);
     },
   );
 
@@ -235,7 +243,7 @@ export function createMcpServer(ws: Workspace): McpServer {
       }
 
       const result = await writeCodoc(ws, codocPath, updated.value);
-      return writeResultToMcp(result, `Updated field "${field}" in ${path}`);
+      return writeResultToMcp(result, `Updated field "${field}" in ${path}`, ws, codocPath);
     },
   );
 
@@ -261,7 +269,7 @@ export function createMcpServer(ws: Workspace): McpServer {
 
       const newContent = codoc.content.trimEnd() + "\n\n" + appendContent.trim() + "\n";
       const result = await writeCodoc(ws, codocPath, newContent);
-      return writeResultToMcp(result, `Appended content to ${path}`);
+      return writeResultToMcp(result, `Appended content to ${path}`, ws, codocPath);
     },
   );
 
@@ -297,7 +305,238 @@ export function createMcpServer(ws: Workspace): McpServer {
 
       const content = `---\n${yamlStr}\n---\n\n${mdxBody}\n`;
       const result = await writeCodoc(ws, codocPath, content);
-      return writeResultToMcp(result, `Created ${path} with title "${title}"`);
+      return writeResultToMcp(result, `Created ${path} with title "${title}"`, ws, codocPath);
+    },
+  );
+
+  // ---- Tool: suggest_enhancements -------------------------------------------
+
+  server.tool(
+    "suggest_enhancements",
+    "Analyze a codoc and suggest component enhancements for its data fields. Returns structured suggestions for fields that could benefit from richer visualization.",
+    { path: z.string().describe("Workspace-relative path, e.g. 'decision.codoc'") },
+    async ({ path }) => {
+      const codocPath = mkCodocPath(path);
+      const codoc = ws.codocs.get(codocPath);
+
+      if (!codoc) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          isError: true,
+        };
+      }
+
+      // Merge builtin + custom component metadata
+      const customMeta: ComponentMeta[] = ws.customComponents
+        .filter((c) => c.kind === "ok")
+        .map((c) => ({
+          name: c.component.name,
+          description: "Custom component",
+          props: [],
+          template: `<${c.component.name} data={data.FIELD} />`,
+          dataTypeHints: [],
+        }));
+      const allMeta = [...BUILTIN_COMPONENT_META, ...customMeta];
+
+      const enhancements = recognizeEnhancements(codoc.ast, codoc.resolvedData, allMeta);
+
+      if (enhancements.length === 0) {
+        return {
+          content: [{ type: "text" as const, text: `No enhancement opportunities found in ${path}. All fields are either already using components or have no matching component.` }],
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(enhancements, null, 2) }],
+      };
+    },
+  );
+
+  // ---- Tool: list_components ------------------------------------------------
+
+  server.tool(
+    "list_components",
+    "List all available components (built-in and custom) with their metadata, props, and usage templates.",
+    {},
+    async () => {
+      const customMeta: ComponentMeta[] = ws.customComponents
+        .filter((c) => c.kind === "ok")
+        .map((c) => ({
+          name: c.component.name,
+          description: "Custom component",
+          props: [],
+          template: `<${c.component.name} />`,
+          dataTypeHints: [],
+        }));
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            builtin: BUILTIN_COMPONENT_META,
+            custom: customMeta,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ---- Tool: write_component ------------------------------------------------
+
+  server.tool(
+    "write_component",
+    "Create or update a custom React component (.tsx) in the workspace. The code is validated via esbuild compilation before writing. The component becomes available for use in codoc MDX bodies immediately.",
+    {
+      name: z.string().describe("PascalCase component name, e.g. 'RadarChart'"),
+      code: z.string().describe("Full .tsx source code for the component. Must export a default or named React component."),
+    },
+    async ({ name, code }) => {
+      // Validate PascalCase name
+      if (!/^[A-Z][A-Za-z0-9]*$/.test(name)) {
+        return {
+          content: [{ type: "text" as const, text: `Error: component name must be PascalCase (e.g. "RadarChart"), got "${name}"` }],
+          isError: true,
+        };
+      }
+
+      // Compile to validate before writing
+      try {
+        await esbuild.build({
+          stdin: { contents: code, loader: "tsx", resolveDir: join(ws.sourceDir, "components") },
+          bundle: true,
+          write: false,
+          format: "cjs",
+          platform: "neutral",
+          jsx: "automatic",
+          jsxImportSource: "react",
+          external: ["react", "react/jsx-runtime", "react/jsx-dev-runtime"],
+          logLevel: "silent",
+        });
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Compilation error:\n${e instanceof Error ? e.message : String(e)}` }],
+          isError: true,
+        };
+      }
+
+      // Write the file
+      const componentsDir = join(ws.sourceDir, "components");
+      await mkdir(componentsDir, { recursive: true });
+      const filePath = join(componentsDir, `${name}.tsx`);
+      await writeFile(filePath, code, "utf-8");
+
+      // Reload components
+      await loadComponents(ws);
+
+      return {
+        content: [{ type: "text" as const, text: `Component "${name}" written to components/${name}.tsx and compiled successfully.` }],
+      };
+    },
+  );
+
+  // ---- Tool: delete_codoc ---------------------------------------------------
+
+  server.tool(
+    "delete_codoc",
+    "Delete a codoc from the workspace. Removes the source file and compiled output.",
+    { path: z.string().describe("Workspace-relative path, e.g. 'notes/old.codoc'") },
+    async ({ path }) => {
+      const codocPath = mkCodocPath(path);
+
+      if (!ws.codocs.has(codocPath)) {
+        return {
+          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          isError: true,
+        };
+      }
+
+      const absolutePath = join(ws.sourceDir, codocPath);
+      await unlink(absolutePath);
+      await removeFile(ws, absolutePath);
+      await resolveAll(ws);
+
+      return {
+        content: [{ type: "text" as const, text: `Deleted ${path}` }],
+      };
+    },
+  );
+
+  // ---- Tool: list_chats -----------------------------------------------------
+
+  server.tool(
+    "list_chats",
+    "List all chat sessions with metadata (title, provider, timestamps).",
+    {},
+    async () => {
+      const metas = await loadChatMetas(ws.sourceDir);
+      metas.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+
+      if (metas.length === 0) {
+        return { content: [{ type: "text" as const, text: "No chat sessions found." }] };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(metas, null, 2) }],
+      };
+    },
+  );
+
+  // ---- Tool: read_chat ------------------------------------------------------
+
+  if (registry) {
+    server.tool(
+      "read_chat",
+      "Read the message history of a chat session.",
+      { sessionId: z.string().describe("Session ID from list_chats") },
+      async ({ sessionId }) => {
+        const metas = await loadChatMetas(ws.sourceDir);
+        const meta = metas.find((m) => m.sessionId === sessionId);
+
+        if (!meta) {
+          return {
+            content: [{ type: "text" as const, text: `Error: chat session "${sessionId}" not found` }],
+            isError: true,
+          };
+        }
+
+        const providerId = meta.provider ?? "claude-code";
+        const provider = registry.get(providerId);
+
+        if (!provider) {
+          return {
+            content: [{ type: "text" as const, text: `Error: provider "${providerId}" not available` }],
+            isError: true,
+          };
+        }
+
+        const messages = await provider.readHistory(sessionId, ws.sourceDir);
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ title: meta.title, provider: providerId, messages }, null, 2),
+          }],
+        };
+      },
+    );
+  }
+
+  // ---- Tool: delete_chat ----------------------------------------------------
+
+  server.tool(
+    "delete_chat",
+    "Delete a chat session by its session ID.",
+    { sessionId: z.string().describe("Session ID from list_chats") },
+    async ({ sessionId }) => {
+      const deleted = await deleteChatMeta(ws.sourceDir, sessionId);
+      if (!deleted) {
+        return {
+          content: [{ type: "text" as const, text: `Error: chat session "${sessionId}" not found` }],
+          isError: true,
+        };
+      }
+      return {
+        content: [{ type: "text" as const, text: `Deleted chat session ${sessionId}` }],
+      };
     },
   );
 
@@ -361,10 +600,13 @@ function patchDataField(
   return { ok: true, value: `---\n${newYaml}\n---${rest}` };
 }
 
-/** Convert a WriteResult into an MCP tool response. */
+/** Convert a WriteResult into an MCP tool response.
+ *  When a workspace and codocPath are provided, appends enhancement suggestions. */
 function writeResultToMcp(
   result: WriteResult,
   successHeader: string,
+  ws?: Workspace,
+  codocPath?: ReturnType<typeof mkCodocPath>,
 ): { content: Array<{ type: "text"; text: string }>; isError?: boolean } {
   if (!result.ok) {
     return {
@@ -377,6 +619,36 @@ function writeResultToMcp(
   const msg = warnings.length > 0
     ? formatDiagnostics(successHeader, warnings)
     : successHeader;
+
+  // Append enhancement suggestions if available
+  if (ws && codocPath) {
+    const codoc = ws.codocs.get(codocPath);
+    if (codoc) {
+      const customMeta: ComponentMeta[] = ws.customComponents
+        .filter((c) => c.kind === "ok")
+        .map((c) => ({
+          name: c.component.name,
+          description: "Custom component",
+          props: [],
+          template: `<${c.component.name} data={data.FIELD} />`,
+          dataTypeHints: [],
+        }));
+      const enhancements = recognizeEnhancements(codoc.ast, codoc.resolvedData, [...BUILTIN_COMPONENT_META, ...customMeta]);
+      if (enhancements.length > 0) {
+        const hints = enhancements.map((e) => {
+          const names = e.suggestions.map((s) => s.name).join(", ");
+          const usage = e.currentUsage === "raw-expression" ? "raw expression" : "not used in view";
+          return `  - ${e.field} (${e.valueType}, ${usage}): try ${names}`;
+        });
+        return {
+          content: [{
+            type: "text" as const,
+            text: msg + "\n\nEnhancement opportunities:\n" + hints.join("\n"),
+          }],
+        };
+      }
+    }
+  }
 
   return { content: [{ type: "text" as const, text: msg }] };
 }
@@ -392,8 +664,8 @@ function formatDiagnostics(header: string, diagnostics: readonly Diagnostic[]): 
 }
 
 /** Start the MCP server on stdio transport. */
-export async function startMcpServer(ws: Workspace): Promise<void> {
-  const server = createMcpServer(ws);
+export async function startMcpServer(ws: Workspace, registry?: ProviderRegistry): Promise<void> {
+  const server = createMcpServer(ws, registry);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

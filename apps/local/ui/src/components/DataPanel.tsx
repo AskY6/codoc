@@ -1,12 +1,25 @@
-import type { DataFieldInfo } from "../api.ts";
-import { recommendFor } from "./builtin/index.ts";
+import { useState, useEffect } from "react";
+import type { DataFieldInfo, Enhancement } from "../api.ts";
+import { api } from "../api.ts";
 
 interface DataPanelProps {
   data: Record<string, DataFieldInfo>;
+  codocPath: string;
+  content: string;
+  onApply: (newContent: string) => void;
 }
 
-export function DataPanel({ data }: DataPanelProps) {
+export function DataPanel({ data, codocPath, content, onApply }: DataPanelProps) {
   const entries = Object.entries(data);
+  const [enhancements, setEnhancements] = useState<Enhancement[]>([]);
+
+  useEffect(() => {
+    let stale = false;
+    api.enhancements(codocPath).then((result) => {
+      if (!stale) setEnhancements(result);
+    }).catch(() => {});
+    return () => { stale = true; };
+  }, [codocPath, content]);
 
   if (entries.length === 0) {
     return (
@@ -17,6 +30,20 @@ export function DataPanel({ data }: DataPanelProps) {
       </div>
     );
   }
+
+  const enhancementMap = new Map(enhancements.map((e) => [e.field, e]));
+
+  const handleApply = (fieldName: string, template: string) => {
+    const enhancement = enhancementMap.get(fieldName);
+    if (!enhancement) return;
+
+    const newContent =
+      enhancement.currentUsage === "raw-expression"
+        ? replaceRawExpression(content, fieldName, template)
+        : appendToBody(content, template);
+
+    onApply(newContent);
+  };
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -33,7 +60,7 @@ export function DataPanel({ data }: DataPanelProps) {
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Resolved Value</th>
-              <th className="px-4 py-3">Recommended</th>
+              <th className="px-4 py-3">Enhance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
@@ -54,7 +81,10 @@ export function DataPanel({ data }: DataPanelProps) {
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  <Recommendations resolved={field.resolved} />
+                  <EnhanceSuggestions
+                    enhancement={enhancementMap.get(name)}
+                    onApply={(template) => handleApply(name, template)}
+                  />
                 </td>
               </tr>
             ))}
@@ -64,6 +94,68 @@ export function DataPanel({ data }: DataPanelProps) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Enhancement suggestions
+// ---------------------------------------------------------------------------
+
+function EnhanceSuggestions({
+  enhancement,
+  onApply,
+}: {
+  enhancement: Enhancement | undefined;
+  onApply: (template: string) => void;
+}) {
+  // No enhancement data → field already uses a component or no match
+  if (!enhancement) {
+    return (
+      <span className="flex items-center gap-1 text-[10px] text-green-500">
+        <CheckIcon />
+        in use
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {enhancement.suggestions.map((s) => (
+        <button
+          key={s.name}
+          type="button"
+          onClick={() => onApply(s.template)}
+          className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600 ring-1 ring-blue-100 transition-all hover:bg-blue-100 hover:ring-blue-300 cursor-pointer"
+          title={`Apply: ${s.template}`}
+        >
+          {s.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Apply helpers
+// ---------------------------------------------------------------------------
+
+/** Replace `{data.fieldName}` (and surrounding text line) with the template. */
+function replaceRawExpression(content: string, fieldName: string, template: string): string {
+  // Replace the raw expression `{data.fieldName}` with the component template
+  const pattern = new RegExp(`\\{data\\.${escapeRegExp(fieldName)}\\}`, "g");
+  return content.replace(pattern, template);
+}
+
+/** Append template to the end of the MDX body. */
+function appendToBody(content: string, template: string): string {
+  return content.trimEnd() + "\n\n" + template + "\n";
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components (unchanged)
+// ---------------------------------------------------------------------------
 
 function KindBadge({ kind }: { kind: string }) {
   const colors: Record<string, string> = {
@@ -116,28 +208,18 @@ function ResolvedValue({ resolved }: { resolved: DataFieldInfo["resolved"] }) {
   return <span className="text-neutral-800">{String(val)}</span>;
 }
 
-function Recommendations({ resolved }: { resolved: DataFieldInfo["resolved"] }) {
-  if (!resolved || resolved.kind !== "ready") return null;
-  const names = recommendFor(resolved.value);
-  if (names.length === 0) return <span className="text-neutral-300">—</span>;
-  return (
-    <div className="flex flex-wrap gap-1">
-      {names.map((name) => (
-        <span
-          key={name}
-          className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600 ring-1 ring-blue-100"
-        >
-          {name}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function DatabaseIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

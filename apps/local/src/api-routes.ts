@@ -11,6 +11,8 @@ import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 import type { ProviderRegistry } from "./providers/registry.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
+import type { ComponentMeta } from "./recognize.js";
 
 // ---------------------------------------------------------------------------
 // Tree types
@@ -111,6 +113,36 @@ export function createApiRoutes(
       hasView: codoc.ast.view.kind === "mdx",
     }));
     return c.json(items);
+  });
+
+  // ---- GET /codoc/:path+/enhancements --------------------------------------
+  // Must be registered BEFORE the catch-all GET /codoc/* to avoid shadowing.
+
+  api.get("/codoc/*/enhancements", (c) => {
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+    // Strip trailing /enhancements to get the codoc path
+    const fullPath = codocPathFromUrl(c.req.url);
+    const path = fullPath.replace(/\/enhancements$/, "");
+    const codocPath = mkCodocPath(path);
+    const codoc = w.codocs.get(codocPath);
+
+    if (!codoc) {
+      return c.json({ error: `codoc not found: "${path}"` }, 404);
+    }
+
+    const customMeta: ComponentMeta[] = w.customComponents
+      .filter((e) => e.kind === "ok")
+      .map((e) => ({
+        name: e.component.name,
+        description: "Custom component",
+        props: [],
+        template: `<${e.component.name} data={data.FIELD} />`,
+        dataTypeHints: [],
+      }));
+    const allMeta = [...BUILTIN_COMPONENT_META, ...customMeta];
+
+    const enhancements = recognizeEnhancements(codoc.ast, codoc.resolvedData, allMeta);
+    return c.json(enhancements);
   });
 
   // ---- GET /codoc/:path+ --------------------------------------------------
