@@ -165,7 +165,9 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   const [chatMetas, setChatMetas] = useState<ChatMeta[]>([]);
   const [resumeSession, setResumeSession] = useState<{ sessionId: string; title: string; provider?: string } | undefined>();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [chatProvider, setChatProvider] = useState<string>("claude-code");
+  const [chatProvider, setChatProvider] = useState<string>(() =>
+    localStorage.getItem("codoc:lastProvider") ?? "claude-code",
+  );
   const [showProviderPicker, setShowProviderPicker] = useState(false);
   const components = useCustomComponents(0);
 
@@ -272,29 +274,31 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     await api.writeCodoc(codocPath, content);
   }, [codocPath]);
 
-  const handleNewChat = useCallback(() => {
-    const available = providers.filter((p) => p.available);
-    if (available.length > 1) {
-      // Multiple providers — show picker
-      setShowProviderPicker(true);
-    } else {
-      // Single or no provider — start immediately
-      setResumeSession(undefined);
-      setChatOpen(true);
-      setChatKey((k) => k + 1);
-    }
-  }, [providers]);
-
-  const handlePickProvider = useCallback((id: string) => {
-    setChatProvider(id);
-    setShowProviderPicker(false);
+  const startChat = useCallback((providerId: string) => {
+    setChatProvider(providerId);
+    localStorage.setItem("codoc:lastProvider", providerId);
     setResumeSession(undefined);
     setChatOpen(true);
     setChatKey((k) => k + 1);
   }, []);
 
+  const handleNewChat = useCallback(() => {
+    // Use remembered default provider directly — no picker
+    const available = providers.filter((p) => p.available);
+    if (available.length === 0) return;
+    const defaultAvailable = available.find((p) => p.id === chatProvider);
+    startChat(defaultAvailable ? chatProvider : available[0]!.id);
+  }, [providers, chatProvider, startChat]);
+
+  const handlePickProvider = useCallback((id: string) => {
+    setShowProviderPicker(false);
+    startChat(id);
+  }, [startChat]);
+
   const handleResumeChat = useCallback((meta: ChatMeta) => {
-    setChatProvider(meta.provider ?? "claude-code");
+    const pid = meta.provider ?? "claude-code";
+    setChatProvider(pid);
+    localStorage.setItem("codoc:lastProvider", pid);
     setResumeSession({ sessionId: meta.sessionId, title: meta.title, provider: meta.provider });
     setChatOpen(true);
     setChatKey((k) => k + 1);
@@ -345,17 +349,8 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
           </button>
         </div>
 
-        {/* New chat + Search */}
-        <div className="space-y-1 px-3 py-2">
-          <button
-            type="button"
-            onClick={handleNewChat}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-neutral-600 transition-colors hover:bg-neutral-200/50"
-          >
-            <PlusIcon size={16} />
-            <span className="font-medium">New chat</span>
-          </button>
-
+        {/* Search */}
+        <div className="px-3 py-2">
           <div className="relative">
             <SearchIcon className="absolute left-2.5 top-2 text-neutral-400" />
             <input
@@ -430,33 +425,62 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
                 )}
               </div>
             </>
-          ) : chatMetas.length > 0 ? (
-            <div className="px-2 py-2 space-y-0.5">
-              {chatMetas.map((meta) => (
-                <button
-                  key={meta.sessionId}
-                  type="button"
-                  onClick={() => handleResumeChat(meta)}
-                  className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-200/50"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-neutral-700 truncate flex-1">{meta.title}</span>
-                    {meta.provider && meta.provider !== "claude-code" && (
-                      <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-400">
-                        {providers.find((p) => p.id === meta.provider)?.name ?? meta.provider}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
-                </button>
-              ))}
-            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-neutral-400">
-              <ChatBubbleIcon className="mb-2 h-8 w-8 opacity-20" />
-              <p className="text-xs font-medium">No saved chats yet</p>
-              <p className="mt-1 text-[10px] opacity-60">Start a conversation to see it here.</p>
-            </div>
+            <>
+              {/* New chat button + provider selector */}
+              <div className="px-3 py-2 space-y-1.5">
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="flex w-full items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
+                >
+                  <PlusIcon size={14} />
+                  <span className="flex-1 text-left">New chat</span>
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                    {providers.find((p) => p.id === chatProvider)?.name ?? chatProvider}
+                  </span>
+                </button>
+                {providers.filter((p) => p.available).length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowProviderPicker(true)}
+                    className="w-full rounded-md px-3 py-1 text-[10px] text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                  >
+                    Switch provider
+                  </button>
+                )}
+              </div>
+
+              {/* Chat history */}
+              {chatMetas.length > 0 ? (
+                <div className="px-2 space-y-0.5">
+                  {chatMetas.map((meta) => (
+                    <button
+                      key={meta.sessionId}
+                      type="button"
+                      onClick={() => handleResumeChat(meta)}
+                      className="flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-neutral-200/50"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm text-neutral-700 truncate flex-1">{meta.title}</span>
+                        {meta.provider && meta.provider !== "claude-code" && (
+                          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-medium text-neutral-400">
+                            {providers.find((p) => p.id === meta.provider)?.name ?? meta.provider}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-neutral-400">{formatRelativeTime(meta.lastActiveAt)}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 text-neutral-400">
+                  <ChatBubbleIcon className="mb-2 h-8 w-8 opacity-20" />
+                  <p className="text-xs font-medium">No saved chats yet</p>
+                  <p className="mt-1 text-[10px] opacity-60">Start a conversation to see it here.</p>
+                </div>
+              )}
+            </>
           )}
         </nav>
 
