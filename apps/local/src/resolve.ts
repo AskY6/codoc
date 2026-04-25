@@ -5,7 +5,16 @@
 import type { CodocAST, CodocPath, DAG, NodeId, ResolveResult } from "@cobook/core";
 import { buildDAG, checkCycles, evaluate } from "@cobook/core";
 import type { SourceRegistry } from "@cobook/parser";
-import type { SourceStateMap } from "./source-state.js";
+import type { SourceStateEntry, SourceStateMap } from "./source-state.js";
+
+/**
+ * Resolve output — data results plus any source state entries that need
+ * persisting (from lazy TTL revalidations).
+ */
+export interface ResolveOutput {
+  readonly data: Record<string, ResolveResult> | null;
+  readonly stateUpdates: Record<string, SourceStateEntry>;
+}
 
 /**
  * Resolve every data field in a single codoc against the workspace's
@@ -16,8 +25,8 @@ export async function resolveDataFields(
   lookup: ReadonlyMap<CodocPath, CodocAST>,
   sourceProviders: SourceRegistry,
   sourceState?: SourceStateMap,
-): Promise<Record<string, ResolveResult> | null> {
-  if (codoc.ast.data.size === 0) return null;
+): Promise<ResolveOutput> {
+  if (codoc.ast.data.size === 0) return { data: null, stateUpdates: {} };
 
   const dagResult = buildDAG(lookup);
   if (!dagResult.ok) {
@@ -25,10 +34,10 @@ export async function resolveDataFields(
   }
 
   const dag = dagResult.value;
-  const sourceValues = await executeSourceProviders(dag, sourceProviders, sourceState);
+  const { values: sourceValues, stateUpdates } = await executeSourceProviders(dag, sourceProviders, sourceState);
   const allResults = evaluate(dag, sourceValues);
 
-  return projectForCodoc(codoc.path, codoc.ast, allResults);
+  return { data: projectForCodoc(codoc.path, codoc.ast, allResults), stateUpdates };
 }
 
 /**
@@ -67,13 +76,26 @@ export function toAstMap(
 
 const PROVIDER_ERROR = Symbol("PROVIDER_ERROR");
 
+interface SourceProviderResult {
+  values: ReadonlyMap<NodeId, unknown>;
+  stateUpdates: Record<string, SourceStateEntry>;
+}
+
+function isTtlValid(nodeId: string, ttl: number, state?: SourceStateMap): boolean {
+  const entry = state?.[nodeId];
+  if (!entry?.lastFetchedAt || entry.cachedValue === undefined) return false;
+  const elapsed = Date.now() - new Date(entry.lastFetchedAt).getTime();
+  return elapsed < ttl * 60 * 1000;
+}
+
 async function executeSourceProviders(
   dag: DAG,
   registry: SourceRegistry,
   sourceState?: SourceStateMap,
-): Promise<ReadonlyMap<NodeId, unknown>> {
+): Promise<SourceProviderResult> {
   const results = new Map<NodeId, unknown>();
-  const pending: Array<{ nodeId: NodeId; promise: Promise<unknown> }> = [];
+  const stateUpdates: Record<string, SourceStateEntry> = {};
+  const pending: Array<{ nodeId: NodeId; isLazy: boolean; promise: Promise<unknown> }> = [];
 
   for (const [nodeId, node] of dag.nodes) {
     if (node.field.kind !== "source") continue;
@@ -85,11 +107,18 @@ async function executeSourceProviders(
       continue;
     }
 
+    // Lazy sources: use cached value if TTL hasn't expired.
+    if (node.field.fetch.kind === "lazy" && isTtlValid(nodeId, node.field.fetch.ttl, sourceState)) {
+      results.set(nodeId, sourceState![nodeId]!.cachedValue);
+      continue;
+    }
+
     const provider = registry.get(node.field.source);
     if (!provider) continue;
 
     pending.push({
       nodeId,
+      isLazy: node.field.fetch.kind === "lazy",
       promise: provider.execute(node.field.params).catch(() => PROVIDER_ERROR),
     });
   }
@@ -99,10 +128,17 @@ async function executeSourceProviders(
     const value = settled[i];
     if (value !== PROVIDER_ERROR) {
       results.set(pending[i]!.nodeId, value);
+      // Lazy sources: record state update for persistence.
+      if (pending[i]!.isLazy) {
+        stateUpdates[pending[i]!.nodeId] = {
+          lastFetchedAt: new Date().toISOString(),
+          cachedValue: value,
+        };
+      }
     }
   }
 
-  return results;
+  return { values: results, stateUpdates };
 }
 
 function projectForCodoc(
@@ -137,8 +173,9 @@ async function resolveWithoutDAG(
   codoc: { readonly path: CodocPath; readonly ast: CodocAST },
   sourceProviders: SourceRegistry,
   sourceState?: SourceStateMap,
-): Promise<Record<string, ResolveResult> | null> {
+): Promise<ResolveOutput> {
   const out: Record<string, ResolveResult> = {};
+  const stateUpdates: Record<string, SourceStateEntry> = {};
   let hasAny = false;
 
   for (const [fieldName, field] of codoc.ast.data) {
@@ -154,10 +191,17 @@ async function resolveWithoutDAG(
         };
         break;
       case "source": {
-        // Periodic sources: use cached value if available.
         const nodeId = `${codoc.path}#data.${fieldName}`;
+
+        // Periodic sources: use cached value if available.
         if (field.fetch.kind === "periodic" && sourceState?.[nodeId]?.cachedValue !== undefined) {
           out[fieldName] = { kind: "ready", value: sourceState[nodeId]!.cachedValue };
+          break;
+        }
+
+        // Lazy sources: use cached value if TTL hasn't expired.
+        if (field.fetch.kind === "lazy" && isTtlValid(nodeId, field.fetch.ttl, sourceState)) {
+          out[fieldName] = { kind: "ready", value: sourceState![nodeId]!.cachedValue };
           break;
         }
 
@@ -172,6 +216,13 @@ async function resolveWithoutDAG(
         try {
           const value = await provider.execute(field.params);
           out[fieldName] = { kind: "ready", value };
+          // Lazy sources: record state update for persistence.
+          if (field.fetch.kind === "lazy") {
+            stateUpdates[nodeId] = {
+              lastFetchedAt: new Date().toISOString(),
+              cachedValue: value,
+            };
+          }
         } catch (e: unknown) {
           out[fieldName] = {
             kind: "error",
@@ -186,5 +237,5 @@ async function resolveWithoutDAG(
     }
   }
 
-  return hasAny ? out : null;
+  return { data: hasAny ? out : null, stateUpdates };
 }

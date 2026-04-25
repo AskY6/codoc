@@ -11,7 +11,7 @@ import { parseCodoc } from "@cobook/parser";
 import type { SourceRegistry } from "@cobook/parser";
 import { compileCodoc } from "@cobook/compiler";
 import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
-import { readSourceState } from "./source-state.js";
+import { readSourceState, writeSourceState, type SourceStateEntry } from "./source-state.js";
 import type { CustomComponentEntry } from "./components.js";
 import { scanComponents } from "./components.js";
 import { diagnoseCodoc } from "./diagnose.js";
@@ -103,19 +103,28 @@ export async function resolveAll(ws: Workspace): Promise<void> {
   // Validate DAG (advisory warnings)
   validateDAG(astMap);
 
-  // Load source state for periodic sources.
+  // Load source state for periodic/lazy sources.
   const sourceState = await readSourceState(ws.sourceDir);
+
+  // Accumulate state updates from lazy TTL revalidations.
+  let allStateUpdates: Record<string, SourceStateEntry> = {};
 
   // Resolve each codoc's data fields
   for (const [path, codoc] of ws.codocs) {
-    const resolved = await resolveDataFields(
+    const { data, stateUpdates } = await resolveDataFields(
       { path, ast: codoc.ast },
       astMap,
       ws.sourceProviders,
       sourceState,
     );
-    // Update in place (Map is mutable within workspace)
-    ws.codocs.set(path, { ...codoc, resolvedData: resolved });
+    ws.codocs.set(path, { ...codoc, resolvedData: data });
+    Object.assign(allStateUpdates, stateUpdates);
+  }
+
+  // Persist any state updates from lazy source revalidations.
+  if (Object.keys(allStateUpdates).length > 0) {
+    const merged = { ...sourceState, ...allStateUpdates };
+    await writeSourceState(ws.sourceDir, merged);
   }
 }
 
