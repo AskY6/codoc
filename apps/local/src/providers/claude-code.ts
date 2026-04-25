@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { createMcpServer } from "../mcp-server.js";
 import type { ChatProvider, ChatParams, ChatEvent, SessionMessage } from "./types.js";
+import { readAgentInstructions } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — @mention augmentation
@@ -229,11 +230,14 @@ export const claudeCodeProvider: ChatProvider = {
 
     const hasImages = images.length > 0;
 
-    const systemPrompt = [
+    const baseParts = [
       "You are operating a codoc knowledge base via MCP tools.",
-      "Available tools: list_codocs, read_codoc, write_codoc, search_codocs, update_data_field, append_content, create_from_template, dag_status, diagnose_codoc.",
+      "Available tools: list_codocs, read_codoc, write_codoc, search_codocs, update_data_field, append_content, create_from_template, dag_status, diagnose_codoc, fetch_url.",
       "When the user @mentions a codoc, its content is attached to their message. Work with it directly — do NOT re-read it or list all codocs.",
-    ].join("\n");
+    ];
+    const extra = readAgentInstructions(workspace);
+    if (extra) baseParts.push("", extra);
+    const systemPrompt = baseParts.join("\n");
 
     const chatMcp = createMcpServer(workspace);
 
@@ -248,7 +252,7 @@ export const claudeCodeProvider: ChatProvider = {
         cwd: workspace.sourceDir,
         pathToClaudeCodeExecutable: "claude",
         ...(sessionId ? { resume: sessionId } : {}),
-        maxTurns: 20,
+        maxTurns: 50,
         permissionMode: "acceptEdits",
         allowedTools: ["mcp__codoc__*"],
         tools: [],

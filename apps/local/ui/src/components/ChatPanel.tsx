@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { streamChat, api } from "../api.ts";
-import type { CodocListItem, ImageAttachment } from "../api.ts";
+import type { CodocListItem, ImageAttachment, WorkspaceConfig } from "../api.ts";
 import {
   PromptInput,
   PromptInputTextarea,
@@ -24,6 +24,7 @@ import {
   renderMentions,
 } from "./MentionPopover.tsx";
 import type { MentionItem } from "./MentionPopover.tsx";
+import { subscribe } from "../lib/event-bus.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,12 +51,17 @@ interface SlashCommand {
   prompt: string;
 }
 
-const SLASH_COMMANDS: SlashCommand[] = [
+const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { name: "list", description: "List all codocs", prompt: "List all codocs in this workspace." },
   { name: "create", description: "Create a new codoc", prompt: "Help me create a new codoc." },
   { name: "search", description: "Search codoc contents", prompt: "Search across all codocs for: " },
   { name: "diagnose", description: "Run diagnostics", prompt: "Run diagnose_codoc on all codocs and report issues." },
   { name: "dag", description: "Show dependency graph", prompt: "Show the DAG status and report any cycles or issues." },
+];
+
+const DEFAULT_QUICK_ACTIONS_IDLE = [
+  { label: "List codocs", prompt: "List all codocs in this workspace." },
+  { label: "Create codoc", prompt: "Help me create a new codoc." },
 ];
 
 // ---------------------------------------------------------------------------
@@ -71,9 +77,13 @@ export interface ChatPanelProps {
   provider: string;
   /** Display name of the provider. */
   providerName?: string | undefined;
+  /** Prompt to send immediately on mount (e.g. from <Prompt> component). */
+  initialPrompt?: string | undefined;
+  /** Called after the initial prompt has been consumed. */
+  onPromptConsumed?: () => void;
 }
 
-export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provider, providerName }: ChatPanelProps) {
+export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provider, providerName, initialPrompt, onPromptConsumed }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -92,6 +102,24 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
 
   const mentionItems = useMentionItems(codocs, mentionQuery);
 
+  // --- Workspace config (template-declared commands / quick actions) -------
+  const [wsConfig, setWsConfig] = useState<WorkspaceConfig | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.config().then((cfg) => { if (!cancelled) setWsConfig(cfg); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Merge base commands with template commands (template commands first)
+  const allCommands = useMemo(() => {
+    const extra: SlashCommand[] = (wsConfig?.commands ?? []).map((c) => ({
+      name: c.name,
+      description: c.description,
+      prompt: c.prompt,
+    }));
+    return [...extra, ...BASE_SLASH_COMMANDS];
+  }, [wsConfig]);
+
   // --- Slash command state -------------------------------------------------
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -99,10 +127,10 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
 
   const filteredCommands = useMemo(() => {
     const q = slashQuery.toLowerCase();
-    return SLASH_COMMANDS.filter(
+    return allCommands.filter(
       (c) => c.name.includes(q) || c.description.toLowerCase().includes(q),
     );
-  }, [slashQuery]);
+  }, [slashQuery, allCommands]);
 
   // --- Auto-fill @path when activeCodoc changes (incl. on mount) -----------
   const prevActiveCodoc = useRef<string | null>(null);
@@ -334,6 +362,24 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
     [input, loading, sessionId, codocs, closeSlash],
   );
 
+  // --- Event bus: external prompt triggers (e.g. <Prompt> component) -------
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  useEffect(() => {
+    return subscribe("send-prompt", ({ prompt }) => {
+      void sendRef.current(prompt);
+    });
+  }, []);
+
+  // --- Initial prompt (forwarded from App via event bus) -------------------
+  useEffect(() => {
+    if (initialPrompt) {
+      void sendRef.current(initialPrompt);
+      onPromptConsumed?.();
+    }
+  }, [initialPrompt, onPromptConsumed]);
+
   const handleStop = () => {
     abortRef.current?.abort();
   };
@@ -479,10 +525,9 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
           prompt: `@${activeCodoc} Suggest improvements to this codoc's MDX view section.`,
         },
       ]
-    : [
-        { label: "List codocs", prompt: "List all codocs in this workspace." },
-        { label: "Create codoc", prompt: "Help me create a new codoc." },
-      ];
+    : (wsConfig?.quickActions && wsConfig.quickActions.length > 0)
+      ? wsConfig.quickActions
+      : DEFAULT_QUICK_ACTIONS_IDLE;
 
   const chatStatus = loading ? ("streaming" as const) : ("ready" as const);
 

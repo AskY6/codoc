@@ -118,6 +118,66 @@ data:
     expect(field!.params).toEqual({ url: "https://example.com/feed.xml" });
   });
 
+  it("extracts interval from $source without passing to params", () => {
+    const content = `---
+data:
+  articles:
+    $source: rss
+    url: "https://example.com/feed.xml"
+    interval: 30
+---`;
+    const r = parseCodoc(content);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const field = r.value.data.get(mkFieldName("articles"));
+    expect(field).toBeDefined();
+    expect(field!.kind).toBe("source");
+    if (field!.kind !== "source") return;
+    expect(field!.source).toBe("rss");
+    expect(field!.interval).toBe(30);
+    expect(field!.params).toEqual({ url: "https://example.com/feed.xml" });
+    expect("interval" in field!.params).toBe(false);
+  });
+
+  it("extracts ttl from $source without passing to params", () => {
+    const content = `---
+data:
+  weather:
+    $source: http-json
+    url: "https://api.weather.com/current"
+    path: "data.temp"
+    ttl: 15
+---`;
+    const r = parseCodoc(content);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const field = r.value.data.get(mkFieldName("weather"));
+    expect(field).toBeDefined();
+    expect(field!.kind).toBe("source");
+    if (field!.kind !== "source") return;
+    expect(field!.source).toBe("http-json");
+    expect(field!.ttl).toBe(15);
+    expect(field!.params).toEqual({ url: "https://api.weather.com/current", path: "data.temp" });
+    expect("ttl" in field!.params).toBe(false);
+  });
+
+  it("omits interval/ttl when not specified in $source", () => {
+    const content = `---
+data:
+  feed:
+    $source: rss
+    url: "https://example.com/feed.xml"
+---`;
+    const r = parseCodoc(content);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const field = r.value.data.get(mkFieldName("feed"));
+    expect(field!.kind).toBe("source");
+    if (field!.kind !== "source") return;
+    expect(field!.interval).toBeUndefined();
+    expect(field!.ttl).toBeUndefined();
+  });
+
   it("returns error for invalid $ref", () => {
     const content = `---
 data:

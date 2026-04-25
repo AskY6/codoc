@@ -181,7 +181,33 @@ export interface SessionMessage {
 // REST helpers
 // ---------------------------------------------------------------------------
 
+export interface TemplateInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface WorkspaceConfig {
+  port?: number;
+  /** RSS feed refresh interval in minutes (default 30). */
+  refreshInterval?: number;
+  commands?: Array<{ name: string; description: string; prompt: string }>;
+  quickActions?: Array<{ label: string; prompt: string }>;
+  agentInstructions?: string;
+}
+
 export const api = {
+  /** Workspace config (includes template interaction metadata). */
+  config: () => json<WorkspaceConfig>("/api/config"),
+
+  /** Update workspace config fields (partial merge). */
+  updateConfig: (patch: Partial<WorkspaceConfig>) =>
+    json<{ ok: boolean; config: WorkspaceConfig }>("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+
   /** List available CLI providers. */
   providers: () => json<ProviderInfo[]>("/api/providers"),
 
@@ -195,6 +221,39 @@ export const api = {
   openWorkspace: (name: string) =>
     json<{ ok: boolean; codocCount: number }>(`/api/workspaces/${encodeURIComponent(name)}/open`, {
       method: "POST",
+    }),
+
+  /** Create an empty workspace. */
+  createWorkspace: (name: string) =>
+    json<{ ok: boolean; name: string }>("/api/workspaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+
+  /** Delete a workspace. */
+  deleteWorkspace: (name: string) =>
+    json<{ ok: boolean }>(`/api/workspaces/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+
+  /** Rename a workspace. */
+  renameWorkspace: (oldName: string, newName: string) =>
+    json<{ ok: boolean; name: string }>(`/api/workspaces/${encodeURIComponent(oldName)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    }),
+
+  /** List available workspace templates. */
+  templates: () => json<TemplateInfo[]>("/api/templates"),
+
+  /** Create a workspace from a template and open it. */
+  createFromTemplate: (name: string, templateId: string) =>
+    json<{ ok: boolean; name: string; codocCount: number }>("/api/workspaces/from-template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, templateId }),
     }),
 
   tree: () => json<TreeNode[]>("/api/tree"),

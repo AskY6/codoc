@@ -1,0 +1,214 @@
+// RSS Reader template — AI-first RSS workspace.
+//
+// The user's main surface is inbox.codoc (agent-generated digest),
+// not individual feed pages. Feed definitions live under sources/
+// as data for the agent. topics/ holds agent-generated research notes.
+
+import type { Template, TemplateFile } from "./types.js";
+import { serializeYaml } from "./yaml.js";
+import articleListSource from "raw:./rss/components/ArticleList.tsx";
+import feedHeaderSource from "raw:./rss/components/FeedHeader.tsx";
+
+function codoc(
+  frontmatter: Record<string, unknown>,
+  body: string,
+): string {
+  const yaml = serializeYaml(frontmatter, 0);
+  return `---\n${yaml}---\n\n${body.trim()}\n`;
+}
+
+interface Feed {
+  slug: string;
+  title: string;
+  url: string;
+  why: string;
+}
+
+const feeds: Feed[] = [
+  {
+    slug: "hacker-news",
+    title: "Hacker News",
+    url: "https://hnrss.org/frontpage",
+    why: "Top stories from the developer community — broad signal across engineering, startups, and tools.",
+  },
+  {
+    slug: "simon-willison",
+    title: "Simon Willison",
+    url: "https://simonwillison.net/atom/everything/",
+    why: "One of the fastest and clearest sources for model releases, MCP, tools, and practical LLM engineering patterns.",
+  },
+  {
+    slug: "github-engineering",
+    title: "GitHub Engineering",
+    url: "https://github.blog/engineering/feed/",
+    why: "High-signal writeups on developer tooling, reliability, AI workflows, and systems that many builders actually use.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Codoc files
+// ---------------------------------------------------------------------------
+
+/** inbox.codoc — the user's primary reading surface. */
+function inboxCodoc(): TemplateFile {
+  return {
+    path: "inbox.codoc",
+    content: codoc(
+      {
+        meta: {
+          title: "Inbox",
+          tags: ["inbox"],
+          description: "AI-curated digest from your RSS sources.",
+        },
+        data: {
+          lastDigestAt: null,
+          highlights: [],
+          trending: [],
+        },
+      },
+      `\
+{(data.highlights ?? []).length === 0 ? (
+  <Card title="Your inbox is empty" description="Ask the agent: 'what's new today?' or 'refresh my feeds and give me a digest'" />
+) : (
+  <>
+    <Table data={data.highlights ?? []} />
+    {(data.trending ?? []).length > 0 && (
+      <>
+        ## Trending
+
+        <Table data={data.trending ?? []} />
+      </>
+    )}
+  </>
+)}`,
+    ),
+  };
+}
+
+/** sources/<slug>.codoc — feed definition (data layer, not primary UI). */
+function sourceCodoc(feed: Feed): TemplateFile {
+  return {
+    path: `sources/${feed.slug}.codoc`,
+    content: codoc(
+      {
+        meta: {
+          title: feed.title,
+          tags: ["source", "rss"],
+          description: feed.url,
+        },
+        data: {
+          title: feed.title,
+          feedUrl: feed.url,
+          whyFollow: feed.why,
+          articles: {
+            $source: "rss",
+            url: feed.url,
+            interval: 30,
+          },
+        },
+      },
+      `\
+<FeedHeader
+  title={data.title}
+  url={data.feedUrl}
+  articleCount={(data.articles ?? []).length}
+  unreadCount={(data.articles ?? []).filter(a => !a.readAt).length}
+  description={data.whyFollow}
+/>
+
+<ArticleList items={data.articles ?? []} />`,
+    ),
+  };
+}
+
+function guideCodoc(): TemplateFile {
+  return {
+    path: "guide.codoc",
+    content: codoc(
+      {
+        meta: {
+          title: "Guide",
+          tags: ["guide"],
+          description: "How this workspace works.",
+        },
+      },
+      `\
+This is an AI-first RSS workspace. You don't browse feeds — you ask the agent.
+
+## Try these
+
+<Prompt label="What's new today?" />
+<Prompt label="Deep dive into AI agents" />
+<Prompt label="Refresh all feeds" />
+<Prompt label="Subscribe to https://example.com/feed" />
+<Prompt label="Summarize the latest from Hacker News" />
+
+## Structure
+
+- **inbox.codoc** — your main view. The agent writes digests here.
+- **sources/** — feed definitions. The agent reads these to know where to fetch.
+- **topics/** — research notes. The agent writes deep dives here.`,
+    ),
+  };
+}
+
+export const rssTemplate: Template = {
+  id: "rss",
+  name: "RSS Reader",
+  description: "AI-first RSS — ask the agent for digests, deep dives, and research across your feeds.",
+  components: ["Table", "Card"],
+
+  // R1: Domain commands
+  commands: [
+    { name: "refresh", description: "Fetch latest articles from all feeds",
+      prompt: "Refresh all my RSS feeds and tell me what's new." },
+    { name: "digest", description: "Generate today's digest in inbox",
+      prompt: "Read all sources, pick highlights, and update my inbox digest." },
+    { name: "subscribe", description: "Add a new RSS feed",
+      prompt: "Subscribe to a new RSS feed: " },
+    { name: "deepdive", description: "Research a topic across feeds",
+      prompt: "Deep dive into: " },
+  ],
+
+  // R2: Domain quick actions
+  quickActions: [
+    { label: "What's new today?", prompt: "What's new across my feeds today?" },
+    { label: "Refresh feeds", prompt: "Refresh all my RSS feeds." },
+    { label: "Subscribe to...", prompt: "Subscribe to " },
+  ],
+
+  // R3: Agent instructions
+  agentInstructions: `You are an AI RSS assistant. The workspace structure:
+- sources/*.codoc: Each has data fields: title, feedUrl, whyFollow, articles (auto-refreshed via $source: rss with interval)
+- inbox.codoc: Has data fields: highlights[], trending[], lastDigestAt
+- Articles are fetched automatically by the scheduler every 30 minutes. You do NOT need to fetch feeds manually.
+
+Workflows:
+- DIGEST: Read all sources' articles where readAt is null (unread), select the most
+  interesting as highlights, write to inbox.codoc highlights[] and trending[] via
+  update_data_field, set lastDigestAt to now.
+- SUBSCRIBE: Create new sources/<slug>.codoc with structure:
+  data.title, data.feedUrl, data.whyFollow, data.articles as $source: rss with url and interval: 30.
+  The scheduler will start fetching automatically.
+- DEEP DIVE: Research a topic across all feed articles, create topics/<slug>.codoc
+  with a structured summary.
+- MARK READ: Use update_data_field to set readAt on specific articles.
+
+Rules:
+- Articles auto-refresh — do not manually fetch RSS feeds.
+- Always use update_data_field for field updates, not write_codoc (preserve MDX body).
+- Mark articles as read by setting readAt to ISO timestamp.
+- When generating a digest, include article title, source name, and a one-line summary.`,
+
+  files() {
+    return [
+      // Components
+      { path: "components/ArticleList.tsx", content: articleListSource },
+      { path: "components/FeedHeader.tsx", content: feedHeaderSource },
+      // Codocs
+      inboxCodoc(),
+      ...feeds.map(sourceCodoc),
+      guideCodoc(),
+    ];
+  },
+};

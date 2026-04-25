@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ChatProvider, ChatParams, ChatEvent, SessionMessage } from "./types.js";
+import { readAgentInstructions } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Codex JSONL event types (subset we care about)
@@ -215,8 +216,12 @@ export const codexProvider: ChatProvider = {
   async *chat(params: ChatParams): AsyncIterable<ChatEvent> {
     const { prompt, workspace, signal } = params;
 
+    // Prepend agent instructions as context if configured
+    const extra = readAgentInstructions(workspace);
+    const fullPrompt = extra ? `[System context]\n${extra}\n\n[User request]\n${prompt}` : prompt;
+
     // Spawn codex in non-interactive JSONL mode
-    const args = ["exec", "--json", prompt];
+    const args = ["exec", "--json", fullPrompt];
 
     const child = spawn("codex", args, {
       cwd: workspace.sourceDir,

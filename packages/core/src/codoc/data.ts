@@ -18,5 +18,10 @@ export type DataField =
   | {
       readonly kind: "source";
       readonly source: string;
+      /** Provider-specific params (url, path, etc). */
       readonly params: Readonly<Record<string, unknown>>;
+      /** Periodic refresh interval in minutes. */
+      readonly interval?: number;
+      /** Cache TTL in minutes (lazy revalidation). */
+      readonly ttl?: number;
     };

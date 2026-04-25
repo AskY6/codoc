@@ -10,9 +10,10 @@ import type { Workspace, WriteResult } from "./workspace.js";
 import { writeCodoc, buildAstMap } from "./workspace.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { stringify as stringifyYaml } from "yaml";
 import { diagnoseCodoc } from "./diagnose.js";
 import type { Diagnostic } from "./diagnose.js";
+import { patchDataField } from "./patch.js";
 import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
 import type { ComponentMeta } from "./recognize.js";
 import { writeFile, mkdir, unlink } from "node:fs/promises";
@@ -520,6 +521,37 @@ export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): Mcp
     );
   }
 
+  // ---- Tool: fetch_url ------------------------------------------------------
+
+  server.tool(
+    "fetch_url",
+    "Fetch content from a URL. Useful for reading RSS/Atom feeds, web pages, and other external data.",
+    {
+      url: z.string().url().describe("URL to fetch"),
+      maxBytes: z.number().optional().default(100_000).describe("Max response bytes (default 100KB)"),
+    },
+    async ({ url, maxBytes }) => {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        if (!res.ok) {
+          return {
+            content: [{ type: "text" as const, text: `HTTP ${res.status} ${res.statusText} for ${url}` }],
+            isError: true,
+          };
+        }
+        const text = await res.text();
+        return {
+          content: [{ type: "text" as const, text: text.slice(0, maxBytes) }],
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `Fetch error: ${e instanceof Error ? e.message : String(e)}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   // ---- Tool: delete_chat ----------------------------------------------------
 
   server.tool(
@@ -546,59 +578,6 @@ export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): Mcp
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Patch a single data field in the YAML frontmatter of a codoc source string.
- * Returns the updated full source, or an error message.
- */
-function patchDataField(
-  source: string,
-  field: string,
-  value: unknown,
-): { ok: true; value: string } | { ok: false; error: string } {
-  const trimmed = source.trimStart();
-  if (!trimmed.startsWith("---")) {
-    return { ok: false, error: "codoc has no frontmatter — cannot patch data field" };
-  }
-
-  const firstNewline = trimmed.indexOf("\n");
-  if (firstNewline === -1) {
-    return { ok: false, error: "malformed frontmatter" };
-  }
-
-  const closingIndex = trimmed.indexOf("\n---", firstNewline);
-  if (closingIndex === -1) {
-    return { ok: false, error: "unterminated frontmatter" };
-  }
-
-  const yamlStr = trimmed.slice(firstNewline + 1, closingIndex);
-  const afterClosing = closingIndex + 4; // \n---
-  const rest = trimmed.slice(afterClosing);
-
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(yamlStr);
-  } catch (e) {
-    return { ok: false, error: `YAML parse error: ${e instanceof Error ? e.message : String(e)}` };
-  }
-
-  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "frontmatter is not a mapping" };
-  }
-
-  const obj = { ...(parsed as Record<string, unknown>) };
-  const data = (
-    obj.data != null && typeof obj.data === "object" && !Array.isArray(obj.data)
-      ? { ...(obj.data as Record<string, unknown>) }
-      : {}
-  );
-
-  data[field] = value;
-  obj.data = data;
-
-  const newYaml = stringifyYaml(obj, { lineWidth: 0 }).trim();
-  return { ok: true, value: `---\n${newYaml}\n---${rest}` };
-}
 
 /** Convert a WriteResult into an MCP tool response.
  *  When a workspace and codocPath are provided, appends enhancement suggestions. */

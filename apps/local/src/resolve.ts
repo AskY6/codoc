@@ -5,6 +5,7 @@
 import type { CodocAST, CodocPath, DAG, NodeId, ResolveResult } from "@cobook/core";
 import { buildDAG, checkCycles, evaluate } from "@cobook/core";
 import type { SourceRegistry } from "@cobook/parser";
+import type { SourceStateMap } from "./source-state.js";
 
 /**
  * Resolve every data field in a single codoc against the workspace's
@@ -14,16 +15,17 @@ export async function resolveDataFields(
   codoc: { readonly path: CodocPath; readonly ast: CodocAST },
   lookup: ReadonlyMap<CodocPath, CodocAST>,
   sourceProviders: SourceRegistry,
+  sourceState?: SourceStateMap,
 ): Promise<Record<string, ResolveResult> | null> {
   if (codoc.ast.data.size === 0) return null;
 
   const dagResult = buildDAG(lookup);
   if (!dagResult.ok) {
-    return resolveWithoutDAG(codoc, sourceProviders);
+    return resolveWithoutDAG(codoc, sourceProviders, sourceState);
   }
 
   const dag = dagResult.value;
-  const sourceValues = await executeSourceProviders(dag, sourceProviders);
+  const sourceValues = await executeSourceProviders(dag, sourceProviders, sourceState);
   const allResults = evaluate(dag, sourceValues);
 
   return projectForCodoc(codoc.path, codoc.ast, allResults);
@@ -68,12 +70,20 @@ const PROVIDER_ERROR = Symbol("PROVIDER_ERROR");
 async function executeSourceProviders(
   dag: DAG,
   registry: SourceRegistry,
+  sourceState?: SourceStateMap,
 ): Promise<ReadonlyMap<NodeId, unknown>> {
   const results = new Map<NodeId, unknown>();
   const pending: Array<{ nodeId: NodeId; promise: Promise<unknown> }> = [];
 
   for (const [nodeId, node] of dag.nodes) {
     if (node.field.kind !== "source") continue;
+
+    // Periodic sources: use cached value from state file instead of executing.
+    // The scheduler is responsible for refreshing these at the right time.
+    if (node.field.interval != null && sourceState?.[nodeId]?.cachedValue !== undefined) {
+      results.set(nodeId, sourceState[nodeId]!.cachedValue);
+      continue;
+    }
 
     const provider = registry.get(node.field.source);
     if (!provider) continue;
@@ -126,6 +136,7 @@ function projectForCodoc(
 async function resolveWithoutDAG(
   codoc: { readonly path: CodocPath; readonly ast: CodocAST },
   sourceProviders: SourceRegistry,
+  sourceState?: SourceStateMap,
 ): Promise<Record<string, ResolveResult> | null> {
   const out: Record<string, ResolveResult> = {};
   let hasAny = false;
@@ -143,6 +154,13 @@ async function resolveWithoutDAG(
         };
         break;
       case "source": {
+        // Periodic sources: use cached value if available.
+        const nodeId = `${codoc.path}#data.${fieldName}`;
+        if (field.interval != null && sourceState?.[nodeId]?.cachedValue !== undefined) {
+          out[fieldName] = { kind: "ready", value: sourceState[nodeId]!.cachedValue };
+          break;
+        }
+
         const provider = sourceProviders.get(field.source);
         if (!provider) {
           out[fieldName] = {

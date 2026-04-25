@@ -3,6 +3,8 @@
 // Every CLI backend (Claude Code, Codex, Kiro) implements ChatProvider.
 // The chat route delegates to whichever provider the conversation uses.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Workspace } from "../workspace.js";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +52,17 @@ export interface ChatParams {
   /** Base64 image attachments */
   images?: { dataUrl: string; name: string }[] | undefined;
   signal?: AbortSignal | undefined;
+}
+
+/** Read agentInstructions from workspace codoc.config.json. */
+export function readAgentInstructions(workspace: Workspace): string | undefined {
+  try {
+    const raw = readFileSync(join(workspace.sourceDir, "codoc.config.json"), "utf-8");
+    const cfg = JSON.parse(raw) as { agentInstructions?: string };
+    return cfg.agentInstructions ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface ChatProvider {

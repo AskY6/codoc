@@ -92,6 +92,15 @@ export const BUILTIN_COMPONENT_META: readonly ComponentMeta[] = [
     template: "<Chart data={data.FIELD} />",
     dataTypeHints: ["array"],
   },
+  {
+    name: "Prompt",
+    description: "Clickable prompt button that sends a message to the chat panel.",
+    props: [
+      { name: "label", type: "string", required: true },
+    ],
+    template: '<Prompt label="Ask something" />',
+    dataTypeHints: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------

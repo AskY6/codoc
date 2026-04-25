@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ChatProvider, ChatParams, ChatEvent, SessionMessage } from "./types.js";
+import { readAgentInstructions } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC 2.0 types
@@ -297,10 +298,14 @@ export const kiroProvider: ChatProvider = {
 
       client.onNotification(notificationHandler);
 
+      // Prepend agent instructions as context if configured
+      const extra = readAgentInstructions(workspace);
+      const fullPrompt = extra ? `[System context]\n${extra}\n\n[User request]\n${prompt}` : prompt;
+
       // Send the prompt (fire-and-forget — response comes via notifications)
       const promptResult = client.request("session/prompt", {
         sessionId: acpSessionId,
-        prompt: [{ type: "text", text: prompt }],
+        prompt: [{ type: "text", text: fullPrompt }],
       });
 
       // Yield events as they arrive

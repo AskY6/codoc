@@ -4,6 +4,7 @@ import { Progress } from "./Progress.tsx";
 import { Table } from "./Table.tsx";
 import { Card } from "./Card.tsx";
 import { Chart } from "./Chart.tsx";
+import { Prompt } from "./Prompt.tsx";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,6 +101,18 @@ export const registry: readonly RegisteredComponent[] = [
       ],
       template: "<Chart data={data.FIELD} />",
       dataTypeHints: ["array"],
+    },
+  },
+  {
+    component: Prompt as ComponentType<Record<string, unknown>>,
+    meta: {
+      name: "Prompt",
+      description: "Clickable prompt button that sends a message to the chat panel.",
+      props: [
+        { name: "label", type: "string", required: true },
+      ],
+      template: '<Prompt label="Ask something" />',
+      dataTypeHints: [],
     },
   },
 ];

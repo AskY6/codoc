@@ -19,10 +19,12 @@ import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll, buildAstMap } from "./workspace.js";
 import type { Workspace } from "./workspace.js";
 import { startWatcher } from "./watcher.js";
+import { startSourceScheduler } from "./rss-scheduler.js";
 import { startMcpServer } from "./mcp-server.js";
 import { startHttpServer } from "./http-server.js";
 import { initWorkspace } from "./init.js";
 import { addComponent } from "./add.js";
+import { templates, findTemplate } from "./templates/index.js";
 
 const CODOC_HOME = join(homedir(), ".codoc");
 
@@ -38,6 +40,12 @@ function resolveWorkspaceDir(name: string): string {
 interface Config {
   outDir?: string;
   port?: number;
+  /** Template-declared slash commands for the chat panel. */
+  commands?: Array<{ name: string; description: string; prompt: string }>;
+  /** Template-declared quick-action chips for the chat panel. */
+  quickActions?: Array<{ label: string; prompt: string }>;
+  /** Extra system prompt instructions injected into providers. */
+  agentInstructions?: string;
 }
 
 function readConfig(workspaceDir: string): Config {
@@ -64,11 +72,30 @@ async function openWorkspace(name: string) {
 async function main(): Promise<void> {
   switch (command) {
     case "init": {
-      if (!workspaceName) {
-        console.error("Usage: codoc init <workspace>");
-        process.exit(1);
+      if (!workspaceName || workspaceName === "--templates") {
+        console.log("Create a new workspace:\n");
+        console.log("  codoc init <name>                 Empty workspace");
+        for (const t of templates) {
+          console.log(`  codoc init <name> --from ${t.id.padEnd(12)} ${t.name} — ${t.description}`);
+        }
+        console.log(`\nExample: codoc init my-feeds --from rss`);
+        break;
       }
-      await initWorkspace(resolveWorkspaceDir(workspaceName));
+
+      // Parse --from flag
+      const fromIdx = args.indexOf("--from");
+      const templateId = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
+      let template;
+      if (templateId) {
+        template = findTemplate(templateId);
+        if (!template) {
+          console.error(`Unknown template: "${templateId}"`);
+          console.error(`Available: ${templates.map((t) => t.id).join(", ")}`);
+          process.exit(1);
+        }
+      }
+
+      await initWorkspace(resolveWorkspaceDir(workspaceName), { template });
       break;
     }
 
@@ -115,6 +142,7 @@ async function main(): Promise<void> {
       }
       const { ws } = await openWorkspace(workspaceName);
       startWatcher(ws);
+      startSourceScheduler(ws);
       await startMcpServer(ws);
       break;
     }
@@ -143,12 +171,13 @@ async function main(): Promise<void> {
     default: {
       console.log("Usage: codoc <command> [workspace]\n");
       console.log("Commands:");
-      console.log("  start [workspace]          Start server");
-      console.log("  init <workspace>           Initialize a new workspace");
-      console.log("  add <component> <workspace>  Add a component (or --all)");
-      console.log("  mcp <workspace>            Start MCP server on stdio");
-      console.log("  compile <workspace>        One-shot compile");
-      console.log("  dag <workspace>            Print DAG relationships");
+      console.log("  start [workspace]              Start server");
+      console.log("  init <workspace> [--from <t>]  Initialize a workspace (optionally from template)");
+      console.log("  init --templates               List available templates");
+      console.log("  add <component> <workspace>    Add a component (or --all)");
+      console.log("  mcp <workspace>                Start MCP server on stdio");
+      console.log("  compile <workspace>            One-shot compile");
+      console.log("  dag <workspace>                Print DAG relationships");
       console.log(`\nWorkspaces: ${CODOC_HOME}`);
       break;
     }

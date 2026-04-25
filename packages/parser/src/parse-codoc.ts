@@ -96,8 +96,14 @@ function classifyDataField(
     }
 
     if ("$source" in obj && typeof obj["$source"] === "string") {
-      const { $source, ...params } = obj;
-      return ok({ kind: "source", source: $source as string, params });
+      const { $source, interval, ttl, ...params } = obj;
+      return ok({
+        kind: "source" as const,
+        source: $source as string,
+        params,
+        ...(typeof interval === "number" ? { interval } : {}),
+        ...(typeof ttl === "number" ? { ttl } : {}),
+      });
     }
   }
 
