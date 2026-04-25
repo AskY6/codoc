@@ -80,7 +80,7 @@ async function executeSourceProviders(
 
     // Periodic sources: use cached value from state file instead of executing.
     // The scheduler is responsible for refreshing these at the right time.
-    if (node.field.interval != null && sourceState?.[nodeId]?.cachedValue !== undefined) {
+    if (node.field.fetch.kind === "periodic" && sourceState?.[nodeId]?.cachedValue !== undefined) {
       results.set(nodeId, sourceState[nodeId]!.cachedValue);
       continue;
     }
@@ -156,7 +156,7 @@ async function resolveWithoutDAG(
       case "source": {
         // Periodic sources: use cached value if available.
         const nodeId = `${codoc.path}#data.${fieldName}`;
-        if (field.interval != null && sourceState?.[nodeId]?.cachedValue !== undefined) {
+        if (field.fetch.kind === "periodic" && sourceState?.[nodeId]?.cachedValue !== undefined) {
           out[fieldName] = { kind: "ready", value: sourceState[nodeId]!.cachedValue };
           break;
         }

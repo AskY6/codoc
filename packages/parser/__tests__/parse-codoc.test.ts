@@ -100,7 +100,7 @@ data:
     expect(field!.ref.field).toBe("achievements");
   });
 
-  it("parses $source data fields", () => {
+  it("parses $source data fields with oneshot fetch strategy", () => {
     const content = `---
 data:
   feed:
@@ -116,9 +116,10 @@ data:
     if (field!.kind !== "source") return;
     expect(field!.source).toBe("rss");
     expect(field!.params).toEqual({ url: "https://example.com/feed.xml" });
+    expect(field!.fetch).toEqual({ kind: "oneshot" });
   });
 
-  it("extracts interval from $source without passing to params", () => {
+  it("parses $source with interval as periodic fetch strategy", () => {
     const content = `---
 data:
   articles:
@@ -134,12 +135,12 @@ data:
     expect(field!.kind).toBe("source");
     if (field!.kind !== "source") return;
     expect(field!.source).toBe("rss");
-    expect(field!.interval).toBe(30);
+    expect(field!.fetch).toEqual({ kind: "periodic", interval: 30 });
     expect(field!.params).toEqual({ url: "https://example.com/feed.xml" });
     expect("interval" in field!.params).toBe(false);
   });
 
-  it("extracts ttl from $source without passing to params", () => {
+  it("parses $source with ttl as lazy fetch strategy", () => {
     const content = `---
 data:
   weather:
@@ -156,26 +157,9 @@ data:
     expect(field!.kind).toBe("source");
     if (field!.kind !== "source") return;
     expect(field!.source).toBe("http-json");
-    expect(field!.ttl).toBe(15);
+    expect(field!.fetch).toEqual({ kind: "lazy", ttl: 15 });
     expect(field!.params).toEqual({ url: "https://api.weather.com/current", path: "data.temp" });
     expect("ttl" in field!.params).toBe(false);
-  });
-
-  it("omits interval/ttl when not specified in $source", () => {
-    const content = `---
-data:
-  feed:
-    $source: rss
-    url: "https://example.com/feed.xml"
----`;
-    const r = parseCodoc(content);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    const field = r.value.data.get(mkFieldName("feed"));
-    expect(field!.kind).toBe("source");
-    if (field!.kind !== "source") return;
-    expect(field!.interval).toBeUndefined();
-    expect(field!.ttl).toBeUndefined();
   });
 
   it("returns error for invalid $ref", () => {

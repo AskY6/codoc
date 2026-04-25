@@ -5,7 +5,7 @@
 // is provider-specific: RSS merges by link (preserving readAt/starred),
 // all others use replace.
 
-import type { CodocPath, DataField, FieldName, NodeId, ResolveResult } from "@cobook/core";
+import type { CodocPath, FieldName, NodeId, ResolveResult } from "@cobook/core";
 import type { SourceProvider } from "@cobook/parser";
 import type { Workspace } from "./workspace.js";
 import { compileOne } from "./workspace.js";
@@ -87,7 +87,9 @@ interface PeriodicSource {
   nodeId: NodeId;
   codocPath: CodocPath;
   fieldName: FieldName;
-  field: DataField & { kind: "source"; interval: number };
+  source: string;
+  params: Readonly<Record<string, unknown>>;
+  interval: number;
   provider: SourceProvider;
 }
 
@@ -96,7 +98,7 @@ function findPeriodicSources(ws: Workspace): PeriodicSource[] {
 
   for (const [codocPath, codoc] of ws.codocs) {
     for (const [fieldName, field] of codoc.ast.data) {
-      if (field.kind !== "source" || field.interval == null) continue;
+      if (field.kind !== "source" || field.fetch.kind !== "periodic") continue;
 
       const provider = ws.sourceProviders.get(field.source);
       if (!provider) continue;
@@ -105,7 +107,9 @@ function findPeriodicSources(ws: Workspace): PeriodicSource[] {
         nodeId: `${codocPath}#data.${fieldName}` as NodeId,
         codocPath,
         fieldName,
-        field: field as PeriodicSource["field"],
+        source: field.source,
+        params: field.params,
+        interval: field.fetch.interval,
         provider,
       });
     }
@@ -118,7 +122,7 @@ function isDue(entry: PeriodicSource, state: SourceStateMap): boolean {
   const s = state[entry.nodeId];
   if (!s?.lastFetchedAt) return true; // never fetched
   const elapsed = Date.now() - new Date(s.lastFetchedAt).getTime();
-  return elapsed >= entry.field.interval * 60 * 1000;
+  return elapsed >= entry.interval * 60 * 1000;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,12 +134,12 @@ async function refreshSource(
   entry: PeriodicSource,
   state: SourceStateMap,
 ): Promise<SourceStateMap> {
-  const raw = await entry.provider.execute(entry.field.params);
+  const raw = await entry.provider.execute(entry.params);
 
   // Merge strategy: RSS uses article-level merge; others use replace.
   const existing = state[entry.nodeId]?.cachedValue;
   const merged =
-    entry.field.source === "rss"
+    entry.source === "rss"
       ? mergeRssArticles(existing, raw)
       : raw;
 
@@ -161,7 +165,7 @@ async function refreshSource(
   }
 
   // Log summary.
-  if (entry.field.source === "rss" && Array.isArray(merged) && Array.isArray(existing)) {
+  if (entry.source === "rss" && Array.isArray(merged) && Array.isArray(existing)) {
     const newCount = merged.length - existing.length;
     if (newCount > 0) {
       console.log(`[source] ${entry.nodeId}: ${newCount} new article(s)`);

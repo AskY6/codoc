@@ -6,7 +6,7 @@
 export { CodocId, CodocPath, FieldName, NodeId } from "./ids.js";
 
 export type { CodocMeta, FieldSchema } from "./meta.js";
-export type { DataField } from "./data.js";
+export type { DataField, FetchStrategy } from "./data.js";
 export type { View } from "./view.js";
 export type { CodocAST } from "./ast.js";
 export type { Codoc } from "./codoc.js";

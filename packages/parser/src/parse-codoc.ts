@@ -23,6 +23,7 @@ import type {
   CodocAST,
   CodocMeta,
   DataField,
+  FetchStrategy,
   FieldName,
   FieldSchema,
   Result,
@@ -97,13 +98,17 @@ function classifyDataField(
 
     if ("$source" in obj && typeof obj["$source"] === "string") {
       const { $source, interval, ttl, ...params } = obj;
-      return ok({
-        kind: "source" as const,
-        source: $source as string,
-        params,
-        ...(typeof interval === "number" ? { interval } : {}),
-        ...(typeof ttl === "number" ? { ttl } : {}),
-      });
+
+      let fetch: FetchStrategy;
+      if (typeof interval === "number") {
+        fetch = { kind: "periodic", interval };
+      } else if (typeof ttl === "number") {
+        fetch = { kind: "lazy", ttl };
+      } else {
+        fetch = { kind: "oneshot" };
+      }
+
+      return ok({ kind: "source" as const, source: $source as string, params, fetch });
     }
   }
 
