@@ -55,11 +55,9 @@ function inboxCodoc(): TemplateFile {
     path: "inbox.codoc",
     content: codoc(
       {
-        meta: {
-          title: "Inbox",
-          tags: ["inbox"],
-          description: "AI-curated digest from your RSS sources.",
-        },
+        title: "Inbox",
+        tags: ["inbox"],
+        description: "AI-curated digest from your RSS sources.",
         data: {
           lastDigestAt: null,
           highlights: [],
@@ -71,6 +69,9 @@ function inboxCodoc(): TemplateFile {
   <Card title="Your inbox is empty" description="Ask the agent: 'what's new today?' or 'refresh my feeds and give me a digest'" />
 ) : (
   <>
+    {data.lastDigestAt && (Date.now() - new Date(data.lastDigestAt).getTime() > 24 * 60 * 60 * 1000) && (
+      <Card title="Digest may be stale" description={\`Last updated \${new Date(data.lastDigestAt).toLocaleDateString()}. Ask the agent: 'refresh my digest'\`} />
+    )}
     <Table data={data.highlights ?? []} />
     {(data.trending ?? []).length > 0 && (
       <>
@@ -91,11 +92,9 @@ function sourceCodoc(feed: Feed): TemplateFile {
     path: `sources/${feed.slug}.codoc`,
     content: codoc(
       {
-        meta: {
-          title: feed.title,
-          tags: ["source", "rss"],
-          description: feed.url,
-        },
+        title: feed.title,
+        tags: ["source", "rss"],
+        description: feed.url,
         data: {
           title: feed.title,
           feedUrl: feed.url,
@@ -113,6 +112,7 @@ function sourceCodoc(feed: Feed): TemplateFile {
   url={data.feedUrl}
   articleCount={(data.articles ?? []).length}
   unreadCount={(data.articles ?? []).filter(a => !a.readAt).length}
+  refreshMinutes={30}
   description={data.whyFollow}
 />
 
@@ -126,11 +126,9 @@ function guideCodoc(): TemplateFile {
     path: "guide.codoc",
     content: codoc(
       {
-        meta: {
-          title: "Guide",
-          tags: ["guide"],
-          description: "How this workspace works.",
-        },
+        title: "Guide",
+        tags: ["guide"],
+        description: "How this workspace works.",
       },
       `\
 This is an AI-first RSS workspace. You don't browse feeds — you ask the agent.
@@ -172,7 +170,7 @@ export const rssTemplate: Template = {
 
   // R2: Domain quick actions
   quickActions: [
-    { label: "What's new today?", prompt: "What's new across my feeds today?" },
+    { label: "What's new today?", prompt: "What's new today? Read my feeds, pick highlights, and update my inbox." },
     { label: "Refresh feeds", prompt: "Refresh all my RSS feeds." },
     { label: "Subscribe to...", prompt: "Subscribe to " },
   ],
@@ -187,18 +185,25 @@ Workflows:
 - DIGEST: Read all sources' articles where readAt is null (unread), select the most
   interesting as highlights, write to inbox.codoc highlights[] and trending[] via
   update_data_field, set lastDigestAt to now.
-- SUBSCRIBE: Create new sources/<slug>.codoc with structure:
-  data.title, data.feedUrl, data.whyFollow, data.articles as $source: rss with url and interval: 30.
+- SUBSCRIBE: Create new sources/<slug>.codoc via create_from_template with:
+  title, tags: ["source", "rss"], data: { title, feedUrl, whyFollow, articles: { $source: "rss", url, interval: 30 } },
+  body: '<FeedHeader title={data.title} url={data.feedUrl} articleCount={(data.articles ?? []).length} unreadCount={(data.articles ?? []).filter(a => !a.readAt).length} refreshMinutes={30} description={data.whyFollow} />\n\n<ArticleList items={data.articles ?? []} />'.
   The scheduler will start fetching automatically.
 - DEEP DIVE: Research a topic across all feed articles, create topics/<slug>.codoc
   with a structured summary.
-- MARK READ: Use update_data_field to set readAt on specific articles.
+- MARK READ: Use update_data_field on the articles field with the full articles array,
+  setting readAt to an ISO timestamp on the target articles. The source declaration is
+  preserved automatically — only the cached value is updated.
 
 Rules:
 - Articles auto-refresh — do not manually fetch RSS feeds.
 - Always use update_data_field for field updates, not write_codoc (preserve MDX body).
 - Mark articles as read by setting readAt to ISO timestamp.
-- When generating a digest, include article title, source name, and a one-line summary.`,
+- When generating a digest, include article title, source name, and a one-line summary.
+- IMPORTANT: When the user asks "what's new", "give me a digest", "today's highlights",
+  or any variant — ALWAYS run the DIGEST workflow. This means you must call
+  update_data_field to persist highlights into inbox.codoc, not just answer in text.
+  The inbox is the user's primary reading surface; a text-only reply is insufficient.`,
 
   files() {
     return [
