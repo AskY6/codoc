@@ -35,6 +35,10 @@ export const rssProvider: SourceProvider = {
 
     return items;
   },
+
+  merge(existing: unknown, incoming: unknown): unknown {
+    return mergeRssArticles(existing, incoming);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -93,4 +97,83 @@ function parseAtomEntries(xml: string): FeedItem[] {
     });
   }
   return entries;
+}
+
+// ---------------------------------------------------------------------------
+// RSS merge — by link, preserving user state (readAt, starred)
+// ---------------------------------------------------------------------------
+
+interface RssArticle {
+  title: string;
+  link: string;
+  description?: string;
+  pubDate?: string;
+  readAt?: string | null;
+  starred?: boolean;
+}
+
+function mergeRssArticles(existing: unknown, incoming: unknown): RssArticle[] {
+  const newItems = (Array.isArray(incoming) ? incoming : []) as RssArticle[];
+  if (newItems.length === 0) return asArticles(existing);
+
+  const prev = asArticles(existing);
+  const byLink = new Map<string, RssArticle>();
+  for (const a of prev) {
+    if (a.link) byLink.set(a.link, a);
+  }
+
+  const merged: RssArticle[] = [];
+
+  for (const item of newItems) {
+    const old = item.link ? byLink.get(item.link) : undefined;
+    if (old) {
+      merged.push({ ...item, readAt: old.readAt ?? null, starred: old.starred ?? false });
+      byLink.delete(item.link);
+    } else {
+      merged.push({ ...item, readAt: null, starred: false });
+    }
+  }
+
+  // Keep existing articles no longer in the feed.
+  for (const leftover of byLink.values()) {
+    merged.push(leftover);
+  }
+
+  return capArticles(merged, 200);
+}
+
+/**
+ * Cap the article list to at most `max` items.
+ * Keeps all unread and starred articles; trims oldest read/unstarred first.
+ */
+function capArticles(articles: RssArticle[], max: number): RssArticle[] {
+  if (articles.length <= max) return articles;
+
+  const keep: RssArticle[] = [];
+  const trimmable: RssArticle[] = [];
+
+  for (const a of articles) {
+    if (!a.readAt || a.starred) {
+      keep.push(a);
+    } else {
+      trimmable.push(a);
+    }
+  }
+
+  // If protected items already exceed max, return them all (no data loss).
+  if (keep.length >= max) return keep;
+
+  // Sort trimmable by pubDate desc — keep newest.
+  trimmable.sort((a, b) => {
+    const ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    const tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return tb - ta;
+  });
+
+  const remaining = max - keep.length;
+  return [...keep, ...trimmable.slice(0, remaining)];
+}
+
+function asArticles(val: unknown): RssArticle[] {
+  return Array.isArray(val) ? (val as RssArticle[]) : [];
 }

@@ -26,6 +26,8 @@ export interface Diagnostic {
 export interface DiagnoseContext {
   /** Names of custom components available from .codoc/components/ */
   readonly customComponentNames: ReadonlySet<string>;
+  /** Names of built-in components provided by the runtime */
+  readonly builtinComponentNames?: ReadonlySet<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +71,11 @@ export function diagnoseCodoc(
   // 3. Cross-reference
   const diagnostics: Diagnostic[] = [];
 
-  const available = new Set([...imported, ...ctx.customComponentNames]);
+  const available = new Set([
+    ...imported,
+    ...ctx.customComponentNames,
+    ...(ctx.builtinComponentNames ?? []),
+  ]);
 
   for (const usage of jsxUsages) {
     // Extract root identifier for namespace access (e.g. "ns.Comp" → "ns")

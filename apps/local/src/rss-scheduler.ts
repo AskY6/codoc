@@ -2,19 +2,18 @@
 //
 // Scans workspace for $source fields with `interval`, checks timing
 // against .source-state.json, and refreshes when due. Merge strategy
-// is provider-specific: RSS merges by link (preserving readAt/starred),
+// is provider-owned: providers with a `merge` method get merge semantics,
 // all others use replace.
 
-import type { CodocPath, FieldName, NodeId, ResolveResult } from "@cobook/core";
+import type { EventEmitter } from "node:events";
+import type { CodocPath, FieldName, NodeId } from "@cobook/core";
 import type { SourceProvider } from "@cobook/parser";
 import type { Workspace } from "./workspace.js";
-import { compileOne } from "./workspace.js";
 import {
   readSourceState,
-  writeSourceState,
-  withEntry,
   type SourceStateMap,
 } from "./source-state.js";
+import { updateSourceFieldCache } from "./workspace-service.js";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // check every 1 minute
 
@@ -25,13 +24,15 @@ const CHECK_INTERVAL_MS = 60 * 1000; // check every 1 minute
 export interface SourceScheduler {
   /** Stop the scheduler. Safe to call multiple times. */
   stop(): void;
+  /** Resolves when the first tick completes (all due sources refreshed). */
+  readonly ready: Promise<void>;
 }
 
 /**
  * Start a generic source-field refresh scheduler for a workspace.
  * Scans for all $source fields with `interval`, refreshes when due.
  */
-export function startSourceScheduler(ws: Workspace): SourceScheduler {
+export function startSourceScheduler(ws: Workspace, updates?: EventEmitter): SourceScheduler {
   let timer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
 
@@ -47,12 +48,10 @@ export function startSourceScheduler(ws: Workspace): SourceScheduler {
 
     console.log(`[source] ${due.length} source(s) due for refresh`);
 
-    let currentState = state;
-
     for (const entry of due) {
       if (stopped) return;
       try {
-        currentState = await refreshSource(ws, entry, currentState);
+        await refreshSource(ws, entry, state, updates);
       } catch (e) {
         console.warn(
           `[source] failed to refresh ${entry.nodeId}: ${e instanceof Error ? e.message : String(e)}`,
@@ -61,12 +60,13 @@ export function startSourceScheduler(ws: Workspace): SourceScheduler {
     }
   }
 
-  // Immediate first check, then every minute.
-  void tick();
+  // First tick blocks ready promise; subsequent ticks fire-and-forget.
+  const firstTick = tick();
   timer = setInterval(() => void tick(), CHECK_INTERVAL_MS);
   console.log("[source] scheduler started (checking every 60s)");
 
   return {
+    ready: firstTick,
     stop() {
       if (stopped) return;
       stopped = true;
@@ -87,7 +87,6 @@ interface PeriodicSource {
   nodeId: NodeId;
   codocPath: CodocPath;
   fieldName: FieldName;
-  source: string;
   params: Readonly<Record<string, unknown>>;
   interval: number;
   provider: SourceProvider;
@@ -107,7 +106,6 @@ function findPeriodicSources(ws: Workspace): PeriodicSource[] {
         nodeId: `${codocPath}#data.${fieldName}` as NodeId,
         codocPath,
         fieldName,
-        source: field.source,
         params: field.params,
         interval: field.fetch.interval,
         provider,
@@ -133,95 +131,35 @@ async function refreshSource(
   ws: Workspace,
   entry: PeriodicSource,
   state: SourceStateMap,
-): Promise<SourceStateMap> {
+  updates?: EventEmitter,
+): Promise<void> {
   const raw = await entry.provider.execute(entry.params);
 
-  // Merge strategy: RSS uses article-level merge; others use replace.
+  // Merge strategy: use provider merge if available, otherwise replace.
   const existing = state[entry.nodeId]?.cachedValue;
-  const merged =
-    entry.source === "rss"
-      ? mergeRssArticles(existing, raw)
-      : raw;
+  const merged = entry.provider.merge
+    ? entry.provider.merge(existing, raw)
+    : raw;
 
-  // Update state file.
-  const newState = withEntry(state, entry.nodeId, {
-    lastFetchedAt: new Date().toISOString(),
-    cachedValue: merged,
-  });
-  await writeSourceState(ws.sourceDir, newState);
-
-  // Update in-memory resolved data.
-  const codoc = ws.codocs.get(entry.codocPath);
-  if (codoc) {
-    const updated = {
-      ...codoc,
-      resolvedData: {
-        ...codoc.resolvedData,
-        [entry.fieldName]: { kind: "ready" as const, value: merged } satisfies ResolveResult,
-      },
-    };
-    ws.codocs.set(entry.codocPath, updated);
-    await compileOne(ws, updated);
-  }
+  // Delegate to service layer.
+  await updateSourceFieldCache(
+    { ws, updates },
+    entry.codocPath,
+    entry.fieldName,
+    merged,
+    new Date().toISOString(),
+  );
 
   // Log summary.
-  if (entry.source === "rss" && Array.isArray(merged) && Array.isArray(existing)) {
+  if (entry.provider.merge && Array.isArray(merged) && Array.isArray(existing)) {
     const newCount = merged.length - existing.length;
     if (newCount > 0) {
-      console.log(`[source] ${entry.nodeId}: ${newCount} new article(s)`);
+      console.log(`[source] ${entry.nodeId}: ${newCount} new item(s)`);
     } else {
       console.log(`[source] ${entry.nodeId}: up to date`);
     }
   } else {
     console.log(`[source] ${entry.nodeId}: refreshed`);
   }
-
-  return newState;
 }
 
-// ---------------------------------------------------------------------------
-// RSS merge — by link, preserving user state (readAt, starred)
-// ---------------------------------------------------------------------------
-
-interface RssArticle {
-  title: string;
-  link: string;
-  description?: string;
-  pubDate?: string;
-  readAt?: string | null;
-  starred?: boolean;
-}
-
-function mergeRssArticles(existing: unknown, incoming: unknown): RssArticle[] {
-  const newItems = (Array.isArray(incoming) ? incoming : []) as RssArticle[];
-  if (newItems.length === 0) return asArticles(existing);
-
-  const prev = asArticles(existing);
-  const byLink = new Map<string, RssArticle>();
-  for (const a of prev) {
-    if (a.link) byLink.set(a.link, a);
-  }
-
-  const merged: RssArticle[] = [];
-
-  for (const item of newItems) {
-    const old = item.link ? byLink.get(item.link) : undefined;
-    if (old) {
-      merged.push({ ...item, readAt: old.readAt ?? null, starred: old.starred ?? false });
-      byLink.delete(item.link);
-    } else {
-      merged.push({ ...item, readAt: null, starred: false });
-    }
-  }
-
-  // Keep existing articles no longer in the feed.
-  for (const leftover of byLink.values()) {
-    merged.push(leftover);
-  }
-
-  return merged;
-}
-
-function asArticles(val: unknown): RssArticle[] {
-  return Array.isArray(val) ? (val as RssArticle[]) : [];
-}

@@ -16,6 +16,7 @@ import type { CustomComponentEntry } from "./components.js";
 import { scanComponents } from "./components.js";
 import { diagnoseCodoc } from "./diagnose.js";
 import type { Diagnostic } from "./diagnose.js";
+import { BUILTIN_COMPONENT_META } from "./recognize.js";
 
 export interface LocalCodoc {
   readonly path: CodocPath;
@@ -177,6 +178,7 @@ export async function writeCodoc(
         .filter((c) => c.kind === "ok")
         .map((c) => c.component.name),
     ),
+    builtinComponentNames: new Set(BUILTIN_COMPONENT_META.map((c) => c.name)),
   };
   const diagnostics = diagnoseCodoc(result.value, ctx);
   const hasErrors = diagnostics.some((d) => d.severity === "error");

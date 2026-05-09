@@ -83,11 +83,9 @@ function bookmarkCodoc(bm: Bookmark): TemplateFile {
     path: `bookmarks/${bm.slug}.codoc`,
     content: codoc(
       {
-        meta: {
-          title: bm.title,
-          tags: bm.tags,
-          description: bm.url,
-        },
+        title: bm.title,
+        tags: bm.tags,
+        description: bm.url,
         data: {
           title: bm.title,
           url: bm.url,
@@ -122,11 +120,9 @@ function readingListCodoc(): TemplateFile {
     path: "reading-list.codoc",
     content: codoc(
       {
-        meta: {
-          title: "Reading List",
-          tags: ["dashboard"],
-          description: "All bookmarks at a glance.",
-        },
+        title: "Reading List",
+        tags: ["dashboard"],
+        description: "All bookmarks at a glance.",
         data: {
           pcStatus: { $ref: "./bookmarks/prompt-caching.codoc#data.status" },
           seStatus: { $ref: "./bookmarks/sqlite-on-the-edge.codoc#data.status" },
@@ -152,11 +148,9 @@ function guideCodoc(): TemplateFile {
     path: "guide.codoc",
     content: codoc(
       {
-        meta: {
-          title: "Guide",
-          tags: ["guide"],
-          description: "How this workspace works.",
-        },
+        title: "Guide",
+        tags: ["guide"],
+        description: "How this workspace works.",
         data: {
           prompts: [
             { prompt: "save https://...", what: "Agent fetches the page, extracts key info, creates a bookmark codoc" },

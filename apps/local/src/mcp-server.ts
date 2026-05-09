@@ -13,7 +13,6 @@ import { buildDAG, checkCycles } from "@cobook/core";
 import { stringify as stringifyYaml } from "yaml";
 import { diagnoseCodoc } from "./diagnose.js";
 import type { Diagnostic } from "./diagnose.js";
-import { patchDataField } from "./patch.js";
 import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
 import type { ComponentMeta } from "./recognize.js";
 import { writeFile, mkdir, unlink } from "node:fs/promises";
@@ -22,8 +21,10 @@ import * as esbuild from "esbuild";
 import { loadComponents, removeFile, resolveAll } from "./workspace.js";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 import type { ProviderRegistry } from "./providers/registry.js";
+import { updateDataField } from "./workspace-service.js";
+import { FieldName as mkFieldName } from "@cobook/core";
 
-export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): McpServer {
+export function createMcpServer(ws: Workspace, registry?: ProviderRegistry, updates?: import("node:events").EventEmitter): McpServer {
   const server = new McpServer({
     name: "codoc-local",
     version: "0.0.1",
@@ -198,6 +199,7 @@ export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): Mcp
             .filter((c) => c.kind === "ok")
             .map((c) => c.component.name),
         ),
+        builtinComponentNames: new Set(BUILTIN_COMPONENT_META.map((c) => c.name)),
       };
       const diagnostics = diagnoseCodoc(codoc.ast, ctx);
 
@@ -226,25 +228,26 @@ export function createMcpServer(ws: Workspace, registry?: ProviderRegistry): Mcp
     },
     async ({ path, field, value }) => {
       const codocPath = mkCodocPath(path);
-      const codoc = ws.codocs.get(codocPath);
+      const fieldName = mkFieldName(field);
+      const ctx = { ws, updates };
 
-      if (!codoc) {
+      const result = await updateDataField(ctx, codocPath, fieldName, value);
+
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: `Error: codoc not found at "${path}"` }],
+          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
           isError: true,
         };
       }
 
-      const updated = patchDataField(codoc.content, field, value);
-      if (!updated.ok) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${updated.error}` }],
-          isError: true,
-        };
+      // For static field writes, use writeResultToMcp for enhancement hints.
+      if (result.writeResult) {
+        return writeResultToMcp(result.writeResult, result.message, ws, codocPath);
       }
 
-      const result = await writeCodoc(ws, codocPath, updated.value);
-      return writeResultToMcp(result, `Updated field "${field}" in ${path}`, ws, codocPath);
+      return {
+        content: [{ type: "text" as const, text: result.message }],
+      };
     },
   );
 

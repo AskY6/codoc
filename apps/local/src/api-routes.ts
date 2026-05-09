@@ -2,17 +2,19 @@
 //
 // All routes are mounted under /api by http-server.ts.
 
+import type { EventEmitter } from "node:events";
 import { Hono } from "hono";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { Workspace } from "./workspace.js";
 import { writeCodoc, buildAstMap, removeFile, resolveAll } from "./workspace.js";
-import { CodocPath as mkCodocPath } from "@cobook/core";
+import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 import type { ProviderRegistry } from "./providers/registry.js";
 import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
 import type { ComponentMeta } from "./recognize.js";
+import { updateArticleState } from "./workspace-service.js";
 
 // ---------------------------------------------------------------------------
 // Tree types
@@ -73,7 +75,7 @@ function codocPathFromUrl(url: string): string {
 // ---------------------------------------------------------------------------
 
 export function createApiRoutes(
-  state: { workspace: Workspace | null },
+  state: { workspace: Workspace | null; readonly updates?: EventEmitter },
   registry: ProviderRegistry,
 ): Hono {
   const api = new Hono();
@@ -143,6 +145,42 @@ export function createApiRoutes(
 
     const enhancements = recognizeEnhancements(codoc.ast, codoc.resolvedData, allMeta);
     return c.json(enhancements);
+  });
+
+  // ---- PATCH /codoc/:path+/articles/:field/:index --------------------------
+  // Update a single article's user state (readAt, starred) within a source field.
+  // Uses broad wildcard and manual URL parsing (same pattern as /enhancements).
+
+  api.patch("/codoc/*", async (c) => {
+    const pathname = new URL(c.req.url).pathname;
+    const articlesMatch = pathname.match(/\/codoc\/(.+)\/articles\/([^/]+)\/(\d+)$/);
+
+    if (!articlesMatch) {
+      return c.json({ error: "invalid article update path" }, 400);
+    }
+
+    const w = ws(c); if (!w) return c.json({ error: "no workspace open" }, 503);
+
+    const rawPath = decodeURIComponent(articlesMatch[1]!);
+    const path = rawPath.endsWith(".mdx") ? rawPath.replace(/\.mdx$/, ".codoc") : rawPath;
+    const field = decodeURIComponent(articlesMatch[2]!);
+    const index = parseInt(articlesMatch[3]!, 10);
+
+    const body = await c.req.json<{ readAt?: string | null; starred?: boolean }>();
+
+    const result = await updateArticleState(
+      { ws: w, updates: state.updates },
+      mkCodocPath(path),
+      mkFieldName(field),
+      index,
+      body,
+    );
+
+    if (!result.ok) {
+      return c.json({ ok: false, error: result.error }, 400);
+    }
+
+    return c.json({ ok: true });
   });
 
   // ---- GET /codoc/:path+ --------------------------------------------------

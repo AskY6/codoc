@@ -7,6 +7,7 @@
 //   /*                  → Static SPA (local web UI)
 
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { readFile, writeFile, readdir, stat, rm, rename } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -45,6 +46,12 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/** SSE update event pushed to connected clients. */
+export interface UpdateEvent {
+  readonly kind: "source-refreshed" | "codoc-updated" | "codoc-deleted";
+  readonly codocPath?: string;
+}
+
 /** Mutable server state — workspace can be opened at runtime. */
 export interface AppState {
   workspace: Workspace | null;
@@ -52,6 +59,8 @@ export interface AppState {
   mcpTransport: WebStandardStreamableHTTPServerTransport | null;
   watcher: { close: () => Promise<void> } | null;
   scheduler: SourceScheduler | null;
+  /** Event bus for real-time UI push. */
+  readonly updates: EventEmitter;
 }
 
 export interface HttpServerOptions {
@@ -78,6 +87,7 @@ export async function startHttpServer(
     mcpTransport: null,
     watcher: null,
     scheduler: null,
+    updates: new EventEmitter(),
   };
 
   // Detect available CLI providers in parallel.
@@ -92,6 +102,13 @@ export async function startHttpServer(
     await setupMcp(state, registry);
     state.watcher = startWatcher(state.workspace);
     startScheduler(state);
+    // Wait for first source refresh (articles available on first page load).
+    if (state.scheduler) {
+      await Promise.race([
+        state.scheduler.ready,
+        new Promise<void>((r) => setTimeout(r, 10_000)),
+      ]);
+    }
   }
 
   const app = new Hono();
@@ -152,6 +169,12 @@ export async function startHttpServer(
     await setupMcp(state, registry);
     state.watcher = startWatcher(ws);
     startScheduler(state);
+    if (state.scheduler) {
+      await Promise.race([
+        state.scheduler.ready,
+        new Promise<void>((r) => setTimeout(r, 10_000)),
+      ]);
+    }
 
     console.log(`[codoc] opened workspace: ${name} (${ws.codocs.size} codocs)`);
     return c.json({ ok: true, codocCount: ws.codocs.size });
@@ -327,9 +350,47 @@ export async function startHttpServer(
     await setupMcp(state, registry);
     state.watcher = startWatcher(ws);
     startScheduler(state);
+    if (state.scheduler) {
+      await Promise.race([
+        state.scheduler.ready,
+        new Promise<void>((r) => setTimeout(r, 10_000)),
+      ]);
+    }
 
     console.log(`[codoc] created workspace from template: ${name} (${template.name}, ${ws.codocs.size} codocs)`);
     return c.json({ ok: true, name, codocCount: ws.codocs.size });
+  });
+
+  // ---- SSE updates --------------------------------------------------------
+  app.get("/api/updates", (c) => {
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event: UpdateEvent) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          } catch { /* client disconnected */ }
+        };
+        state.updates.on("update", send);
+        // Heartbeat every 30s to keep connection alive.
+        const heartbeat = setInterval(() => {
+          try { controller.enqueue(encoder.encode(": heartbeat\n\n")); } catch { /* */ }
+        }, 30_000);
+        // Cleanup is handled when the client drops the connection and
+        // the next enqueue throws, so we also listen for cancel.
+        c.req.raw.signal.addEventListener("abort", () => {
+          state.updates.off("update", send);
+          clearInterval(heartbeat);
+        });
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   // ---- REST API -----------------------------------------------------------
@@ -435,7 +496,7 @@ async function listWorkspaceNames(): Promise<string[]> {
 
 async function setupMcp(state: AppState, registry?: ProviderRegistry): Promise<void> {
   if (!state.workspace) return;
-  const mcpServer = createMcpServer(state.workspace, registry);
+  const mcpServer = createMcpServer(state.workspace, registry, state.updates);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
   });
@@ -445,7 +506,7 @@ async function setupMcp(state: AppState, registry?: ProviderRegistry): Promise<v
 
 function startScheduler(state: AppState): void {
   if (!state.workspace) return;
-  state.scheduler = startSourceScheduler(state.workspace);
+  state.scheduler = startSourceScheduler(state.workspace, state.updates);
 }
 
 function stopScheduler(state: AppState): void {

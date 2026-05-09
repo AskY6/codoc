@@ -11,6 +11,12 @@
 export interface SourceProvider {
   readonly name: string;
   execute(params: Readonly<Record<string, unknown>>): Promise<unknown>;
+  /**
+   * Merge incoming data with an existing cached value.
+   * Called by the scheduler after each periodic refresh.
+   * When absent, the scheduler uses replace (incoming overwrites existing).
+   */
+  merge?(existing: unknown, incoming: unknown): unknown;
 }
 
 /**

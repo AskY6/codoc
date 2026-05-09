@@ -293,4 +293,12 @@ export const api = {
     json<{ ok: boolean }>(`/api/chats/${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
     }),
+
+  /** Update a single article's read/starred state within a source field. */
+  updateArticle: (codocPath: string, field: string, index: number, patch: { readAt?: string | null; starred?: boolean }) =>
+    json<{ ok: boolean }>(`/api/codoc/${encodeURI(codocPath)}/articles/${encodeURIComponent(field)}/${index}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
 };

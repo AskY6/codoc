@@ -452,8 +452,19 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     void loadCodocs();
     void loadChats();
     void loadProviders();
-    const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); void loadChats(); }, 3000);
-    return () => clearInterval(id);
+
+    // SSE push — reload on backend data changes.
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/updates");
+      es.onmessage = () => {
+        void loadTree(); void loadDag(); void loadCodocs(); void loadChats();
+      };
+    } catch { /* SSE unsupported — fall through to polling */ }
+
+    // Fallback polling at a relaxed 10s cadence.
+    const id = setInterval(() => { void loadTree(); void loadDag(); void loadCodocs(); void loadChats(); }, 10_000);
+    return () => { clearInterval(id); es?.close(); };
   }, [loadTree, loadDag, loadCodocs, loadChats, loadProviders]);
 
   // Load codoc detail when a codoc is focused
@@ -478,8 +489,16 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
       return;
     }
     void fetchCodoc(codocPath);
-    const id = setInterval(() => void fetchCodoc(codocPath), 2000);
-    return () => clearInterval(id);
+
+    // SSE-driven refresh for the focused codoc.
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/updates");
+      es.onmessage = () => void fetchCodoc(codocPath);
+    } catch { /* fallback below */ }
+
+    const id = setInterval(() => void fetchCodoc(codocPath), 10_000);
+    return () => { clearInterval(id); es?.close(); };
   }, [codocPath, fetchCodoc]);
 
   // --- Actions -------------------------------------------------------------
