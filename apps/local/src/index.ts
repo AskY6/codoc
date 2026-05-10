@@ -19,7 +19,7 @@ import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll, buildAstMap } from "./workspace.js";
 import type { Workspace } from "./workspace.js";
 import { startWatcher } from "./watcher.js";
-import { startSourceScheduler } from "./rss-scheduler.js";
+import { startSourceScheduler } from "./source-scheduler.js";
 import { startMcpServer } from "./mcp-server.js";
 import { startHttpServer } from "./http-server.js";
 import { initWorkspace } from "./init.js";

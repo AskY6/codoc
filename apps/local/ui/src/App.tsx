@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { api } from "./api.ts";
-import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo, ChatMeta, ProviderInfo, TemplateInfo } from "./api.ts";
+import type { TreeNode, CodocDetail, CodocListItem, DagStatus, WorkspaceInfo, ChatMeta, ProviderInfo, TemplateInfo, WorkspaceUiSpec } from "./api.ts";
 import { FileTree } from "./components/FileTree.tsx";
 import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
@@ -8,6 +8,7 @@ import { ComponentPanel } from "./components/ComponentPanel.tsx";
 import { ChatPanel } from "./components/ChatPanel.tsx";
 import { useCustomComponents } from "./custom-components.ts";
 import { ConfirmDialog } from "./components/ConfirmDialog.tsx";
+import { WorkspaceActionBar } from "./components/WorkspaceActionBar.tsx";
 import { subscribe } from "./lib/event-bus.ts";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ export function App() {
     return <WorkspacePicker onOpen={() => void checkWorkspace()} />;
   }
 
-  return <WorkspaceApp workspaceName={wsInfo.name!} onSwitchWorkspace={() => setWsInfo({ active: false })} />;
+  return <WorkspaceApp wsInfo={wsInfo} onSwitchWorkspace={() => setWsInfo({ active: false })} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,7 +380,9 @@ function countFiles(nodes: TreeNode[]): number {
 // Workspace UI — 3-panel layout
 // ---------------------------------------------------------------------------
 
-function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: string; onSwitchWorkspace: () => void }) {
+function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; onSwitchWorkspace: () => void }) {
+  const workspaceName = wsInfo.name!;
+  const uiSpec: WorkspaceUiSpec | undefined = wsInfo.uiSpec;
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [codocList, setCodocList] = useState<CodocListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -474,7 +477,10 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     try {
       const c = await api.codoc(path);
       setCodoc((prev) => {
-        if (prev && prev.path === c.path && prev.content === c.content) return prev;
+        if (!prev || prev.path !== c.path) return c;
+        // Compare both raw content and resolved data to catch all update paths
+        // (static field patches change content; source cache updates change data).
+        if (prev.content === c.content && JSON.stringify(prev.data) === JSON.stringify(c.data)) return prev;
         return c;
       });
       setError(null);
@@ -506,6 +512,18 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
   const selectCodoc = useCallback((path: string) => {
     setFocus({ kind: "codoc", path });
   }, []);
+
+  // Auto-select inbox on first mount when plugin declares homeView: "inbox".
+  const didAutoFocus = useRef(false);
+  useEffect(() => {
+    if (didAutoFocus.current || uiSpec?.homeView !== "inbox") return;
+    if (tree.length === 0) return; // wait for tree to load
+    didAutoFocus.current = true;
+    const hasInbox = codocList.some((c) => c.path === "inbox.codoc");
+    if (hasInbox) {
+      selectCodoc("inbox.codoc");
+    }
+  }, [tree, codocList, uiSpec, selectCodoc]);
 
   const requestDeleteCodoc = useCallback((path: string) => {
     setPendingDelete({ kind: "codoc", path });
@@ -598,9 +616,38 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
     setChatKey((k) => k + 1);
   }, []);
 
+  // --- Filtered tree (apply plugin hiddenPaths) ----------------------------
+
+  const visibleTree = useMemo(() => {
+    const hidden = uiSpec?.hiddenPaths;
+    if (!hidden || hidden.length === 0) return tree;
+    const hiddenSet = new Set(hidden);
+    // Tree nodes use .mdx names (compiled output); hiddenPaths use .codoc names.
+    // Normalize by checking both the raw path and a .mdx→.codoc variant.
+    function isHidden(treePath: string): boolean {
+      if (hiddenSet.has(treePath)) return true;
+      if (treePath.endsWith(".mdx")) {
+        return hiddenSet.has(treePath.replace(/\.mdx$/, ".codoc"));
+      }
+      return false;
+    }
+    function filterNodes(nodes: TreeNode[], prefix = ""): TreeNode[] {
+      return nodes
+        .filter((n) => {
+          const fullPath = prefix ? `${prefix}/${n.name}` : n.name;
+          return !isHidden(fullPath);
+        })
+        .map((n) => {
+          const fullPath = prefix ? `${prefix}/${n.name}` : n.name;
+          return n.children ? { ...n, children: filterNodes(n.children, fullPath) } : n;
+        });
+    }
+    return filterNodes(tree);
+  }, [tree, uiSpec]);
+
   // --- Sidebar items -------------------------------------------------------
 
-  const fileCount = countFiles(tree);
+  const fileCount = countFiles(visibleTree);
 
   const sidebarNav: { id: string; label: string; active: boolean; icon: React.ReactNode; onClick: () => void }[] = [
     {
@@ -704,9 +751,9 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
                 </button>
               </div>
               <div className="px-2 pb-2">
-                {tree.length > 0 ? (
+                {visibleTree.length > 0 ? (
                   <FileTree
-                    tree={tree}
+                    tree={visibleTree}
                     selectedPath={codocPath}
                     onSelect={selectCodoc}
                     onDelete={requestDeleteCodoc}
@@ -852,6 +899,13 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
             </div>
           )}
 
+          {uiSpec?.primaryActions && uiSpec.primaryActions.length > 0 && (
+            <WorkspaceActionBar
+              actions={uiSpec.primaryActions}
+              onActionComplete={() => { if (codocPath) void fetchCodoc(codocPath); }}
+            />
+          )}
+
           {focus.kind === "graph" ? (
             <GraphPanel dag={dagData} onSelectCodoc={selectCodoc} />
           ) : focus.kind === "component" ? (
@@ -886,6 +940,7 @@ function WorkspaceApp({ workspaceName, onSwitchWorkspace }: { workspaceName: str
               key={chatKey}
               codocs={codocList}
               activeCodoc={codocPath}
+              pluginId={wsInfo.pluginId}
               onClose={() => setChatOpen(false)}
               resumeSession={resumeSession}
               provider={chatProvider}

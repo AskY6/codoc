@@ -24,12 +24,15 @@ import { createApiRoutes } from "./api-routes.js";
 import { createChatRoutes } from "./chat-route.js";
 import { createMcpServer } from "./mcp-server.js";
 import { startWatcher } from "./watcher.js";
-import { startSourceScheduler } from "./rss-scheduler.js";
-import type { SourceScheduler } from "./rss-scheduler.js";
+import { startSourceScheduler } from "./source-scheduler.js";
+import type { SourceScheduler } from "./source-scheduler.js";
 import { createProviderRegistry } from "./providers/registry.js";
 import type { ProviderRegistry } from "./providers/registry.js";
 import { templates, findTemplate } from "./templates/index.js";
 import { initWorkspace } from "./init.js";
+import type { WorkspacePlugin, WorkspacePluginContext, PluginJobHandle } from "./plugins/types.js";
+import { parseWorkspaceConfig } from "./plugins/config.js";
+import { resolvePlugin } from "./plugins/detect.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiDistDir = join(__dirname, "ui");
@@ -59,6 +62,10 @@ export interface AppState {
   mcpTransport: WebStandardStreamableHTTPServerTransport | null;
   watcher: { close: () => Promise<void> } | null;
   scheduler: SourceScheduler | null;
+  activePlugin: WorkspacePlugin | null;
+  pluginCtx: WorkspacePluginContext | null;
+  pluginJobs: PluginJobHandle[];
+  pluginRouter: Hono | null;
   /** Event bus for real-time UI push. */
   readonly updates: EventEmitter;
 }
@@ -87,6 +94,10 @@ export async function startHttpServer(
     mcpTransport: null,
     watcher: null,
     scheduler: null,
+    activePlugin: null,
+    pluginCtx: null,
+    pluginJobs: [],
+    pluginRouter: null,
     updates: new EventEmitter(),
   };
 
@@ -97,9 +108,28 @@ export async function startHttpServer(
     .map((p) => p.name);
   console.log(`[codoc] providers: ${availableNames.length > 0 ? availableNames.join(", ") : "none detected"}`);
 
-  // If initial workspace provided, set up MCP, watcher, and RSS scheduler.
-  if (state.workspace) {
-    await setupMcp(state, registry);
+  // If initial workspace provided, set up MCP, watcher, and source scheduler.
+  if (state.workspace && options.initialWorkspace) {
+    const wsName = options.initialWorkspace.name;
+    const workspaceDir = state.workspace.sourceDir;
+
+    let rawConfig: Record<string, unknown> = {};
+    try {
+      rawConfig = JSON.parse(
+        await readFile(join(workspaceDir, "codoc.config.json"), "utf-8"),
+      ) as Record<string, unknown>;
+    } catch { /* */ }
+    const config = parseWorkspaceConfig(rawConfig);
+
+    const { plugin, source } = resolvePlugin(state.workspace, config);
+    const configResult = plugin.parseConfig(config.pluginConfig);
+    state.activePlugin = plugin;
+    state.pluginCtx = configResult.ok
+      ? buildPluginContext(wsName, state.workspace, config, configResult.value, state.updates, registry)
+      : null;
+    console.log(`[plugin] activated: ${plugin.id} (${source})`);
+
+    await setupMcp(state, registry, plugin, state.workspace, wsName, config, configResult.ok ? configResult.value : undefined);
     state.watcher = startWatcher(state.workspace);
     startScheduler(state);
     // Wait for first source refresh (articles available on first page load).
@@ -108,6 +138,10 @@ export async function startHttpServer(
         state.scheduler.ready,
         new Promise<void>((r) => setTimeout(r, 10_000)),
       ]);
+    }
+
+    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
+      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
     }
   }
 
@@ -124,10 +158,16 @@ export async function startHttpServer(
     if (!state.workspace) {
       return c.json({ active: false });
     }
+    const plugin = state.activePlugin;
+    const uiSpec = plugin?.getUiSpec && state.pluginCtx
+      ? plugin.getUiSpec(state.pluginCtx)
+      : undefined;
     return c.json({
       active: true,
       name: state.workspaceName,
       codocCount: state.workspace.codocs.size,
+      pluginId: plugin?.id ?? "default",
+      uiSpec,
     });
   });
 
@@ -141,7 +181,8 @@ export async function startHttpServer(
       return c.json({ error: `workspace "${name}" not found` }, 404);
     }
 
-    // Close existing watcher and scheduler.
+    // Tear down existing workspace.
+    teardownPlugin(state);
     stopScheduler(state);
     if (state.watcher) {
       await state.watcher.close();
@@ -149,13 +190,16 @@ export async function startHttpServer(
     }
 
     // Read workspace config.
+    let rawConfig: Record<string, unknown> = {};
     let outDir = workspaceDir;
     try {
-      const cfg = JSON.parse(
+      rawConfig = JSON.parse(
         await readFile(join(workspaceDir, "codoc.config.json"), "utf-8"),
-      ) as { outDir?: string };
-      if (cfg.outDir) outDir = resolve(workspaceDir, cfg.outDir);
+      ) as Record<string, unknown>;
+      if (typeof rawConfig.outDir === "string") outDir = resolve(workspaceDir, rawConfig.outDir);
     } catch { /* use defaults */ }
+
+    const config = parseWorkspaceConfig(rawConfig);
 
     // Load workspace.
     const sourceProviders = createSourceRegistry();
@@ -165,8 +209,20 @@ export async function startHttpServer(
     state.workspace = ws;
     state.workspaceName = name;
 
-    // Set up MCP, watcher, and RSS scheduler.
-    await setupMcp(state, registry);
+    // Resolve and activate plugin.
+    const { plugin, source } = resolvePlugin(ws, config);
+    const configResult = plugin.parseConfig(config.pluginConfig);
+    if (!configResult.ok) {
+      console.warn(`[plugin] config error for "${plugin.id}": ${configResult.error.message}`);
+    }
+    state.activePlugin = plugin;
+    state.pluginCtx = configResult.ok
+      ? buildPluginContext(name, ws, config, configResult.value, state.updates, registry)
+      : null;
+    console.log(`[plugin] activated: ${plugin.id} (${source})`);
+
+    // Set up MCP (with plugin tools), watcher, and source scheduler.
+    await setupMcp(state, registry, plugin, ws, name, config, configResult.ok ? configResult.value : undefined);
     state.watcher = startWatcher(ws);
     startScheduler(state);
     if (state.scheduler) {
@@ -174,6 +230,11 @@ export async function startHttpServer(
         state.scheduler.ready,
         new Promise<void>((r) => setTimeout(r, 10_000)),
       ]);
+    }
+
+    // Start plugin-specific jobs.
+    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
+      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
     }
 
     console.log(`[codoc] opened workspace: ${name} (${ws.codocs.size} codocs)`);
@@ -211,6 +272,7 @@ export async function startHttpServer(
 
     // If deleting the currently open workspace, close it first.
     if (state.workspaceName === name) {
+      teardownPlugin(state);
       stopScheduler(state);
       if (state.watcher) {
         await state.watcher.close();
@@ -338,6 +400,7 @@ export async function startHttpServer(
     const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
     await compileAll(ws);
 
+    teardownPlugin(state);
     stopScheduler(state);
     if (state.watcher) {
       await state.watcher.close();
@@ -347,7 +410,24 @@ export async function startHttpServer(
     state.workspace = ws;
     state.workspaceName = name;
 
-    await setupMcp(state, registry);
+    // Read freshly written config and activate plugin.
+    let rawConfig: Record<string, unknown> = {};
+    try {
+      rawConfig = JSON.parse(
+        await readFile(join(workspaceDir, "codoc.config.json"), "utf-8"),
+      ) as Record<string, unknown>;
+    } catch { /* */ }
+    const config = parseWorkspaceConfig(rawConfig);
+
+    const { plugin, source } = resolvePlugin(ws, config);
+    const configResult = plugin.parseConfig(config.pluginConfig);
+    state.activePlugin = plugin;
+    state.pluginCtx = configResult.ok
+      ? buildPluginContext(name, ws, config, configResult.value, state.updates, registry)
+      : null;
+    console.log(`[plugin] activated: ${plugin.id} (${source})`);
+
+    await setupMcp(state, registry, plugin, ws, name, config, configResult.ok ? configResult.value : undefined);
     state.watcher = startWatcher(ws);
     startScheduler(state);
     if (state.scheduler) {
@@ -355,6 +435,10 @@ export async function startHttpServer(
         state.scheduler.ready,
         new Promise<void>((r) => setTimeout(r, 10_000)),
       ]);
+    }
+
+    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
+      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
     }
 
     console.log(`[codoc] created workspace from template: ${name} (${template.name}, ${ws.codocs.size} codocs)`);
@@ -396,6 +480,23 @@ export async function startHttpServer(
   // ---- REST API -----------------------------------------------------------
   const apiRoutes = createApiRoutes(state, registry);
   app.route("/api", apiRoutes);
+
+  // ---- Plugin API routes (dynamic — delegates to active plugin) ----------
+  app.all("/api/plugins/:pluginId/*", async (c) => {
+    const pluginId = c.req.param("pluginId");
+    if (!state.activePlugin || state.activePlugin.id !== pluginId) {
+      return c.json({ error: `plugin "${pluginId}" not active` }, 404);
+    }
+    if (!state.pluginRouter) {
+      return c.json({ error: "plugin has no API routes" }, 404);
+    }
+    // Strip prefix so plugin routes match against "/" + relative path.
+    const prefix = `/api/plugins/${pluginId}`;
+    const url = new URL(c.req.url);
+    url.pathname = url.pathname.slice(prefix.length) || "/";
+    const rewritten = new Request(url.toString(), c.req.raw);
+    return state.pluginRouter.fetch(rewritten);
+  });
 
   // ---- Chat (provider-aware proxy) ---------------------------------------
   const chatRoutes = createChatRoutes(state, registry);
@@ -494,14 +595,65 @@ async function listWorkspaceNames(): Promise<string[]> {
   }
 }
 
-async function setupMcp(state: AppState, registry?: ProviderRegistry): Promise<void> {
+async function setupMcp(
+  state: AppState,
+  registry?: ProviderRegistry,
+  plugin?: WorkspacePlugin,
+  ws?: Workspace,
+  workspaceName?: string,
+  config?: import("./plugins/types.js").WorkspaceConfigFile,
+  pluginConfig?: unknown,
+): Promise<void> {
   if (!state.workspace) return;
   const mcpServer = createMcpServer(state.workspace, registry, state.updates);
+
+  // Register plugin MCP tools.
+  if (plugin?.registerMcpTools && ws && workspaceName && config && pluginConfig !== undefined) {
+    const ctx = buildPluginContext(workspaceName, ws, config, pluginConfig, state.updates, registry);
+    plugin.registerMcpTools(mcpServer, ctx as WorkspacePluginContext);
+  }
+
+  // Mount plugin API routes.
+  if (plugin?.createApiRoutes && ws && workspaceName && config && pluginConfig !== undefined) {
+    const ctx = buildPluginContext(workspaceName, ws, config, pluginConfig, state.updates, registry);
+    state.pluginRouter = plugin.createApiRoutes(ctx as WorkspacePluginContext);
+  } else {
+    state.pluginRouter = null;
+  }
+
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
   });
   await mcpServer.connect(transport);
   state.mcpTransport = transport;
+}
+
+function buildPluginContext(
+  workspaceName: string,
+  workspace: Workspace,
+  config: import("./plugins/types.js").WorkspaceConfigFile,
+  pluginConfig: unknown,
+  updates: EventEmitter,
+  providerRegistry?: ProviderRegistry,
+): WorkspacePluginContext<unknown> {
+  return {
+    workspaceName,
+    workspace,
+    config,
+    pluginConfig,
+    updates,
+    providerRegistry: providerRegistry!,
+  };
+}
+
+function teardownPlugin(state: AppState): void {
+  for (const job of state.pluginJobs) {
+    job.stop();
+  }
+  state.pluginJobs = [];
+  state.activePlugin = null;
+  state.pluginCtx = null;
+  state.pluginRouter = null;
 }
 
 function startScheduler(state: AppState): void {

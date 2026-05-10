@@ -66,11 +66,11 @@ function inboxCodoc(): TemplateFile {
       },
       `\
 {(data.highlights ?? []).length === 0 ? (
-  <Card title="Your inbox is empty" description="Ask the agent: 'what's new today?' or 'refresh my feeds and give me a digest'" />
+  <Card title="No digest yet" description="Refresh feeds and update digest to get started." />
 ) : (
   <>
     {data.lastDigestAt && (Date.now() - new Date(data.lastDigestAt).getTime() > 24 * 60 * 60 * 1000) && (
-      <Card title="Digest may be stale" description={\`Last updated \${new Date(data.lastDigestAt).toLocaleDateString()}. Ask the agent: 'refresh my digest'\`} />
+      <Card title="Digest may be stale" description={\`Last updated \${new Date(data.lastDigestAt).toLocaleDateString()}. Update digest to refresh this inbox.\`} />
     )}
     <Table data={data.highlights ?? []} />
     {(data.trending ?? []).length > 0 && (

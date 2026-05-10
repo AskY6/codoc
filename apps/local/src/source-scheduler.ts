@@ -28,6 +28,12 @@ export interface SourceScheduler {
   readonly ready: Promise<void>;
 }
 
+export interface RefreshResult {
+  readonly total: number;
+  readonly refreshed: string[];
+  readonly failed: { nodeId: string; error: string }[];
+}
+
 /**
  * Start a generic source-field refresh scheduler for a workspace.
  * Scans for all $source fields with `interval`, refreshes when due.
@@ -77,6 +83,41 @@ export function startSourceScheduler(ws: Workspace, updates?: EventEmitter): Sou
       console.log("[source] scheduler stopped");
     },
   };
+}
+
+/**
+ * Refresh all periodic sources in a workspace on demand.
+ * When `force` is true, all sources are refreshed regardless of timing.
+ * When false, only due sources are refreshed (same as a scheduler tick).
+ */
+export async function refreshAllSources(
+  ws: Workspace,
+  updates?: EventEmitter,
+  opts?: { force?: boolean },
+): Promise<RefreshResult> {
+  const entries = findPeriodicSources(ws);
+  if (entries.length === 0) {
+    return { total: 0, refreshed: [], failed: [] };
+  }
+
+  const state = await readSourceState(ws.sourceDir);
+  const targets = opts?.force ? entries : entries.filter((e) => isDue(e, state));
+  const refreshed: string[] = [];
+  const failed: { nodeId: string; error: string }[] = [];
+
+  for (const entry of targets) {
+    try {
+      await refreshSource(ws, entry, state, updates);
+      refreshed.push(entry.nodeId);
+    } catch (e) {
+      failed.push({
+        nodeId: entry.nodeId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return { total: entries.length, refreshed, failed };
 }
 
 // ---------------------------------------------------------------------------

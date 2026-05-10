@@ -22,16 +22,40 @@ import type { CodocAST } from "@cobook/core";
 import type { Template, TemplateFile } from "./templates/index.js";
 import { addComponent } from "./add.js";
 import { BUILTIN_COMPONENT_META } from "./recognize.js";
+import { allPlugins } from "./plugins/registry.js";
 
 interface InitConfig {
   port: number;
+  workspaceKind?: string;
+  pluginConfig?: Record<string, unknown>;
   commands?: Array<{ name: string; description: string; prompt: string }>;
   quickActions?: Array<{ label: string; prompt: string }>;
   agentInstructions?: string;
 }
 
+/**
+ * Find the plugin that owns a template, if any.
+ * Returns the plugin id (= workspaceKind) or undefined.
+ */
+function findPluginForTemplate(template: Template): string | undefined {
+  for (const plugin of allPlugins()) {
+    if (plugin.template?.id === template.id) return plugin.id;
+  }
+  return undefined;
+}
+
 function buildConfig(template?: Template): InitConfig {
   const cfg: InitConfig = { port: 4321 };
+
+  // Plugin binding: write workspaceKind when template belongs to a plugin.
+  if (template) {
+    const pluginId = findPluginForTemplate(template);
+    if (pluginId && pluginId !== "default") {
+      cfg.workspaceKind = pluginId;
+    }
+  }
+
+  // Legacy interaction hints (kept for backward compat).
   if (template?.commands && template.commands.length > 0) {
     cfg.commands = template.commands.map((c) => ({ name: c.name, description: c.description, prompt: c.prompt }));
   }

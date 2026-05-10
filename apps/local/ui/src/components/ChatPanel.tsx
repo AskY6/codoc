@@ -24,7 +24,6 @@ import {
   renderMentions,
 } from "./MentionPopover.tsx";
 import type { MentionItem } from "./MentionPopover.tsx";
-import { subscribe } from "../lib/event-bus.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,6 +70,8 @@ const DEFAULT_QUICK_ACTIONS_IDLE = [
 export interface ChatPanelProps {
   codocs: CodocListItem[];
   activeCodoc: string | null;
+  /** Active plugin ID — used to select domain-specific quick actions. */
+  pluginId?: string | undefined;
   onClose: () => void;
   resumeSession?: { sessionId: string; title: string; provider?: string | undefined } | undefined;
   /** Provider ID for this chat session (locked once conversation starts). */
@@ -83,7 +84,7 @@ export interface ChatPanelProps {
   onPromptConsumed?: () => void;
 }
 
-export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provider, providerName, initialPrompt, onPromptConsumed }: ChatPanelProps) {
+export function ChatPanel({ codocs, activeCodoc, pluginId, onClose, resumeSession, provider, providerName, initialPrompt, onPromptConsumed }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -362,17 +363,9 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
     [input, loading, sessionId, codocs, closeSlash],
   );
 
-  // --- Event bus: external prompt triggers (e.g. <Prompt> component) -------
+  // --- Initial prompt (forwarded from App via props) -----------------------
   const sendRef = useRef(send);
   sendRef.current = send;
-
-  useEffect(() => {
-    return subscribe("send-prompt", ({ prompt }) => {
-      void sendRef.current(prompt);
-    });
-  }, []);
-
-  // --- Initial prompt (forwarded from App via event bus) -------------------
   useEffect(() => {
     if (initialPrompt) {
       void sendRef.current(initialPrompt);
@@ -511,20 +504,35 @@ export function ChatPanel({ codocs, activeCodoc, onClose, resumeSession, provide
   const isEmpty = messages.length === 0 && !loading;
 
   const quickActions = activeCodoc
-    ? [
-        {
-          label: "Summarize",
-          prompt: `@${activeCodoc} Summarize this codoc concisely.`,
-        },
-        {
-          label: "Suggest fields",
-          prompt: `@${activeCodoc} What data fields should this codoc define?`,
-        },
-        {
-          label: "Improve view",
-          prompt: `@${activeCodoc} Suggest improvements to this codoc's MDX view section.`,
-        },
-      ]
+    ? pluginId === "rss" && activeCodoc.startsWith("sources/")
+      ? [
+          {
+            label: "Summarize this feed",
+            prompt: `@${activeCodoc} Summarize the most important articles from this feed.`,
+          },
+          {
+            label: "Find key articles",
+            prompt: `@${activeCodoc} Find the most important unread items in this feed.`,
+          },
+          {
+            label: "Research a topic",
+            prompt: `@${activeCodoc} Research a topic across the articles in this feed.`,
+          },
+        ]
+      : [
+          {
+            label: "Summarize",
+            prompt: `@${activeCodoc} Summarize this codoc concisely.`,
+          },
+          {
+            label: "Suggest fields",
+            prompt: `@${activeCodoc} What data fields should this codoc define?`,
+          },
+          {
+            label: "Improve view",
+            prompt: `@${activeCodoc} Suggest improvements to this codoc's MDX view section.`,
+          },
+        ]
     : (wsConfig?.quickActions && wsConfig.quickActions.length > 0)
       ? wsConfig.quickActions
       : DEFAULT_QUICK_ACTIONS_IDLE;
