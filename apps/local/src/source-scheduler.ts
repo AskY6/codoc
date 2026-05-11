@@ -7,15 +7,20 @@
 
 import type { EventEmitter } from "node:events";
 import type { CodocPath, FieldName, NodeId } from "@cobook/core";
-import type { SourceProvider } from "@cobook/parser";
+import type { MergeContext, SourceProvider } from "@cobook/parser";
 import type { Workspace } from "./workspace.js";
 import {
   readSourceState,
+  writeSourceState,
+  withEntry,
+  type SourceStateEntry,
   type SourceStateMap,
 } from "./source-state.js";
 import { updateSourceFieldCache } from "./workspace-service.js";
+import { Mutex } from "./mutex.js";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // check every 1 minute
+const CONCURRENCY_LIMIT = 3;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -41,6 +46,7 @@ export interface RefreshResult {
 export function startSourceScheduler(ws: Workspace, updates?: EventEmitter): SourceScheduler {
   let timer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
+  const stateMutex = new Mutex();
 
   async function tick(): Promise<void> {
     if (stopped) return;
@@ -54,16 +60,11 @@ export function startSourceScheduler(ws: Workspace, updates?: EventEmitter): Sou
 
     console.log(`[source] ${due.length} source(s) due for refresh`);
 
-    for (const entry of due) {
+    // Refresh with concurrency limit.
+    await runWithConcurrency(due, CONCURRENCY_LIMIT, async (entry) => {
       if (stopped) return;
-      try {
-        await refreshSource(ws, entry, state, updates);
-      } catch (e) {
-        console.warn(
-          `[source] failed to refresh ${entry.nodeId}: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
-    }
+      await refreshSource(ws, entry, stateMutex, updates);
+    });
   }
 
   // First tick blocks ready promise; subsequent ticks fire-and-forget.
@@ -104,10 +105,11 @@ export async function refreshAllSources(
   const targets = opts?.force ? entries : entries.filter((e) => isDue(e, state));
   const refreshed: string[] = [];
   const failed: { nodeId: string; error: string }[] = [];
+  const stateMutex = new Mutex();
 
-  for (const entry of targets) {
+  await runWithConcurrency(targets, CONCURRENCY_LIMIT, async (entry) => {
     try {
-      await refreshSource(ws, entry, state, updates);
+      await refreshSource(ws, entry, stateMutex, updates);
       refreshed.push(entry.nodeId);
     } catch (e) {
       failed.push({
@@ -115,9 +117,24 @@ export async function refreshAllSources(
         error: e instanceof Error ? e.message : String(e),
       });
     }
-  }
+  });
 
   return { total: entries.length, refreshed, failed };
+}
+
+/**
+ * Refresh a single source by nodeId. Used for per-feed refresh.
+ */
+export async function refreshSingleSource(
+  ws: Workspace,
+  nodeId: NodeId,
+  updates?: EventEmitter,
+): Promise<void> {
+  const entries = findPeriodicSources(ws);
+  const entry = entries.find((e) => e.nodeId === nodeId);
+  if (!entry) throw new Error(`source not found: ${nodeId}`);
+  const stateMutex = new Mutex();
+  await refreshSource(ws, entry, stateMutex, updates);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +174,7 @@ function findPeriodicSources(ws: Workspace): PeriodicSource[] {
   return result;
 }
 
+
 function isDue(entry: PeriodicSource, state: SourceStateMap): boolean {
   const s = state[entry.nodeId];
   if (!s?.lastFetchedAt) return true; // never fetched
@@ -165,42 +183,148 @@ function isDue(entry: PeriodicSource, state: SourceStateMap): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Refresh a single source
+// Slug derivation
+// ---------------------------------------------------------------------------
+
+/** Derive a source slug from a codoc path (e.g. "sources/hacker-news.codoc" → "hacker-news"). */
+function slugFromCodocPath(codocPath: CodocPath): string {
+  const filename = String(codocPath).split("/").pop() ?? "";
+  return filename.replace(/\.codoc$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Refresh a single source (with health tracking)
 // ---------------------------------------------------------------------------
 
 async function refreshSource(
   ws: Workspace,
   entry: PeriodicSource,
-  state: SourceStateMap,
+  stateMutex: Mutex,
   updates?: EventEmitter,
 ): Promise<void> {
-  const raw = await entry.provider.execute(entry.params);
+  const now = new Date().toISOString();
+
+  // Record attempt.
+  await stateMutex.acquire();
+  try {
+    const state = await readSourceState(ws.sourceDir);
+    const existing = state[entry.nodeId];
+    const updated: SourceStateEntry = {
+      ...existing,
+      lastFetchedAt: existing?.lastFetchedAt ?? now,
+      lastAttemptAt: now,
+    };
+    await writeSourceState(ws.sourceDir, withEntry(state, entry.nodeId, updated));
+  } finally {
+    stateMutex.release();
+  }
+
+  // Execute fetch.
+  let raw: unknown;
+  try {
+    raw = await entry.provider.execute(entry.params);
+  } catch (e) {
+    // Record failure.
+    await stateMutex.acquire();
+    try {
+      const state = await readSourceState(ws.sourceDir);
+      const existing = state[entry.nodeId];
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      const updated: SourceStateEntry = {
+        ...existing,
+        lastFetchedAt: existing?.lastFetchedAt ?? now,
+        lastAttemptAt: now,
+        lastError: errorMsg,
+        consecutiveFailures: (existing?.consecutiveFailures ?? 0) + 1,
+      };
+      await writeSourceState(ws.sourceDir, withEntry(state, entry.nodeId, updated));
+    } finally {
+      stateMutex.release();
+    }
+    console.warn(
+      `[source] failed to refresh ${entry.nodeId}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    throw e;
+  }
 
   // Merge strategy: use provider merge if available, otherwise replace.
-  const existing = state[entry.nodeId]?.cachedValue;
-  const merged = entry.provider.merge
-    ? entry.provider.merge(existing, raw)
-    : raw;
+  await stateMutex.acquire();
+  let merged: unknown;
+  try {
+    const state = await readSourceState(ws.sourceDir);
+    const existing = state[entry.nodeId]?.cachedValue;
 
-  // Delegate to service layer.
+    const mergeCtx: MergeContext = { slug: slugFromCodocPath(entry.codocPath) };
+    merged = entry.provider.merge
+      ? entry.provider.merge(existing, raw, mergeCtx)
+      : raw;
+  } finally {
+    stateMutex.release();
+  }
+
+  // Delegate to service layer (this writes state + recompiles).
   await updateSourceFieldCache(
     { ws, updates },
     entry.codocPath,
     entry.fieldName,
     merged,
-    new Date().toISOString(),
+    now,
   );
 
+  // Clear error state on success.
+  await stateMutex.acquire();
+  try {
+    const state = await readSourceState(ws.sourceDir);
+    const existing = state[entry.nodeId];
+    if (existing) {
+      const cleared: SourceStateEntry = {
+        ...existing,
+        lastError: null,
+        consecutiveFailures: 0,
+      };
+      await writeSourceState(ws.sourceDir, withEntry(state, entry.nodeId, cleared));
+    }
+  } finally {
+    stateMutex.release();
+  }
+
   // Log summary.
-  if (entry.provider.merge && Array.isArray(merged) && Array.isArray(existing)) {
-    const newCount = merged.length - existing.length;
-    if (newCount > 0) {
-      console.log(`[source] ${entry.nodeId}: ${newCount} new item(s)`);
+  if (entry.provider.merge && Array.isArray(merged)) {
+    const prevState = await readSourceState(ws.sourceDir);
+    const prevCached = prevState[entry.nodeId]?.cachedValue;
+    if (Array.isArray(prevCached)) {
+      const newCount = (merged as unknown[]).length - (prevCached as unknown[]).length;
+      if (newCount > 0) {
+        console.log(`[source] ${entry.nodeId}: ${newCount} new item(s)`);
+      } else {
+        console.log(`[source] ${entry.nodeId}: up to date`);
+      }
     } else {
-      console.log(`[source] ${entry.nodeId}: up to date`);
+      console.log(`[source] ${entry.nodeId}: refreshed`);
     }
   } else {
     console.log(`[source] ${entry.nodeId}: refreshed`);
   }
 }
 
+// ---------------------------------------------------------------------------
+// Concurrency helper
+// ---------------------------------------------------------------------------
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let idx = 0;
+
+  async function worker(): Promise<void> {
+    while (idx < items.length) {
+      const item = items[idx++]!;
+      await fn(item);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+}

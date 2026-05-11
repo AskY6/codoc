@@ -12,6 +12,9 @@ import type { NodeId } from "@cobook/core";
 
 export interface SourceStateEntry {
   lastFetchedAt: string;
+  lastAttemptAt?: string | null;
+  lastError?: string | null;
+  consecutiveFailures?: number;
   cachedValue?: unknown;
 }
 

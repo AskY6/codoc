@@ -8,7 +8,7 @@ import type { CodocPath, FieldName, NodeId, ResolveResult } from "@cobook/core";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import type { Workspace, WriteResult } from "./workspace.js";
 import { writeCodoc, compileOne } from "./workspace.js";
-import { patchDataField } from "./patch.js";
+import { patchDataField, patchSourceFieldParam } from "./patch.js";
 import {
   readSourceState,
   writeSourceState,
@@ -67,6 +67,7 @@ export async function updateSourceFieldCache(
   const existing = state[nodeId];
 
   const newState = withEntry(state, nodeId, {
+    ...existing,
     lastFetchedAt: lastFetchedAt ?? existing?.lastFetchedAt ?? new Date().toISOString(),
     cachedValue: value,
   });
@@ -177,4 +178,43 @@ export async function updateArticleState(
   );
 
   return updateSourceFieldCache(ctx, codocPath, fieldName, updated);
+}
+
+// ---------------------------------------------------------------------------
+// updateSourceFieldParam
+// ---------------------------------------------------------------------------
+
+/**
+ * Patch a single param within a $source data field's YAML declaration.
+ * This rewrites the .codoc file (unlike updateSourceFieldCache which only
+ * touches the runtime cache).
+ *
+ * Use for: changing the url, interval, or other provider-specific params.
+ */
+export async function updateSourceFieldParam(
+  ctx: ServiceContext,
+  codocPath: CodocPath,
+  fieldName: FieldName,
+  param: string,
+  value: unknown,
+): Promise<ServiceResult> {
+  const { ws, updates } = ctx;
+  const codoc = ws.codocs.get(codocPath);
+  if (!codoc) {
+    return { ok: false, error: `codoc not found at "${codocPath}"` };
+  }
+
+  const patched = patchSourceFieldParam(codoc.content, String(fieldName), param, value);
+  if (!patched.ok) {
+    return { ok: false, error: patched.error };
+  }
+
+  const writeResult = await writeCodoc(ws, codocPath, patched.value);
+  if (writeResult.ok) {
+    updates?.emit("update", { kind: "codoc-updated", codocPath });
+  }
+
+  return writeResult.ok
+    ? { ok: true, message: `Updated param "${param}" in source field "${String(fieldName)}" of ${codocPath}` }
+    : { ok: false, error: writeResult.diagnostics.map((d) => d.message).join("; ") };
 }
