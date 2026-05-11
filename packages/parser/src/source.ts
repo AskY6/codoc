@@ -8,6 +8,12 @@
  * A single source provider. Each provider handles one `source` name
  * (e.g. "http-json") and produces a value from opaque params.
  */
+/** Context passed to merge by the scheduler. */
+export interface MergeContext {
+  /** Source slug derived from the codoc path (e.g. "hacker-news"). */
+  readonly slug: string;
+}
+
 export interface SourceProvider {
   readonly name: string;
   execute(params: Readonly<Record<string, unknown>>): Promise<unknown>;
@@ -16,7 +22,7 @@ export interface SourceProvider {
    * Called by the scheduler after each periodic refresh.
    * When absent, the scheduler uses replace (incoming overwrites existing).
    */
-  merge?(existing: unknown, incoming: unknown): unknown;
+  merge?(existing: unknown, incoming: unknown, ctx?: MergeContext): unknown;
 }
 
 /**

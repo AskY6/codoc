@@ -5,7 +5,8 @@
 //   url   — required, the feed URL
 //   limit — optional, max number of items to return
 
-import type { SourceProvider } from "./source.js";
+import { createHash } from "node:crypto";
+import type { MergeContext, SourceProvider } from "./source.js";
 
 export const rssProvider: SourceProvider = {
   name: "rss",
@@ -36,8 +37,8 @@ export const rssProvider: SourceProvider = {
     return items;
   },
 
-  merge(existing: unknown, incoming: unknown): unknown {
-    return mergeRssArticles(existing, incoming);
+  merge(existing: unknown, incoming: unknown, ctx?: MergeContext): unknown {
+    return mergeRssArticles(existing, incoming, ctx?.slug);
   },
 };
 
@@ -50,6 +51,7 @@ interface FeedItem {
   link: string;
   description: string;
   pubDate: string;
+  guid: string;
 }
 
 /** Extract text content of an XML element by tag name. */
@@ -78,6 +80,7 @@ function parseRssItems(xml: string): FeedItem[] {
       link: tagText(match[1]!, "link"),
       description: tagText(match[1]!, "description"),
       pubDate: tagText(match[1]!, "pubDate"),
+      guid: tagText(match[1]!, "guid"),
     });
   }
   return items;
@@ -94,48 +97,122 @@ function parseAtomEntries(xml: string): FeedItem[] {
       link: atomLink(match[1]!) || tagText(match[1]!, "link"),
       description: tagText(match[1]!, "summary") || tagText(match[1]!, "content"),
       pubDate: tagText(match[1]!, "published") || tagText(match[1]!, "updated"),
+      guid: tagText(match[1]!, "id"),
     });
   }
   return entries;
 }
 
 // ---------------------------------------------------------------------------
-// RSS merge — by link, preserving user state (readAt, starred)
+// Link normalization
 // ---------------------------------------------------------------------------
 
-interface RssArticle {
+const TRACKING_PARAMS = new Set([
+  "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+  "ref", "source", "fbclid", "gclid",
+]);
+
+function normalizeLink(raw: string): string {
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    // Normalize protocol to https
+    if (url.protocol === "http:") url.protocol = "https:";
+    // Strip tracking params
+    for (const key of [...url.searchParams.keys()]) {
+      if (TRACKING_PARAMS.has(key)) url.searchParams.delete(key);
+    }
+    // Strip trailing slash from pathname
+    if (url.pathname.endsWith("/") && url.pathname.length > 1) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Article ID generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a stable article ID from source slug + preferred key.
+ * Priority: guid > normalizedLink > hash(title + pubDate)
+ */
+function computeArticleId(slug: string, item: FeedItem): string {
+  const preferredKey = item.guid
+    || normalizeLink(item.link)
+    || `${item.title}::${item.pubDate}`;
+  return hashId(`${slug}::${preferredKey}`);
+}
+
+/** Deterministic short hash (first 16 hex chars of SHA-256). */
+function hashId(input: string): string {
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
+/**
+ * Compute the merge key for deduplication.
+ * Uses the same priority as articleId to ensure consistency.
+ */
+function mergeKey(item: Pick<RssArticle, "guid" | "link" | "title" | "pubDate">): string {
+  return item.guid || normalizeLink(item.link ?? "") || `${item.title ?? ""}::${item.pubDate ?? ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// RSS merge — by preferredKey, preserving user state (readAt, starred)
+// ---------------------------------------------------------------------------
+
+export interface RssArticle {
+  articleId?: string;
   title: string;
   link: string;
   description?: string;
   pubDate?: string;
+  guid?: string;
   readAt?: string | null;
   starred?: boolean;
 }
 
-function mergeRssArticles(existing: unknown, incoming: unknown): RssArticle[] {
-  const newItems = (Array.isArray(incoming) ? incoming : []) as RssArticle[];
+function mergeRssArticles(existing: unknown, incoming: unknown, slug?: string): RssArticle[] {
+  const newItems = (Array.isArray(incoming) ? incoming : []) as FeedItem[];
   if (newItems.length === 0) return asArticles(existing);
 
   const prev = asArticles(existing);
-  const byLink = new Map<string, RssArticle>();
+  const byKey = new Map<string, RssArticle>();
   for (const a of prev) {
-    if (a.link) byLink.set(a.link, a);
+    const key = a.articleId
+      ? mergeKey(a)
+      : (a.link || `${a.title ?? ""}::${a.pubDate ?? ""}`);
+    if (key) byKey.set(key, a);
   }
 
   const merged: RssArticle[] = [];
 
   for (const item of newItems) {
-    const old = item.link ? byLink.get(item.link) : undefined;
+    const key = mergeKey(item);
+    const old = key ? byKey.get(key) : undefined;
+    const articleId = slug ? computeArticleId(slug, item) : (old?.articleId);
+
     if (old) {
-      merged.push({ ...item, readAt: old.readAt ?? null, starred: old.starred ?? false });
-      byLink.delete(item.link);
+      const base: RssArticle = { ...item, readAt: old.readAt ?? null, starred: old.starred ?? false };
+      if (articleId) base.articleId = articleId;
+      merged.push(base);
+      byKey.delete(key);
     } else {
-      merged.push({ ...item, readAt: null, starred: false });
+      const base: RssArticle = { ...item, readAt: null, starred: false };
+      if (articleId) base.articleId = articleId;
+      merged.push(base);
     }
   }
 
   // Keep existing articles no longer in the feed.
-  for (const leftover of byLink.values()) {
+  for (const leftover of byKey.values()) {
+    // Backfill articleId for leftovers if slug is available
+    if (slug && !leftover.articleId) {
+      leftover.articleId = computeArticleId(slug, leftover as unknown as FeedItem);
+    }
     merged.push(leftover);
   }
 
