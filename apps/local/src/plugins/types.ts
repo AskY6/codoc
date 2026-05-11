@@ -86,10 +86,17 @@ export type WorkspaceUiActionDescriptor =
       readonly prompt: string;
     };
 
+export interface WorkspaceUiViewDescriptor {
+  readonly id: string;
+  readonly label: string;
+  readonly icon?: string;
+}
+
 export interface WorkspaceUiSpec {
   readonly homeView?: "tree" | "inbox";
   readonly hiddenPaths?: readonly string[];
   readonly primaryActions?: readonly WorkspaceUiActionDescriptor[];
+  readonly secondaryViews?: readonly WorkspaceUiViewDescriptor[];
 }
 
 // ---------------------------------------------------------------------------

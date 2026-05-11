@@ -9,6 +9,8 @@ type Listener<T> = (payload: T) => void;
 interface EventMap {
   /** A component wants to send a prompt to the active chat. */
   "send-prompt": { prompt: string };
+  /** SSE notified that workspace data changed (e.g. refresh, codoc update). */
+  "workspace-updated": Record<string, never>;
 }
 
 const listeners = new Map<string, Set<Listener<never>>>();

@@ -160,10 +160,17 @@ export type WorkspaceUiActionDescriptor =
   | { kind: "rest"; id: string; label: string; method: string; path: string }
   | { kind: "chat-prompt"; id: string; label: string; prompt: string };
 
+export interface WorkspaceUiViewDescriptor {
+  id: string;
+  label: string;
+  icon?: string;
+}
+
 export interface WorkspaceUiSpec {
   homeView?: "tree" | "inbox";
   hiddenPaths?: string[];
   primaryActions?: WorkspaceUiActionDescriptor[];
+  secondaryViews?: WorkspaceUiViewDescriptor[];
 }
 
 export interface WorkspaceInfo {
@@ -207,6 +214,49 @@ export interface WorkspaceConfig {
   quickActions?: Array<{ label: string; prompt: string }>;
   agentInstructions?: string;
 }
+
+// ---------------------------------------------------------------------------
+// RSS plugin types
+// ---------------------------------------------------------------------------
+
+export type RssFeedStatus = "healthy" | "failing" | "never-fetched";
+
+export interface RssSubscription {
+  slug: string;
+  title: string;
+  feedUrl: string;
+  whyFollow: string;
+  codocPath: string;
+  intervalMinutes: number;
+  articleCount: number;
+  unreadCount: number;
+  starredCount: number;
+  lastFetchedAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  status: RssFeedStatus;
+}
+
+export interface RssArticle {
+  articleId?: string;
+  title: string;
+  link: string;
+  description?: string;
+  pubDate?: string;
+  guid?: string;
+  readAt?: string | null;
+  starred?: boolean;
+}
+
+export interface RssStarredArticle extends RssArticle {
+  sourceSlug: string;
+  sourceTitle: string;
+}
+
+// ---------------------------------------------------------------------------
+// REST client
+// ---------------------------------------------------------------------------
 
 export const api = {
   /** Workspace config (includes template interaction metadata). */
@@ -313,4 +363,52 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     }),
+
+  // ── RSS plugin ──────────────────────────────────────────────────────────
+
+  rss: {
+    subscriptions: () =>
+      json<{ ok: boolean; subscriptions: RssSubscription[] }>("/api/plugins/rss/subscriptions")
+        .then((r) => r.subscriptions),
+
+    subscribe: (input: { url: string; title?: string; whyFollow?: string; intervalMinutes?: number }) =>
+      json<{ ok: boolean; slug: string; codocPath: string }>("/api/plugins/rss/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+
+    editSubscription: (slug: string, input: { title?: string; whyFollow?: string; intervalMinutes?: number }) =>
+      json<{ ok: boolean }>(`/api/plugins/rss/subscriptions/${encodeURIComponent(slug)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+
+    deleteSubscription: (slug: string) =>
+      json<{ ok: boolean }>(`/api/plugins/rss/subscriptions/${encodeURIComponent(slug)}`, {
+        method: "DELETE",
+      }),
+
+    refreshFeed: (slug: string) =>
+      json<{ ok: boolean }>(`/api/plugins/rss/subscriptions/${encodeURIComponent(slug)}/refresh`, {
+        method: "POST",
+      }),
+
+    refreshAll: () =>
+      json<{ ok: boolean; message: string; total: number }>("/api/plugins/rss/refresh", {
+        method: "POST",
+      }),
+
+    saved: () =>
+      json<{ ok: boolean; articles: RssStarredArticle[] }>("/api/plugins/rss/saved")
+        .then((r) => r.articles),
+
+    updateArticle: (articleId: string, patch: { readAt?: string | null; starred?: boolean }) =>
+      json<{ ok: boolean }>(`/api/plugins/rss/articles/${encodeURIComponent(articleId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }),
+  },
 };

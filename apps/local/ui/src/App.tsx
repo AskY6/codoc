@@ -6,10 +6,12 @@ import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
 import { ComponentPanel } from "./components/ComponentPanel.tsx";
 import { ChatPanel } from "./components/ChatPanel.tsx";
+import { SubscriptionsPanel } from "./components/rss/SubscriptionsPanel.tsx";
+import { SavedArticlesPanel } from "./components/rss/SavedArticlesPanel.tsx";
 import { useCustomComponents } from "./custom-components.ts";
 import { ConfirmDialog } from "./components/ConfirmDialog.tsx";
 import { WorkspaceActionBar } from "./components/WorkspaceActionBar.tsx";
-import { subscribe } from "./lib/event-bus.ts";
+import { subscribe, publish } from "./lib/event-bus.ts";
 
 // ---------------------------------------------------------------------------
 // Focus — what the center panel shows (chat is separate, always right)
@@ -19,6 +21,7 @@ type Focus =
   | { kind: "codoc"; path: string }
   | { kind: "graph" }
   | { kind: "component"; name: string }
+  | { kind: "plugin-view"; viewId: string }
   | { kind: "none" };
 
 type SidebarTab = "codocs" | "chats";
@@ -462,6 +465,7 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
       es = new EventSource("/api/updates");
       es.onmessage = () => {
         void loadTree(); void loadDag(); void loadCodocs(); void loadChats();
+        publish("workspace-updated", {});
       };
     } catch { /* SSE unsupported — fall through to polling */ }
 
@@ -649,7 +653,20 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
 
   const fileCount = countFiles(visibleTree);
 
+  const viewIconMap: Record<string, React.ReactNode> = {
+    list: <ListIcon />,
+    bookmark: <BookmarkIcon />,
+    rss: <RssIcon />,
+  };
+
   const sidebarNav: { id: string; label: string; active: boolean; icon: React.ReactNode; onClick: () => void }[] = [
+    ...(uiSpec?.secondaryViews ?? []).map((v) => ({
+      id: v.id,
+      label: v.label,
+      active: focus.kind === "plugin-view" && focus.viewId === v.id,
+      icon: viewIconMap[v.icon ?? ""] ?? <RssIcon />,
+      onClick: () => setFocus({ kind: "plugin-view", viewId: v.id }),
+    })),
     {
       id: "graph",
       label: "Graph",
@@ -914,6 +931,10 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
               customRegistry={components.customRegistry}
               errors={components.errors}
             />
+          ) : focus.kind === "plugin-view" && focus.viewId === "rss-subscriptions" ? (
+            <SubscriptionsPanel onSelectCodoc={selectCodoc} />
+          ) : focus.kind === "plugin-view" && focus.viewId === "rss-saved" ? (
+            <SavedArticlesPanel />
           ) : codoc ? (
             <DocumentPanel
               codoc={codoc}
@@ -1055,6 +1076,30 @@ function FileIcon({ className }: { className?: string }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+function BookmarkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function RssIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 11a9 9 0 0 1 9 9" /><path d="M4 4a16 16 0 0 1 16 16" /><circle cx="5" cy="19" r="1" />
     </svg>
   );
 }

@@ -27,4 +27,8 @@ export const rssUiSpec: WorkspaceUiSpec = {
       prompt: "Subscribe to ",
     },
   ],
+  secondaryViews: [
+    { id: "rss-subscriptions", label: "Subscriptions", icon: "list" },
+    { id: "rss-saved", label: "Saved", icon: "bookmark" },
+  ],
 };
