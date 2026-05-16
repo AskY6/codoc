@@ -38,6 +38,7 @@ import {
   updateArticleById,
   generateDigest,
 } from "./service.js";
+import { fetchArticleBody } from "./article-fetch.js";
 
 export function createRssApiRoutes(
   ctx: WorkspacePluginContext<RssPluginConfig>,
@@ -199,6 +200,20 @@ export function createRssApiRoutes(
     try {
       const result = await generateDigest(svcCtx);
       return c.json(result);
+    } catch (e) {
+      return c.json({ ok: false, error: errorMsg(e) }, 500);
+    }
+  });
+
+  // POST /discuss — fetch readable body for a Discuss chat context.
+  // Body cache is shared with digest, so this typically hits the LRU.
+  api.post("/discuss", async (c) => {
+    try {
+      const { link } = await c.req.json<{ link?: string }>();
+      if (!link) return c.json({ ok: false, error: "link is required" }, 400);
+      const body = await fetchArticleBody(link);
+      if (!body) return c.json({ ok: false, error: "could not fetch article" }, 502);
+      return c.json({ ok: true, body });
     } catch (e) {
       return c.json({ ok: false, error: errorMsg(e) }, 500);
     }

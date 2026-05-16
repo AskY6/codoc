@@ -410,5 +410,12 @@ export const api = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       }),
+
+    discuss: (link: string) =>
+      json<{ ok: boolean; body: string }>("/api/plugins/rss/discuss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ link }),
+      }),
   },
 };

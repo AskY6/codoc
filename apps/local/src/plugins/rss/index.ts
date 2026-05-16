@@ -11,6 +11,7 @@ import { detectRssWorkspace } from "./detect.js";
 import { rssTemplate } from "./template.js";
 import { createRssApiRoutes } from "./api-routes.js";
 import { rssUiSpec } from "./ui.js";
+import { createDigestJob } from "./digest-job.js";
 
 export const rssPlugin: WorkspacePlugin<RssPluginConfig> = {
   id: "rss",
@@ -25,6 +26,10 @@ export const rssPlugin: WorkspacePlugin<RssPluginConfig> = {
 
   createApiRoutes(ctx) {
     return createRssApiRoutes(ctx);
+  },
+
+  startJobs(ctx) {
+    return [createDigestJob(ctx)];
   },
 
   getAgentInstructions() {

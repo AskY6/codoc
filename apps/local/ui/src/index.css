@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Scan plugin template components — their classes must end up in the bundle
+   even though they live outside ui/. */
+@source "../../src/templates/**/*.tsx";
+
 @theme inline {
   --radius: 0.625rem;
   --color-background: oklch(1 0 0);

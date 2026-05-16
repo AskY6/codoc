@@ -8,12 +8,16 @@ export interface RssPluginConfig {
   readonly defaultSourceIntervalMinutes: number;
   readonly digestCodocPath: string;
   readonly sourcesDir: string;
+  readonly autoDigest: boolean;
+  readonly digestIntervalMinutes: number;
 }
 
 const DEFAULTS: RssPluginConfig = {
   defaultSourceIntervalMinutes: 30,
   digestCodocPath: "inbox.codoc",
   sourcesDir: "sources",
+  autoDigest: true,
+  digestIntervalMinutes: 120,
 };
 
 export function parseRssConfig(
@@ -38,6 +42,16 @@ export function parseRssConfig(
     issues.push("sourcesDir must be a string");
   }
 
+  const autoDigest = raw.autoDigest;
+  if (autoDigest !== undefined && typeof autoDigest !== "boolean") {
+    issues.push("autoDigest must be a boolean");
+  }
+
+  const digestInterval = raw.digestIntervalMinutes;
+  if (digestInterval !== undefined && (typeof digestInterval !== "number" || digestInterval <= 0)) {
+    issues.push("digestIntervalMinutes must be a positive number");
+  }
+
   if (issues.length > 0) {
     return err({
       kind: "invalid-plugin-config",
@@ -54,5 +68,9 @@ export function parseRssConfig(
       typeof digestPath === "string" ? digestPath : DEFAULTS.digestCodocPath,
     sourcesDir:
       typeof sourcesDir === "string" ? sourcesDir : DEFAULTS.sourcesDir,
+    autoDigest:
+      typeof autoDigest === "boolean" ? autoDigest : DEFAULTS.autoDigest,
+    digestIntervalMinutes:
+      typeof digestInterval === "number" ? digestInterval : DEFAULTS.digestIntervalMinutes,
   });
 }

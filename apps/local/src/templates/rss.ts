@@ -8,6 +8,11 @@ import type { Template, TemplateFile } from "./types.js";
 import { serializeYaml } from "./yaml.js";
 import articleListSource from "raw:./rss/components/ArticleList.tsx";
 import feedHeaderSource from "raw:./rss/components/FeedHeader.tsx";
+import sourceBadgeSource from "raw:./rss/components/SourceBadge.tsx";
+import digestStatsSource from "raw:./rss/components/DigestStats.tsx";
+import digestTopSource from "raw:./rss/components/DigestTop.tsx";
+import digestListSource from "raw:./rss/components/DigestList.tsx";
+import digestTrendingSource from "raw:./rss/components/DigestTrending.tsx";
 
 function codoc(
   frontmatter: Record<string, unknown>,
@@ -72,14 +77,10 @@ function inboxCodoc(): TemplateFile {
     {data.lastDigestAt && (Date.now() - new Date(data.lastDigestAt).getTime() > 24 * 60 * 60 * 1000) && (
       <Card title="Digest may be stale" description={\`Last updated \${new Date(data.lastDigestAt).toLocaleDateString()}. Update digest to refresh this inbox.\`} />
     )}
-    <Table data={data.highlights ?? []} />
-    {(data.trending ?? []).length > 0 && (
-      <>
-        ## Trending
-
-        <Table data={data.trending ?? []} />
-      </>
-    )}
+    <DigestStats highlights={data.highlights ?? []} trending={data.trending ?? []} lastDigestAt={data.lastDigestAt} />
+    <DigestTop items={data.highlights ?? []} count={3} />
+    <DigestList items={data.highlights ?? []} skip={3} />
+    <DigestTrending items={data.trending ?? []} />
   </>
 )}`,
     ),
@@ -154,7 +155,7 @@ export const rssTemplate: Template = {
   id: "rss",
   name: "RSS Reader",
   description: "AI-first RSS — ask the agent for digests, deep dives, and research across your feeds.",
-  components: ["Table", "Card"],
+  components: ["Card", "DigestStats", "DigestTop", "DigestList", "DigestTrending"],
 
   // R1: Domain commands
   commands: [
@@ -217,6 +218,11 @@ Rules:
       // Components
       { path: "components/ArticleList.tsx", content: articleListSource },
       { path: "components/FeedHeader.tsx", content: feedHeaderSource },
+      { path: "components/SourceBadge.tsx", content: sourceBadgeSource },
+      { path: "components/DigestStats.tsx", content: digestStatsSource },
+      { path: "components/DigestTop.tsx", content: digestTopSource },
+      { path: "components/DigestList.tsx", content: digestListSource },
+      { path: "components/DigestTrending.tsx", content: digestTrendingSource },
       // Codocs
       inboxCodoc(),
       ...feeds.map(sourceCodoc),

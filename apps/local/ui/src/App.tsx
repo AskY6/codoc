@@ -606,6 +606,36 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
     });
   }, []);
 
+  // Expose a small API on window so custom workspace components (which can't
+  // import the event bus directly) can open a chat with article context.
+  useEffect(() => {
+    interface DiscussArticle {
+      title?: string;
+      source?: string;
+      link?: string;
+    }
+    const w = window as unknown as { codoc?: { discuss(a: DiscussArticle): Promise<void> } };
+    w.codoc = {
+      discuss: async ({ title, source, link }) => {
+        if (!link) return;
+        let body = "";
+        try {
+          body = (await api.rss.discuss(link)).body ?? "";
+        } catch (e) {
+          console.warn("[discuss] fetch failed", e);
+        }
+        const header = `**${title ?? "Untitled"}** — ${source ?? ""}\n${link}`;
+        const prompt = body
+          ? `I want to discuss this article. Read it carefully, then say "Ready — what would you like to know?" and wait for my questions.\n\n${header}\n\n---\n\n${body}`
+          : `I want to discuss this article, but I couldn't fetch its full text. Use the title and link, then say "Ready — what would you like to know?" and wait.\n\n${header}`;
+        publish("send-prompt", { prompt });
+      },
+    };
+    return () => {
+      delete w.codoc;
+    };
+  }, []);
+
   const handlePickProvider = useCallback((id: string) => {
     setShowProviderPicker(false);
     startChat(id);
