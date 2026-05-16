@@ -1,5 +1,11 @@
 # codoc
 
+## 工作模式（项目级授权）
+codoc 是实验性实现项目，授权 Claude 在本目录下按"高自治"模式工作：
+- **免确认**：编辑/写文件、跑测试、本地 git 操作（commit/branch/checkout/stash/rebase 非交互）、`pnpm` / `npx` / `tsx` / `node` / `docker compose` 本地容器、起停 dev server、`curl` 本地端口、读类 `gh`（view/list/diff/checks/api）、本地数据库读写（psql/sqlite3）、`kill` 本机进程、`rm` 本目录内文件
+- **仍需先问**：`git push`（任何远端写）、`gh pr create/merge/close`、`gh release`、`npm/pnpm publish`、修改 `~/` 之外的共享资源、删除未提交的工作、`sudo`、改 CI/CD 配置生效到远端
+- **遇阻不绕**：失败时定位根因，不用 `--no-verify` / `--force` 绕过；不熟悉的状态先调查再删
+
 ## design pattern
 1. 代数数据类型优先
 2. 整洁架构优先
