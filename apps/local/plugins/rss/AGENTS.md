@@ -18,5 +18,7 @@ RSS reader plugin — owns the vertical product experience for RSS workspaces.
 
 ## Ownership boundary
 
-Owns: template binding, article state API, UI descriptor, agent instructions, config schema, legacy detection, digest ranking, auto-digest lifecycle.
-Does NOT own: `rssProvider` (parser layer, will move here in Phase 1.5), source scheduler (platform), codoc CRUD.
+Owns: **rss source provider** (`server/source-provider.ts`, exported from `server/index.ts`), template binding, article state API, UI descriptor, agent instructions, config schema, legacy detection, digest ranking, auto-digest lifecycle.
+Does NOT own: source scheduler (platform), codoc CRUD.
+
+> The host wires `rssProvider` into the runtime `SourceRegistry` at boot via `apps/local/src/plugins/source-registry.ts`. Phase 2 replaces this hardcoded import with a manifest-driven entry pointer.

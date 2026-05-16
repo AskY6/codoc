@@ -6,7 +6,7 @@
 //   limit — optional, max number of items to return
 
 import { createHash } from "node:crypto";
-import type { MergeContext, SourceProvider } from "./source.js";
+import type { MergeContext, SourceProvider } from "@cobook/parser";
 
 export const rssProvider: SourceProvider = {
   name: "rss",

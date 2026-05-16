@@ -10,7 +10,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Workspace } from "../domain/types.js";
 import type { ProviderRegistry } from "../providers/registry.js";
 import type { Template } from "../templates/types.js";
-import type { SourceProvider } from "@cobook/parser";
 import type { Result } from "@cobook/core";
 
 // ---------------------------------------------------------------------------
@@ -120,9 +119,6 @@ export interface WorkspacePlugin<C = unknown> {
   parseConfig(
     raw: Record<string, unknown> | undefined,
   ): Result<C, PluginConfigError>;
-
-  /** Source providers contributed by this plugin. */
-  sourceProviders?(): readonly SourceProvider[];
 
   /** REST routes mounted under /api/plugins/<plugin-id>. */
   createApiRoutes?(ctx: WorkspacePluginContext<C>): Hono;

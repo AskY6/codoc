@@ -4,7 +4,7 @@
 // resolved data, and .source-state.json.
 
 import type { CodocPath, FieldName } from "@cobook/core";
-import type { RssArticle } from "@cobook/parser";
+import type { RssArticle } from "./source-provider.js";
 import type { Workspace } from "../../../src/domain/types.js";
 import type { SourceStateMap } from "../../../src/sources/state.js";
 

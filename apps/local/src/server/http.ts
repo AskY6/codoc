@@ -19,7 +19,7 @@ import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { Workspace } from "../domain/types.js";
 import { loadWorkspace, compileAll } from "../runtime/workspace.js";
-import { createSourceRegistry } from "@cobook/parser";
+import { buildSourceRegistry } from "../plugins/source-registry.js";
 import { createApiRoutes } from "./api-routes.js";
 import { createChatRoutes } from "./chat-route.js";
 import { createMcpServer } from "./mcp.js";
@@ -202,7 +202,7 @@ export async function startHttpServer(
     const config = parseWorkspaceConfig(rawConfig);
 
     // Load workspace.
-    const sourceProviders = createSourceRegistry();
+    const sourceProviders = buildSourceRegistry();
     const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
     await compileAll(ws);
 
@@ -396,7 +396,7 @@ export async function startHttpServer(
 
     // Open it immediately.
     const outDir = workspaceDir;
-    const sourceProviders = createSourceRegistry();
+    const sourceProviders = buildSourceRegistry();
     const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
     await compileAll(ws);
 

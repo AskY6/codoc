@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { unlink } from "node:fs/promises";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import type { CodocPath, FieldName, NodeId } from "@cobook/core";
-import type { RssArticle } from "@cobook/parser";
+import type { RssArticle } from "./source-provider.js";
 import type { Workspace } from "../../../src/domain/types.js";
 import { writeCodoc, removeFile } from "../../../src/runtime/workspace.js";
 import { updateDataField, updateSourceFieldCache, updateSourceFieldParam } from "../../../src/runtime/service.js";

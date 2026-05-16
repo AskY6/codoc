@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { createSourceRegistry } from "@cobook/parser";
+import { buildSourceRegistry } from "./plugins/source-registry.js";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll } from "./runtime/workspace.js";
 import { buildAstMap } from "./domain/types.js";
@@ -65,7 +65,7 @@ async function openWorkspace(name: string) {
   const cfg = readConfig(workspaceDir);
   const outDir = cfg.outDir ? resolve(workspaceDir, cfg.outDir) : workspaceDir;
   const port = cfg.port ?? 4321;
-  const sourceProviders = createSourceRegistry();
+  const sourceProviders = buildSourceRegistry();
   const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
   return { ws, workspaceDir, outDir, port };
 }

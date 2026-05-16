@@ -12,5 +12,3 @@ export type { ParseError } from "./parse-codoc.js";
 export type { SourceProvider, SourceRegistry, MergeContext } from "./source.js";
 
 export { createSourceRegistry } from "./registry.js";
-
-export type { RssArticle } from "./rss.js";

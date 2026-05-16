@@ -1,8 +1,8 @@
 // RSS plugin — vertical workspace capability pack for RSS reading.
 //
-// Owns: template, config, detection, article state API, UI descriptor,
-//       agent instructions.
-// Does NOT own: source scheduler (platform), rssProvider (parser layer).
+// Owns: rss source provider, template, config, detection, article state API,
+//       UI descriptor, agent instructions.
+// Does NOT own: source scheduler (platform).
 
 import type { WorkspacePlugin } from "../../../src/plugins/types.js";
 import type { RssPluginConfig } from "./config.js";
@@ -12,6 +12,9 @@ import { rssTemplate } from "../template/index.js";
 import { createRssApiRoutes } from "./api-routes.js";
 import { rssUiSpec } from "./ui.js";
 import { createDigestJob } from "./digest-job.js";
+
+export { rssProvider } from "./source-provider.js";
+export type { RssArticle } from "./source-provider.js";
 
 export const rssPlugin: WorkspacePlugin<RssPluginConfig> = {
   id: "rss",
