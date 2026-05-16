@@ -23,7 +23,7 @@
 
 import { Hono } from "hono";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
-import { updateArticleState } from "../../workspace/service.js";
+import { updateArticleState } from "../../runtime/service.js";
 import type { WorkspacePluginContext } from "../types.js";
 import type { RssPluginConfig } from "./config.js";
 import {

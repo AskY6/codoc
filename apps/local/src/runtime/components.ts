@@ -7,30 +7,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, basename } from "node:path";
 import * as esbuild from "esbuild";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface CustomComponent {
-  /** PascalCase component name derived from filename (e.g. "ScoreCard") */
-  readonly name: string;
-  /** Compiled CJS JavaScript (react externalized) */
-  readonly code: string;
-}
-
-export interface CustomComponentError {
-  readonly name: string;
-  readonly error: string;
-}
-
-export type CustomComponentEntry =
-  | { readonly kind: "ok"; readonly component: CustomComponent }
-  | { readonly kind: "error"; readonly error: CustomComponentError };
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+import type { CustomComponentEntry } from "../domain/components.js";
 
 /**
  * Scan `.codoc/components/` for `.tsx` files and compile each to CJS.
@@ -59,10 +36,6 @@ export async function scanComponents(
 
   return results;
 }
-
-// ---------------------------------------------------------------------------
-// Internals
-// ---------------------------------------------------------------------------
 
 async function compileComponent(
   filePath: string,

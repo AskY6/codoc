@@ -21,7 +21,7 @@ import { parseCodoc } from "@cobook/parser";
 import type { CodocAST } from "@cobook/core";
 import type { Template, TemplateFile } from "../templates/index.js";
 import { addComponent } from "./add.js";
-import { BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
+import { BUILTIN_COMPONENT_META } from "../domain/recognize.js";
 import { allPlugins } from "../plugins/registry.js";
 
 interface InitConfig {

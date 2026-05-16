@@ -5,7 +5,7 @@
 // 2. Otherwise, try each plugin's detectWorkspace() in registry order.
 // 3. Exactly one match → activate it. Zero or multiple → fallback to default.
 
-import type { Workspace } from "../workspace/index.js";
+import type { Workspace } from "../domain/types.js";
 import type { WorkspacePlugin, WorkspaceConfigFile } from "./types.js";
 import { findPlugin, allPlugins, getDefaultPlugin } from "./registry.js";
 

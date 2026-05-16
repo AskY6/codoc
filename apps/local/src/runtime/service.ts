@@ -6,9 +6,9 @@
 import type { EventEmitter } from "node:events";
 import type { CodocPath, FieldName, NodeId, ResolveResult } from "@cobook/core";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
-import type { Workspace, WriteResult } from "./index.js";
-import { writeCodoc, compileOne } from "./index.js";
-import { patchDataField, patchSourceFieldParam } from "./patch.js";
+import type { Workspace, WriteResult } from "../domain/types.js";
+import { writeCodoc, compileOne } from "./workspace.js";
+import { patchDataField, patchSourceFieldParam } from "../domain/patch.js";
 import {
   readSourceState,
   writeSourceState,

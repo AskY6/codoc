@@ -6,22 +6,23 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { Workspace, WriteResult } from "../workspace/index.js";
-import { writeCodoc, buildAstMap } from "../workspace/index.js";
+import type { Workspace, WriteResult } from "../domain/types.js";
+import { writeCodoc } from "../runtime/workspace.js";
+import { buildAstMap } from "../domain/types.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { stringify as stringifyYaml } from "yaml";
-import { diagnoseCodoc } from "../workspace/diagnose.js";
-import type { Diagnostic } from "../workspace/diagnose.js";
-import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
-import type { ComponentMeta } from "../workspace/recognize.js";
+import { diagnoseCodoc } from "../domain/diagnose.js";
+import type { Diagnostic } from "../domain/diagnose.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../domain/recognize.js";
+import type { ComponentMeta } from "../domain/recognize.js";
 import { writeFile, mkdir, unlink } from "node:fs/promises";
 import { join, basename } from "node:path";
 import * as esbuild from "esbuild";
-import { loadComponents, removeFile, resolveAll } from "../workspace/index.js";
+import { loadComponents, removeFile, resolveAll } from "../runtime/workspace.js";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 import type { ProviderRegistry } from "../providers/registry.js";
-import { updateDataField } from "../workspace/service.js";
+import { updateDataField } from "../runtime/service.js";
 import { FieldName as mkFieldName } from "@cobook/core";
 
 export function createMcpServer(ws: Workspace, registry?: ProviderRegistry, updates?: import("node:events").EventEmitter): McpServer {

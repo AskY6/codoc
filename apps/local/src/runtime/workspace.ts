@@ -1,42 +1,27 @@
-// workspace — manages the local codoc workspace state.
+// runtime/workspace — IO orchestration for the in-memory Workspace.
 //
-// Reads .codoc files from a source directory, parses them, maintains
-// an in-memory AST map for ref resolution and DAG validation.
+// Loads `.codoc` files from disk, drives resolution, writes compiled `.mdx`
+// output, and persists source-state caches. Types live in `../domain/types.ts`;
+// this module never extends them.
 
 import { readFile, readdir, writeFile, mkdir, unlink } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
-import type { CodocAST, CodocPath, ResolveResult } from "@cobook/core";
+import type { CodocPath } from "@cobook/core";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { parseCodoc } from "@cobook/parser";
 import type { SourceRegistry } from "@cobook/parser";
 import { compileCodoc } from "@cobook/compiler";
-import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
-import { readSourceState, writeSourceState, type SourceStateEntry } from "../sources/state.js";
-import type { CustomComponentEntry } from "./components.js";
+import type { LocalCodoc, Workspace, WriteResult } from "../domain/types.js";
+import { resolveDataFields, validateDAG } from "../domain/resolve.js";
+import { diagnoseCodoc } from "../domain/diagnose.js";
+import { BUILTIN_COMPONENT_META } from "../domain/recognize.js";
+import { buildAstMap } from "../domain/types.js";
+import {
+  readSourceState,
+  writeSourceState,
+  type SourceStateEntry,
+} from "../sources/state.js";
 import { scanComponents } from "./components.js";
-import { diagnoseCodoc } from "./diagnose.js";
-import type { Diagnostic } from "./diagnose.js";
-import { BUILTIN_COMPONENT_META } from "./recognize.js";
-
-export interface LocalCodoc {
-  readonly path: CodocPath;
-  readonly content: string;
-  readonly ast: CodocAST;
-  readonly resolvedData: Record<string, ResolveResult> | null;
-}
-
-export interface Workspace {
-  /** Source directory containing .codoc files */
-  readonly sourceDir: string;
-  /** Output directory for compiled .mdx files */
-  readonly outDir: string;
-  /** In-memory codoc map (path → parsed) */
-  readonly codocs: Map<CodocPath, LocalCodoc>;
-  /** Source providers for $source fields */
-  readonly sourceProviders: SourceRegistry;
-  /** Custom components loaded from .codoc/components/*.tsx */
-  customComponents: CustomComponentEntry[];
-}
 
 /** Initialize workspace from a directory. */
 export async function loadWorkspace(
@@ -148,10 +133,6 @@ export async function compileOne(ws: Workspace, codoc: LocalCodoc): Promise<void
   await writeFile(outPath, mdx, "utf-8");
 }
 
-export type WriteResult =
-  | { ok: true; diagnostics: readonly Diagnostic[] }
-  | { ok: false; diagnostics: readonly Diagnostic[] };
-
 /** Write a codoc source file and reload it.
  *  Runs MDX diagnostics before writing — errors block the write. */
 export async function writeCodoc(
@@ -198,15 +179,6 @@ export async function writeCodoc(
   await compileAll(ws);
 
   return { ok: true, diagnostics };
-}
-
-/** Build the AST lookup map from current workspace state. */
-export function buildAstMap(ws: Workspace): ReadonlyMap<CodocPath, CodocAST> {
-  const m = new Map<CodocPath, CodocAST>();
-  for (const [path, codoc] of ws.codocs) {
-    m.set(path, codoc.ast);
-  }
-  return m;
 }
 
 /** Scan and compile custom components from .codoc/components/. */

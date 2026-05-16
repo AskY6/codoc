@@ -15,7 +15,8 @@ Local file-based codoc server. CLI commands:
 
 ## Subtrees
 
-- `src/workspace/` — in-memory codoc state + analysis (load, resolve, compile, diagnose, recognize, watch).
+- `src/domain/` — pure: Workspace / LocalCodoc types, resolve / diagnose / recognize / patch, custom-component types.
+- `src/runtime/` — side-effectful: workspace IO, mutation service, chokidar watcher, esbuild component scanner.
 - `src/sources/` — periodic `$source` refresh + `.source-state.json` persistence.
 - `src/server/` — HTTP / MCP / SSE servers and REST routes.
 - `src/commands/` — one-shot CLI subcommands (`init`, `add`) and the component catalog.
@@ -50,7 +51,7 @@ The client evaluates CJS in-browser with a mock `require()` that provides
 react from the app's loaded modules, then merges custom components with
 built-ins for MDX rendering and the component panel.
 
-Key files: `src/workspace/components.ts` (scanner/compiler), `ui/src/custom-components.ts` (evaluator/hook).
+Key files: `src/runtime/components.ts` (scanner/compiler), `src/domain/components.ts` (entry types), `ui/src/custom-components.ts` (evaluator/hook).
 
 ## Key decisions
 

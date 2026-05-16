@@ -8,7 +8,7 @@
 import type { EventEmitter } from "node:events";
 import type { CodocPath, FieldName, NodeId } from "@cobook/core";
 import type { MergeContext, SourceProvider } from "@cobook/parser";
-import type { Workspace } from "../workspace/index.js";
+import type { Workspace } from "../domain/types.js";
 import {
   readSourceState,
   writeSourceState,
@@ -16,7 +16,7 @@ import {
   type SourceStateEntry,
   type SourceStateMap,
 } from "./state.js";
-import { updateSourceFieldCache } from "../workspace/service.js";
+import { updateSourceFieldCache } from "../runtime/service.js";
 import { Mutex } from "./mutex.js";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // check every 1 minute

@@ -6,15 +6,16 @@ import type { EventEmitter } from "node:events";
 import { Hono } from "hono";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type { Workspace } from "../workspace/index.js";
-import { writeCodoc, buildAstMap, removeFile, resolveAll } from "../workspace/index.js";
+import type { Workspace } from "../domain/types.js";
+import { writeCodoc, removeFile, resolveAll } from "../runtime/workspace.js";
+import { buildAstMap } from "../domain/types.js";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
 import type { ProviderRegistry } from "../providers/registry.js";
-import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
-import type { ComponentMeta } from "../workspace/recognize.js";
-import { updateArticleState } from "../workspace/service.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../domain/recognize.js";
+import type { ComponentMeta } from "../domain/recognize.js";
+import { updateArticleState } from "../runtime/service.js";
 
 // ---------------------------------------------------------------------------
 // Tree types

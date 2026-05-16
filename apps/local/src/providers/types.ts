@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Workspace } from "../workspace/index.js";
+import type { Workspace } from "../domain/types.js";
 import type { WorkspacePlugin, WorkspacePluginContext } from "../plugins/types.js";
 
 // ---------------------------------------------------------------------------
