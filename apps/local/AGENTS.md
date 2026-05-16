@@ -15,6 +15,13 @@ Local file-based codoc server. CLI commands:
 
 ## Subtrees
 
+- `src/workspace/` — in-memory codoc state + analysis (load, resolve, compile, diagnose, recognize, watch).
+- `src/sources/` — periodic `$source` refresh + `.source-state.json` persistence.
+- `src/server/` — HTTP / MCP / SSE servers and REST routes.
+- `src/commands/` — one-shot CLI subcommands (`init`, `add`) and the component catalog.
+- `src/plugins/` — workspace plugin system (RSS, default).
+- `src/providers/` — chat provider adapters (Claude Code, Codex, Kiro).
+- `src/templates/` — built-in workspace templates for `codoc init --from`.
 - `ui/` — Local web UI (Vite + React SPA). See `ui/AGENTS.md`.
 
 ## Architecture
@@ -43,7 +50,7 @@ The client evaluates CJS in-browser with a mock `require()` that provides
 react from the app's loaded modules, then merges custom components with
 built-ins for MDX rendering and the component panel.
 
-Key files: `src/components.ts` (scanner/compiler), `ui/src/custom-components.ts` (evaluator/hook).
+Key files: `src/workspace/components.ts` (scanner/compiler), `ui/src/custom-components.ts` (evaluator/hook).
 
 ## Key decisions
 

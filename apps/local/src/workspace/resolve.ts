@@ -5,7 +5,7 @@
 import type { CodocAST, CodocPath, DAG, NodeId, ResolveResult } from "@cobook/core";
 import { buildDAG, checkCycles, evaluate } from "@cobook/core";
 import type { SourceRegistry } from "@cobook/parser";
-import type { SourceStateEntry, SourceStateMap } from "./source-state.js";
+import type { SourceStateEntry, SourceStateMap } from "../sources/state.js";
 
 /**
  * Resolve output — data results plus any source state entries that need

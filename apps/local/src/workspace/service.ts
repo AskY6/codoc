@@ -1,4 +1,4 @@
-// workspace-service — shared domain operations for workspace mutations.
+// service — shared domain operations for workspace mutations.
 //
 // Both MCP tools and REST API routes are thin facades over these functions.
 // This module owns the "read state → mutate → persist → recompile → notify" cycle.
@@ -6,14 +6,14 @@
 import type { EventEmitter } from "node:events";
 import type { CodocPath, FieldName, NodeId, ResolveResult } from "@cobook/core";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
-import type { Workspace, WriteResult } from "./workspace.js";
-import { writeCodoc, compileOne } from "./workspace.js";
+import type { Workspace, WriteResult } from "./index.js";
+import { writeCodoc, compileOne } from "./index.js";
 import { patchDataField, patchSourceFieldParam } from "./patch.js";
 import {
   readSourceState,
   writeSourceState,
   withEntry,
-} from "./source-state.js";
+} from "../sources/state.js";
 
 // ---------------------------------------------------------------------------
 // Result types

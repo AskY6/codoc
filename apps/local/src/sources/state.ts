@@ -1,4 +1,4 @@
-// source-state — persistent runtime state for $source fields with interval.
+// state — persistent runtime state for $source fields with interval.
 //
 // Stores lastFetchedAt timestamps and cached resolved values in a JSON file
 // at <sourceDir>/.source-state.json. Keyed by NodeId (codocPath#data.fieldName).

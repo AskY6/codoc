@@ -1,4 +1,4 @@
-// source-scheduler — generic per-source-field background refresh.
+// scheduler — generic per-source-field background refresh.
 //
 // Scans workspace for $source fields with `interval`, checks timing
 // against .source-state.json, and refreshes when due. Merge strategy
@@ -8,15 +8,15 @@
 import type { EventEmitter } from "node:events";
 import type { CodocPath, FieldName, NodeId } from "@cobook/core";
 import type { MergeContext, SourceProvider } from "@cobook/parser";
-import type { Workspace } from "./workspace.js";
+import type { Workspace } from "../workspace/index.js";
 import {
   readSourceState,
   writeSourceState,
   withEntry,
   type SourceStateEntry,
   type SourceStateMap,
-} from "./source-state.js";
-import { updateSourceFieldCache } from "./workspace-service.js";
+} from "./state.js";
+import { updateSourceFieldCache } from "../workspace/service.js";
 import { Mutex } from "./mutex.js";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // check every 1 minute

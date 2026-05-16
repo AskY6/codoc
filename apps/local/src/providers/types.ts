@@ -5,7 +5,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Workspace } from "../workspace.js";
+import type { Workspace } from "../workspace/index.js";
 
 // ---------------------------------------------------------------------------
 // Unified event envelope — sent to the browser over SSE

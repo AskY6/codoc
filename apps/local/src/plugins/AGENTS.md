@@ -1,7 +1,7 @@
 # plugins/
 
 Parent: `apps/local/src/`
-Reads from: `../workspace.js`, `../workspace-service.js`, `../providers/registry.js`, `../templates/`
+Reads from: `../workspace/index.js`, `../workspace/service.js`, `../providers/registry.js`, `../templates/`
 Must never import from: `@cobook/core` internals beyond re-exported types, `packages/parser` internals
 
 ## Purpose

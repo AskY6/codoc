@@ -11,7 +11,7 @@ import { parseCodoc } from "@cobook/parser";
 import type { SourceRegistry } from "@cobook/parser";
 import { compileCodoc } from "@cobook/compiler";
 import { resolveDataFields, toAstMap, validateDAG } from "./resolve.js";
-import { readSourceState, writeSourceState, type SourceStateEntry } from "./source-state.js";
+import { readSourceState, writeSourceState, type SourceStateEntry } from "../sources/state.js";
 import type { CustomComponentEntry } from "./components.js";
 import { scanComponents } from "./components.js";
 import { diagnoseCodoc } from "./diagnose.js";

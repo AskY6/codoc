@@ -7,13 +7,13 @@
 // Once a conversation starts with a provider, it stays with that provider.
 
 import { Hono } from "hono";
-import type { Workspace } from "./workspace.js";
-import type { ProviderRegistry } from "./providers/registry.js";
-import type { ChatEvent } from "./providers/types.js";
+import type { Workspace } from "../workspace/index.js";
+import type { ProviderRegistry } from "../providers/registry.js";
+import type { ChatEvent } from "../providers/types.js";
 import { upsertChatMeta } from "./chat-meta.js";
 
 // Re-export ChatEvent for backward compatibility
-export type { ChatEvent } from "./providers/types.js";
+export type { ChatEvent } from "../providers/types.js";
 
 interface ImagePayload {
   dataUrl: string;

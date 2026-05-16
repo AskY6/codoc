@@ -1,8 +1,8 @@
 # templates/
 
 Parent: `apps/local/AGENTS.md`
-Reads from: `catalog.ts` (component names), `add.ts` (component installer)
-Must never import from: `workspace.ts`, `http-server.ts`, `mcp-server.ts`
+Reads from: `../commands/catalog.ts` (component names), `../commands/add.ts` (component installer)
+Must never import from: `../workspace/`, `../server/`, `../sources/`
 
 ## Purpose
 

@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { CodocPath as mkCodocPath } from "@cobook/core";
-import { createMcpServer } from "../mcp-server.js";
+import { createMcpServer } from "../server/mcp.js";
 import type { ChatProvider, ChatParams, ChatEvent, SessionMessage } from "./types.js";
 import { readAgentInstructions } from "./types.js";
 

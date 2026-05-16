@@ -7,7 +7,7 @@
 import type { EventEmitter } from "node:events";
 import type { Hono } from "hono";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Workspace } from "../workspace.js";
+import type { Workspace } from "../workspace/index.js";
 import type { ProviderRegistry } from "../providers/registry.js";
 import type { Template } from "../templates/types.js";
 import type { SourceProvider } from "@cobook/parser";

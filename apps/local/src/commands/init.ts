@@ -19,10 +19,10 @@ import { jsx, jsxs } from "react/jsx-runtime";
 import { evaluate } from "@mdx-js/mdx";
 import { parseCodoc } from "@cobook/parser";
 import type { CodocAST } from "@cobook/core";
-import type { Template, TemplateFile } from "./templates/index.js";
+import type { Template, TemplateFile } from "../templates/index.js";
 import { addComponent } from "./add.js";
-import { BUILTIN_COMPONENT_META } from "./recognize.js";
-import { allPlugins } from "./plugins/registry.js";
+import { BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
+import { allPlugins } from "../plugins/registry.js";
 
 interface InitConfig {
   port: number;

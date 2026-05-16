@@ -1,4 +1,4 @@
-// mcp-server — MCP tool server exposing codoc operations to Claude Code.
+// mcp — MCP tool server exposing codoc operations to Claude Code.
 //
 // Runs on stdio transport. Claude Code connects to this as an MCP server
 // and gains tools to read, write, list, and search codocs.
@@ -6,22 +6,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import type { Workspace, WriteResult } from "./workspace.js";
-import { writeCodoc, buildAstMap } from "./workspace.js";
+import type { Workspace, WriteResult } from "../workspace/index.js";
+import { writeCodoc, buildAstMap } from "../workspace/index.js";
 import { CodocPath as mkCodocPath } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { stringify as stringifyYaml } from "yaml";
-import { diagnoseCodoc } from "./diagnose.js";
-import type { Diagnostic } from "./diagnose.js";
-import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
-import type { ComponentMeta } from "./recognize.js";
+import { diagnoseCodoc } from "../workspace/diagnose.js";
+import type { Diagnostic } from "../workspace/diagnose.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
+import type { ComponentMeta } from "../workspace/recognize.js";
 import { writeFile, mkdir, unlink } from "node:fs/promises";
 import { join, basename } from "node:path";
 import * as esbuild from "esbuild";
-import { loadComponents, removeFile, resolveAll } from "./workspace.js";
+import { loadComponents, removeFile, resolveAll } from "../workspace/index.js";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
-import type { ProviderRegistry } from "./providers/registry.js";
-import { updateDataField } from "./workspace-service.js";
+import type { ProviderRegistry } from "../providers/registry.js";
+import { updateDataField } from "../workspace/service.js";
 import { FieldName as mkFieldName } from "@cobook/core";
 
 export function createMcpServer(ws: Workspace, registry?: ProviderRegistry, updates?: import("node:events").EventEmitter): McpServer {

@@ -1,8 +1,8 @@
 // watcher — watches source .codoc files and triggers recompile on change.
 
 import { watch } from "chokidar";
-import type { Workspace } from "./workspace.js";
-import { loadFile, removeFile, resolveAll, compileAll, loadComponents } from "./workspace.js";
+import type { Workspace } from "./index.js";
+import { loadFile, removeFile, resolveAll, compileAll, loadComponents } from "./index.js";
 
 export interface WatcherOptions {
   readonly debounceMs?: number;

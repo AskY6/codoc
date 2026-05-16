@@ -1,4 +1,4 @@
-// http-server — local HTTP server with MCP + REST API + static UI.
+// http — local HTTP server with MCP + REST API + static UI.
 //
 // Serves:
 //   /api/workspaces     → workspace management
@@ -17,22 +17,22 @@ import { homedir } from "node:os";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { Workspace } from "./workspace.js";
-import { loadWorkspace, compileAll } from "./workspace.js";
+import type { Workspace } from "../workspace/index.js";
+import { loadWorkspace, compileAll } from "../workspace/index.js";
 import { createSourceRegistry } from "@cobook/parser";
 import { createApiRoutes } from "./api-routes.js";
 import { createChatRoutes } from "./chat-route.js";
-import { createMcpServer } from "./mcp-server.js";
-import { startWatcher } from "./watcher.js";
-import { startSourceScheduler } from "./source-scheduler.js";
-import type { SourceScheduler } from "./source-scheduler.js";
-import { createProviderRegistry } from "./providers/registry.js";
-import type { ProviderRegistry } from "./providers/registry.js";
-import { templates, findTemplate } from "./templates/index.js";
-import { initWorkspace } from "./init.js";
-import type { WorkspacePlugin, WorkspacePluginContext, PluginJobHandle } from "./plugins/types.js";
-import { parseWorkspaceConfig } from "./plugins/config.js";
-import { resolvePlugin } from "./plugins/detect.js";
+import { createMcpServer } from "./mcp.js";
+import { startWatcher } from "../workspace/watcher.js";
+import { startSourceScheduler } from "../sources/scheduler.js";
+import type { SourceScheduler } from "../sources/scheduler.js";
+import { createProviderRegistry } from "../providers/registry.js";
+import type { ProviderRegistry } from "../providers/registry.js";
+import { templates, findTemplate } from "../templates/index.js";
+import { initWorkspace } from "../commands/init.js";
+import type { WorkspacePlugin, WorkspacePluginContext, PluginJobHandle } from "../plugins/types.js";
+import { parseWorkspaceConfig } from "../plugins/config.js";
+import { resolvePlugin } from "../plugins/detect.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiDistDir = join(__dirname, "ui");
@@ -601,7 +601,7 @@ async function setupMcp(
   plugin?: WorkspacePlugin,
   ws?: Workspace,
   workspaceName?: string,
-  config?: import("./plugins/types.js").WorkspaceConfigFile,
+  config?: import("../plugins/types.js").WorkspaceConfigFile,
   pluginConfig?: unknown,
 ): Promise<void> {
   if (!state.workspace) return;
@@ -631,7 +631,7 @@ async function setupMcp(
 function buildPluginContext(
   workspaceName: string,
   workspace: Workspace,
-  config: import("./plugins/types.js").WorkspaceConfigFile,
+  config: import("../plugins/types.js").WorkspaceConfigFile,
   pluginConfig: unknown,
   updates: EventEmitter,
   providerRegistry?: ProviderRegistry,

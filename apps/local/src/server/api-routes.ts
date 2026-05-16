@@ -1,20 +1,20 @@
 // api-routes — REST API for the local web UI.
 //
-// All routes are mounted under /api by http-server.ts.
+// All routes are mounted under /api by ./http.ts.
 
 import type { EventEmitter } from "node:events";
 import { Hono } from "hono";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import type { Workspace } from "./workspace.js";
-import { writeCodoc, buildAstMap, removeFile, resolveAll } from "./workspace.js";
+import type { Workspace } from "../workspace/index.js";
+import { writeCodoc, buildAstMap, removeFile, resolveAll } from "../workspace/index.js";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import { buildDAG, checkCycles } from "@cobook/core";
 import { loadChatMetas, deleteChatMeta } from "./chat-meta.js";
-import type { ProviderRegistry } from "./providers/registry.js";
-import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "./recognize.js";
-import type { ComponentMeta } from "./recognize.js";
-import { updateArticleState } from "./workspace-service.js";
+import type { ProviderRegistry } from "../providers/registry.js";
+import { recognizeEnhancements, BUILTIN_COMPONENT_META } from "../workspace/recognize.js";
+import type { ComponentMeta } from "../workspace/recognize.js";
+import { updateArticleState } from "../workspace/service.js";
 
 // ---------------------------------------------------------------------------
 // Tree types

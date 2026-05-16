@@ -1,7 +1,7 @@
 # providers/
 
 Parent: `apps/local/src/`
-Reads from: `../workspace.js`, `../mcp-server.js`, `../chat-meta.js`
+Reads from: `../workspace/index.js`, `../server/mcp.js`, `../server/chat-meta.js`
 Must never import from: `@cobook/service`, `@cobook/storage`, `@cobook/chat`, `@cobook/graph`, `ui/`
 
 ## Purpose
