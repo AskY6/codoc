@@ -94,6 +94,8 @@ export interface WorkspaceUiViewDescriptor {
 
 export interface WorkspaceUiSpec {
   readonly homeView?: "tree" | "inbox";
+  /** Codoc path to auto-focus on first workspace load. Takes precedence over homeView. */
+  readonly homeCodocPath?: string;
   readonly hiddenPaths?: readonly string[];
   readonly primaryActions?: readonly WorkspaceUiActionDescriptor[];
   readonly secondaryViews?: readonly WorkspaceUiViewDescriptor[];

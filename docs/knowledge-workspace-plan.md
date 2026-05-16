@@ -15,6 +15,28 @@
 
 这份文档先定义场景边界和实施顺序，后续实现必须以此为准，而不是边写边发明产品。
 
+## 与 language workspace 的关系
+
+Knowledge 和 language 是两个独立的 `workspaceKind`，结构同构（encounter → capture → 系统告诉你 next action → 反囤积），但语义上不同——详细对照见 `docs/language-workspace-plan.md` 中"与 knowledge workspace 的关系"一节。
+
+明确不做的事：
+
+1. 把 word / vocabulary 当作 knowledge workspace 的第四种对象（会污染 book / blog / evergreen note 这条主线，掉进泛 PKM 陷阱）
+2. 抽象 knowledge 和 language 的公共基类 / generic spaced-cognition workspace——目前只有两例，premature abstraction 会损害两个 vertical 各自的清晰度，三例之前不抽象
+
+两者唯一的接触面是 codoc 层稳定 ref——v1 阶段使用 `CodocPath`（详见 `docs/host-delta-phase0.md` 第 3 节）。blog / book / note codoc 可以被 language workspace 通过 `CodocPath` 引用，但 knowledge 这一侧不需要为此做任何额外工作。详见末节"跨 workspace 接口"。
+
+## Phase 0 前置依赖
+
+本 plan 的 Phase 2（plugin 后端实现）依赖宿主侧 4 个改动，集中在 `docs/host-delta-phase0.md`：
+
+1. `WorkspaceUiSpec.homeCodocPath` 字段 + App.tsx auto-focus 泛化（dashboard 首屏前提）
+2. `apps/local/ui/src/plugin-views/` 目录 + plugin view registry（Queue / Notes / Review 三个 view 的渲染前提）
+3. 全局 ref 模型确认为 `CodocPath`，`CodocId` 不引入 v1
+4. 接通 `plugin.getAgentInstructions()` 到 provider（当前是 dead code），specialist 注册不在 v1 范围
+
+本 plan 的所有字段、API、agent contract 都基于这 4 个决策。Phase 1（领域收口）可与 Phase 0 并行。
+
 ## 场景定义
 
 Knowledge workspace 的起点不是“管理所有个人知识”，而是一个更窄、更强的切口：
@@ -85,6 +107,8 @@ Book 是“长周期来源”，重点不是收藏，而是推进阅读进度并
 | `openQuestions` | 阅读中产生的问题 |
 | `nextAction` | 下一步 |
 | `tags` | 主题标签 |
+| `addedAt` | ISO timestamp，加入 queue 的时间；`readingQueue` / `currentFocus` 的 `queued` 段按此升序 |
+| `lastUpdatedAt` | ISO timestamp，最近一次条目内容更新；`readingQueue` / `currentFocus` 的 `reading` 段按此降序 |
 
 ### Blog
 
@@ -106,6 +130,8 @@ Blog 是“短周期来源”，重点是捕获、提炼、决定是否进入长
 | `quotes` | 摘录 |
 | `nextAction` | 下一步 |
 | `tags` | 主题标签 |
+| `addedAt` | ISO timestamp，加入 captured 列表的时间；`readingQueue` 的 `captured` 段在长度并列时按此升序 tie-break |
+| `lastUpdatedAt` | ISO timestamp，最近一次摘录 / 摘要更新；`currentFocus` 候选筛选与 `review` 读模型可参考 |
 
 ### Evergreen Note
 
@@ -119,7 +145,7 @@ Evergreen note 是输出层，不是来源备份。它必须表达一个可复�
 | `stage` | `evergreen` 或其他明确阶段 |
 | `thesis` | 核心论点 |
 | `claims` | 支撑论点的短列表 |
-| `relatedSources` | 来源 codoc 路径列表 |
+| `relatedSources` | `CodocPath[]`，来源 codoc 引用列表 |
 | `nextStep` | 下一步连接或扩展 |
 | `tags` | 主题标签 |
 
@@ -132,9 +158,17 @@ Evergreen note 是输出层，不是来源备份。它必须表达一个可复�
 1. `library`
    作用：统一列出 books / blogs / notes 的核心状态
 2. `currentFocus`
-   作用：告诉用户现在最值得推进的条目
+   作用：告诉用户现在最值得推进的**单一**条目（dashboard 主位置）。确定性规则，按优先级第一个命中：
+   - book 中 `status === 'reading'` 的最新更新者（按 `lastUpdatedAt` 降序）
+   - blog 中 `status === 'captured'` 且未被任何 evergreen note 的 `relatedSources` 引用过、`readingTimeMin` ≤ 15 的最旧 `publishedAt`
+   - book 中 `status === 'queued'` 的最旧 `addedAt`
+   - 都没命中 → 返回 null（dashboard 显示空状态提示用户加来源）
 3. `readingQueue`
-   作用：按优先级给出下一批应该处理的来源
+   作用：按优先级给出下一批应该处理的来源。确定性排序，**concat** 三段，组内排序：
+   - 段 1：`status === 'reading'` 的所有 books，按 `lastUpdatedAt` 降序
+   - 段 2：`status === 'captured'` 的所有 blogs，按 `readingTimeMin` 升序（短的先做，鼓励高频蒸馏）
+   - 段 3：`status === 'queued'` 的所有 books，按 `addedAt` 升序（先到先做）
+   - finished / distilled 永不进入此 queue
 4. `topicMap`
    作用：按 tags 汇总主题覆盖，不做知识图谱，只做轻量主题分布
 5. `review`
@@ -229,7 +263,7 @@ Knowledge workspace 应作为一个一等 `workspaceKind` 落地，例如 `knowl
 | `GET` | `/api/plugins/knowledge/notes` | 只取 evergreen notes 视图 |
 | `GET` | `/api/plugins/knowledge/review` | 只取 review 视图 |
 | `POST` | `/api/plugins/knowledge/sync` | 强制同步 dashboard |
-| `POST` | `/api/plugins/knowledge/review` | 运行一次 review 并更新 `lastReviewAt` |
+| `POST` | `/api/plugins/knowledge/review` | 用上一节的确定性规则重算 currentFocus / readingQueue / review，写回 dashboard 并更新 `lastReviewAt` |
 
 设计原则：
 
@@ -275,6 +309,12 @@ dashboard 必须自动维护，否则场景会退化回“你自己去编辑看�
 2. `dashboard` 是 plugin 同步出的读模型
 3. 不鼓励 agent 手工改写 dashboard 作为主要路径
 
+v1 实现路径（依赖 `docs/host-delta-phase0.md` 第 4 节）：
+
+1. `getAgentInstructions()` 贡献 system prompt 段，让 base / general agent 理解 5 类动作的语义和边界
+2. `registerMcpTools()` 暴露 `addBook` / `captureBlog` / `distillNote` / `updateSource` / `reviewBacklog` 工具
+3. v1 **不**注册 specialist agent；service 层 router + specialist 图当前硬编码，没有 plugin-registered specialist 机制，留到独立未来 task
+
 ## 种子内容要求
 
 为了让这个场景一开始就“完整”，种子内容不能只是占位符。
@@ -294,15 +334,41 @@ dashboard 必须自动维护，否则场景会退化回“你自己去编辑看�
 
 种子内容的作用不是展示文案，而是验证读模型和 review 逻辑。
 
+## 跨 workspace 接口
+
+第一版**不主动与任何其他 workspace 联动**。所有跨 workspace 场景（被 language workspace 引用 blog 作为生词出处、被未来其他 workspace 引用 evergreen note 等）均不属于 knowledge 自己的 v1 范围。
+
+但 knowledge workspace 产出的 codoc（`book` / `blog` / `evergreen note`）天然就是可被外部引用的——`CodocPath` 在 local runtime 已是稳定 ref（详见 `docs/host-delta-phase0.md` 第 3 节），不需要 knowledge plugin 做任何额外工作来"暴露"自己。
+
+具体含义：
+
+1. 其他 workspace（例如 language）可以在自己的字段里持有 `CodocPath[]` 引用，指向 knowledge workspace 里的 blog / book / note codoc——这条路 v1 已经是通的
+2. 跨 workspace 引用的**主动方在调用侧**（例如 language 的 `addWord` tool 接收 `sourceCodocPath` 参数），knowledge 这一侧只需保持 codoc 路径稳定即可，**不需要暴露任何 "供其他 workspace 调用" 的 API**
+3. knowledge workspace 的 UI 渲染、读模型计算、agent 都不感知"自己被其他 workspace 引用"——保持单 workspace 视野是 big-block 联动原则的核心
+
+明确**不预留**的内容：
+
+1. 任何形式的 inbound webhook / 跨 workspace lookup API
+2. blog renderer 内的跨 workspace 组件注入（例如 `<KnownWord>` 这种被语言学习侧改写文章渲染的设计）
+3. knowledge agent 跨 workspace 读其他 workspace 的能力
+
+这些都不在 v1 范围内，需要时再加。
+
 ## 实施顺序
+
+### Phase 0: Host delta（宿主侧）
+
+见 `docs/host-delta-phase0.md`。要点：`homeCodocPath` 字段、plugin view registry、ref 模型确认为 `CodocPath`、`getAgentInstructions` 接通。
+
+Phase 0 不属于本 plan，但本 plan 的 Phase 2 依赖 Phase 0 完成。Phase 1 可并行。
 
 ### Phase 1: 领域收口
 
 先确认：
 
-1. 三类对象字段
+1. 三类对象字段（含 `relatedSources: CodocPath[]`）
 2. 状态语义
-3. dashboard 读模型 shape
+3. dashboard 读模型 shape，含 `currentFocus` / `readingQueue` 的确定性排序规则
 4. review 规则
 
 产出：
@@ -341,8 +407,9 @@ dashboard 必须自动维护，否则场景会退化回“你自己去编辑看�
 
 实现：
 
-1. knowledge-specific `agentInstructions`
-2. 将新增/蒸馏/回顾动作绑定到明确 workflow
+1. `getAgentInstructions()` 返回 knowledge-specific 段（依赖 Phase 0 已接通 plugin hook）
+2. `registerMcpTools()` 暴露 5 类动作工具，input schema 使用 `CodocPath`
+3. 不注册 specialist；通过 base / general agent + 工具组合表达 5 类动作
 
 产出：
 

@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Workspace } from "../workspace/index.js";
+import type { WorkspacePlugin, WorkspacePluginContext } from "../plugins/types.js";
 
 // ---------------------------------------------------------------------------
 // Unified event envelope — sent to the browser over SSE
@@ -47,6 +48,10 @@ export interface ChatParams {
   prompt: string;
   sessionId?: string | undefined;
   workspace: Workspace;
+  /** Active workspace plugin (used to source plugin-contributed agent instructions). */
+  plugin?: WorkspacePlugin<unknown> | undefined;
+  /** Plugin runtime context — required for getAgentInstructions hook invocation. */
+  pluginCtx?: WorkspacePluginContext<unknown> | undefined;
   /** Mentioned codoc paths (already normalized to .codoc) */
   mentions?: string[] | undefined;
   /** Base64 image attachments */
@@ -54,15 +59,42 @@ export interface ChatParams {
   signal?: AbortSignal | undefined;
 }
 
-/** Read agentInstructions from workspace codoc.config.json. */
-export function readAgentInstructions(workspace: Workspace): string | undefined {
+/**
+ * Resolve the agent instruction blob for a workspace.
+ *
+ * Composition: plugin prefix (from `plugin.getAgentInstructions(ctx)`)
+ *              + config suffix (from `codoc.config.json.agentInstructions`).
+ *
+ * Both are optional; if both are present they're joined by a blank line so the
+ * user-level config can override or extend the plugin baseline.
+ */
+export function readAgentInstructions(
+  workspace: Workspace,
+  plugin?: WorkspacePlugin<unknown>,
+  pluginCtx?: WorkspacePluginContext<unknown>,
+): string | undefined {
+  const pluginPart =
+    plugin?.getAgentInstructions && pluginCtx
+      ? plugin.getAgentInstructions(pluginCtx)
+      : undefined;
+
+  let configPart: string | undefined;
   try {
     const raw = readFileSync(join(workspace.sourceDir, "codoc.config.json"), "utf-8");
     const cfg = JSON.parse(raw) as { agentInstructions?: string };
-    return cfg.agentInstructions ?? undefined;
+    configPart = cfg.agentInstructions ?? undefined;
   } catch {
-    return undefined;
+    configPart = undefined;
   }
+
+  // Defensive dedup: workspaces scaffolded before the plugin hook landed have
+  // the plugin's baseline already copied into config — treat that as no override.
+  if (pluginPart && configPart && pluginPart.trim() === configPart.trim()) {
+    return pluginPart;
+  }
+
+  if (pluginPart && configPart) return `${pluginPart}\n\n${configPart}`;
+  return pluginPart ?? configPart;
 }
 
 export interface ChatProvider {

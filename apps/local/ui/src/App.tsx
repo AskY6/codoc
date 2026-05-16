@@ -6,8 +6,7 @@ import { DocumentPanel } from "./components/DocumentPanel.tsx";
 import { GraphPanel } from "./components/GraphPanel.tsx";
 import { ComponentPanel } from "./components/ComponentPanel.tsx";
 import { ChatPanel } from "./components/ChatPanel.tsx";
-import { SubscriptionsPanel } from "./components/rss/SubscriptionsPanel.tsx";
-import { SavedArticlesPanel } from "./components/rss/SavedArticlesPanel.tsx";
+import { pluginViewRegistry } from "./plugin-views/registry.ts";
 import { useCustomComponents } from "./custom-components.ts";
 import { ConfirmDialog } from "./components/ConfirmDialog.tsx";
 import { WorkspaceActionBar } from "./components/WorkspaceActionBar.tsx";
@@ -517,16 +516,21 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
     setFocus({ kind: "codoc", path });
   }, []);
 
-  // Auto-select inbox on first mount when plugin declares homeView: "inbox".
+  // Auto-focus a codoc on first mount when the plugin declares one.
+  // Priority: uiSpec.homeCodocPath → uiSpec.homeView === "inbox" fallback.
   const didAutoFocus = useRef(false);
   useEffect(() => {
-    if (didAutoFocus.current || uiSpec?.homeView !== "inbox") return;
+    if (didAutoFocus.current) return;
     if (tree.length === 0) return; // wait for tree to load
+
+    const target =
+      uiSpec?.homeCodocPath ??
+      (uiSpec?.homeView === "inbox" ? "inbox.codoc" : undefined);
+    if (!target) return;
+    if (!codocList.some((c) => c.path === target)) return;
+
     didAutoFocus.current = true;
-    const hasInbox = codocList.some((c) => c.path === "inbox.codoc");
-    if (hasInbox) {
-      selectCodoc("inbox.codoc");
-    }
+    selectCodoc(target);
   }, [tree, codocList, uiSpec, selectCodoc]);
 
   const requestDeleteCodoc = useCallback((path: string) => {
@@ -961,10 +965,21 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
               customRegistry={components.customRegistry}
               errors={components.errors}
             />
-          ) : focus.kind === "plugin-view" && focus.viewId === "rss-subscriptions" ? (
-            <SubscriptionsPanel onSelectCodoc={selectCodoc} />
-          ) : focus.kind === "plugin-view" && focus.viewId === "rss-saved" ? (
-            <SavedArticlesPanel />
+          ) : focus.kind === "plugin-view" ? (
+            (() => {
+              const PluginView =
+                pluginViewRegistry[wsInfo.pluginId ?? ""]?.[focus.viewId];
+              return PluginView ? (
+                <PluginView onSelectCodoc={selectCodoc} />
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center text-neutral-400">
+                  <p className="text-sm font-medium">View not registered</p>
+                  <p className="mt-1 text-xs opacity-60">
+                    {wsInfo.pluginId ?? "plugin"}.{focus.viewId}
+                  </p>
+                </div>
+              );
+            })()
           ) : codoc ? (
             <DocumentPanel
               codoc={codoc}

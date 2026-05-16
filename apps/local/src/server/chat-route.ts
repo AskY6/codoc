@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import type { Workspace } from "../workspace/index.js";
 import type { ProviderRegistry } from "../providers/registry.js";
 import type { ChatEvent } from "../providers/types.js";
+import type { WorkspacePlugin, WorkspacePluginContext } from "../plugins/types.js";
 import { upsertChatMeta } from "./chat-meta.js";
 
 // Re-export ChatEvent for backward compatibility
@@ -21,7 +22,11 @@ interface ImagePayload {
 }
 
 export function createChatRoutes(
-  state: { workspace: Workspace | null },
+  state: {
+    workspace: Workspace | null;
+    activePlugin: WorkspacePlugin | null;
+    pluginCtx: WorkspacePluginContext | null;
+  },
   registry: ProviderRegistry,
 ): Hono {
   const app = new Hono();
@@ -76,6 +81,8 @@ export function createChatRoutes(
             prompt,
             sessionId,
             workspace: state.workspace!,
+            plugin: state.activePlugin ?? undefined,
+            pluginCtx: state.pluginCtx ?? undefined,
             mentions,
             images,
           })) {

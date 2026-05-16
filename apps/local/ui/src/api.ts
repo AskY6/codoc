@@ -168,6 +168,7 @@ export interface WorkspaceUiViewDescriptor {
 
 export interface WorkspaceUiSpec {
   homeView?: "tree" | "inbox";
+  homeCodocPath?: string;
   hiddenPaths?: string[];
   primaryActions?: WorkspaceUiActionDescriptor[];
   secondaryViews?: WorkspaceUiViewDescriptor[];

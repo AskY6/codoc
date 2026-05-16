@@ -48,10 +48,12 @@ function buildConfig(template?: Template): InitConfig {
   const cfg: InitConfig = { port: 4321 };
 
   // Plugin binding: write workspaceKind when template belongs to a plugin.
+  let pluginOwned = false;
   if (template) {
     const pluginId = findPluginForTemplate(template);
     if (pluginId && pluginId !== "default") {
       cfg.workspaceKind = pluginId;
+      pluginOwned = true;
     }
   }
 
@@ -62,7 +64,10 @@ function buildConfig(template?: Template): InitConfig {
   if (template?.quickActions && template.quickActions.length > 0) {
     cfg.quickActions = template.quickActions.map((a) => ({ label: a.label, prompt: a.prompt }));
   }
-  if (template?.agentInstructions) {
+  // For plugin-owned templates, agentInstructions is contributed at runtime by
+  // plugin.getAgentInstructions() — do not duplicate it into the seeded config
+  // (the config field is reserved for user overrides).
+  if (template?.agentInstructions && !pluginOwned) {
     cfg.agentInstructions = template.agentInstructions;
   }
   return cfg;
