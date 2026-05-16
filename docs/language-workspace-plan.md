@@ -26,16 +26,16 @@ Knowledge 和 language 结构上同构（encounter → capture → 系统告诉�
 
 跨 workspace 联动只通过 codoc 层稳定 ref 实现（big-block，user-initiated），不在 v1 范围内，详见末节"跨 workspace 接口"。
 
-## Phase 0 前置依赖
+## 宿主侧依赖（已落地）
 
-本 plan 的 Phase 2（plugin 后端实现）依赖宿主侧 4 个改动，集中在 `docs/host-delta-phase0.md`：
+本 plan 的字段、API、agent contract 基于以下 4 项宿主能力，目前均已在 host 中实现：
 
 1. `WorkspaceUiSpec.homeCodocPath` 字段 + App.tsx auto-focus 泛化（dashboard 首屏前提）
 2. `apps/local/ui/src/plugin-views/` 目录 + plugin view registry（Queue / Library / Review 三个 view 的渲染前提）
-3. 全局 ref 模型确认为 `CodocPath`，`CodocId` 不引入 v1
-4. 接通 `plugin.getAgentInstructions()` 到 provider（当前是 dead code），specialist 注册不在 v1 范围
+3. 全局 ref 模型为 `CodocPath`，`CodocId` 不引入 v1
+4. `plugin.getAgentInstructions()` 已接通到 provider，specialist 注册不在 v1 范围
 
-本 plan 的所有字段、API、agent contract 都基于这 4 个决策。Phase 1（领域收口）可与 Phase 0 并行。
+后续 plugin 框架演化方向见 `docs/plugin-architecture-v2.md`。
 
 ## 场景定义
 
@@ -293,7 +293,7 @@ Agent tool 形状约束（为未来联动预留）：
 - `addWord` tool 的 input schema 必须包含 optional `sourceCodocPath: CodocPath` 字段
 - v1 内 RSS 等其他 workspace 不会调用此 tool；但接口形状固定，未来 (B) 场景（"Send to vocab" from RSS）通过同一 tool 接通
 
-v1 不注册 specialist agent。当前 `packages/service/src/usecases/agent/run-agent-turn.ts` 的 router + specialist 图是硬编码的，没有 plugin-registered specialist 机制（详见 `docs/host-delta-phase0.md` 第 4 节）。Language plugin 在 v1 内通过两条路径影响 agent 行为：
+v1 不注册 specialist agent。当前 `packages/service/src/usecases/agent/run-agent-turn.ts` 的 router + specialist 图是硬编码的，没有 plugin-registered specialist 机制。Language plugin 在 v1 内通过两条路径影响 agent 行为：
 
 1. `getAgentInstructions()` 贡献 system prompt 段（在 Phase 0 接通之前，可临时把内容写进 `codoc.config.json.agentInstructions`）
 2. `registerMcpTools()` 暴露 `addWord` / `lookup` / `updateWord` 等工具给 base / general agent 调用
@@ -337,11 +337,7 @@ specialist 注册机制是独立的未来 task，不在 v1 范围。
 
 ## 实施顺序
 
-### Phase 0: Host delta（宿主侧）
-
-见 `docs/host-delta-phase0.md`。要点：`homeCodocPath` 字段、plugin view registry、ref 模型确认为 `CodocPath`、`getAgentInstructions` 接通。
-
-Phase 0 不属于本 plan，但本 plan 的 Phase 2 依赖 Phase 0 完成。Phase 1 可并行。
+宿主侧 4 项依赖（见上文"宿主侧依赖"）已落地，本 plan 从 Phase 1 起步。
 
 ### Phase 1: 领域收口
 

@@ -3,7 +3,7 @@
 ## 状态
 
 - **当前文档定位**：v2 设计 / 路线图，规划阶段
-- **被取代的文档**：`workspace-plugin-design.md`（v1，已落地）、`host-delta-phase0.md`（Phase 0 host delta，已落地）
+- **历史背景**：v1 `WorkspacePlugin` 接口与 Phase 0 host delta（`homeCodocPath` / `plugin-views/` 目录 / agent wiring 修复）均已落地，本文档的 Phase 2 把它们收编为 manifest + activate
 - **保持有效**：`rss-product-roadmap.md`、`knowledge-workspace-plan.md`、`language-workspace-plan.md` 的产品诉求，本文档不改产品方向，只改承载它们的 plugin 框架
 
 ## 1. 背景与问题
@@ -664,8 +664,7 @@ openWorkspace(name)
 
 ## 7. 与现有规划的关系
 
-- `workspace-plugin-design.md`：v1 设计，已完整落地。本文档的 Phase 2 把它定义的 `WorkspacePlugin` 接口收编为 manifest + activate。
-- `host-delta-phase0.md`：Phase 0 host delta（`homeCodocPath` / `plugin-views/` 目录 / agent wiring 修复）已落地，本文档的 Phase 2 沿用其结构。
+- v1 `WorkspacePlugin` 接口与 Phase 0 host delta 均已落地（见上方"状态"）。本文档的 Phase 2 把 v1 接口收编为 manifest + activate，并沿用 Phase 0 的 `homeCodocPath` / `plugin-views/` / agent wiring 结构。
 - `rss-product-roadmap.md` / `knowledge-workspace-plan.md` / `language-workspace-plan.md`：产品方向不变，但落地路径上"加一个 plugin"的成本会因为本文档而显著降低（写 manifest + 两个 activate 函数 + 自有 source provider，不动 host）。
 - `packages/parser`：Phase 1.5 之后 parser 不再内置 RSS / Atom 解析；`createSourceRegistry()` 只剩 generic 的 `httpJsonProvider`，作为真正的"无 domain 假设的标准库"
 

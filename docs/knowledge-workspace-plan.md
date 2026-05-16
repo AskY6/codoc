@@ -24,18 +24,18 @@ Knowledge 和 language 是两个独立的 `workspaceKind`，结构同构（encou
 1. 把 word / vocabulary 当作 knowledge workspace 的第四种对象（会污染 book / blog / evergreen note 这条主线，掉进泛 PKM 陷阱）
 2. 抽象 knowledge 和 language 的公共基类 / generic spaced-cognition workspace——目前只有两例，premature abstraction 会损害两个 vertical 各自的清晰度，三例之前不抽象
 
-两者唯一的接触面是 codoc 层稳定 ref——v1 阶段使用 `CodocPath`（详见 `docs/host-delta-phase0.md` 第 3 节）。blog / book / note codoc 可以被 language workspace 通过 `CodocPath` 引用，但 knowledge 这一侧不需要为此做任何额外工作。详见末节"跨 workspace 接口"。
+两者唯一的接触面是 codoc 层稳定 ref——v1 阶段使用 `CodocPath`，`CodocId` 不引入 local runtime。blog / book / note codoc 可以被 language workspace 通过 `CodocPath` 引用，但 knowledge 这一侧不需要为此做任何额外工作。详见末节"跨 workspace 接口"。
 
-## Phase 0 前置依赖
+## 宿主侧依赖（已落地）
 
-本 plan 的 Phase 2（plugin 后端实现）依赖宿主侧 4 个改动，集中在 `docs/host-delta-phase0.md`：
+本 plan 的字段、API、agent contract 基于以下 4 项宿主能力，目前均已在 host 中实现：
 
 1. `WorkspaceUiSpec.homeCodocPath` 字段 + App.tsx auto-focus 泛化（dashboard 首屏前提）
 2. `apps/local/ui/src/plugin-views/` 目录 + plugin view registry（Queue / Notes / Review 三个 view 的渲染前提）
-3. 全局 ref 模型确认为 `CodocPath`，`CodocId` 不引入 v1
-4. 接通 `plugin.getAgentInstructions()` 到 provider（当前是 dead code），specialist 注册不在 v1 范围
+3. 全局 ref 模型为 `CodocPath`，`CodocId` 不引入 v1
+4. `plugin.getAgentInstructions()` 已接通到 provider，specialist 注册不在 v1 范围
 
-本 plan 的所有字段、API、agent contract 都基于这 4 个决策。Phase 1（领域收口）可与 Phase 0 并行。
+后续 plugin 框架演化方向见 `docs/plugin-architecture-v2.md`。
 
 ## 场景定义
 
@@ -309,7 +309,7 @@ dashboard 必须自动维护，否则场景会退化回“你自己去编辑看�
 2. `dashboard` 是 plugin 同步出的读模型
 3. 不鼓励 agent 手工改写 dashboard 作为主要路径
 
-v1 实现路径（依赖 `docs/host-delta-phase0.md` 第 4 节）：
+v1 实现路径：
 
 1. `getAgentInstructions()` 贡献 system prompt 段，让 base / general agent 理解 5 类动作的语义和边界
 2. `registerMcpTools()` 暴露 `addBook` / `captureBlog` / `distillNote` / `updateSource` / `reviewBacklog` 工具
@@ -338,7 +338,7 @@ v1 实现路径（依赖 `docs/host-delta-phase0.md` 第 4 节）：
 
 第一版**不主动与任何其他 workspace 联动**。所有跨 workspace 场景（被 language workspace 引用 blog 作为生词出处、被未来其他 workspace 引用 evergreen note 等）均不属于 knowledge 自己的 v1 范围。
 
-但 knowledge workspace 产出的 codoc（`book` / `blog` / `evergreen note`）天然就是可被外部引用的——`CodocPath` 在 local runtime 已是稳定 ref（详见 `docs/host-delta-phase0.md` 第 3 节），不需要 knowledge plugin 做任何额外工作来"暴露"自己。
+但 knowledge workspace 产出的 codoc（`book` / `blog` / `evergreen note`）天然就是可被外部引用的——`CodocPath` 在 local runtime 已是稳定 ref，不需要 knowledge plugin 做任何额外工作来"暴露"自己。
 
 具体含义：
 
@@ -356,11 +356,7 @@ v1 实现路径（依赖 `docs/host-delta-phase0.md` 第 4 节）：
 
 ## 实施顺序
 
-### Phase 0: Host delta（宿主侧）
-
-见 `docs/host-delta-phase0.md`。要点：`homeCodocPath` 字段、plugin view registry、ref 模型确认为 `CodocPath`、`getAgentInstructions` 接通。
-
-Phase 0 不属于本 plan，但本 plan 的 Phase 2 依赖 Phase 0 完成。Phase 1 可并行。
+宿主侧 4 项依赖（见上文"宿主侧依赖"）已落地，本 plan 从 Phase 1 起步。
 
 ### Phase 1: 领域收口
 
