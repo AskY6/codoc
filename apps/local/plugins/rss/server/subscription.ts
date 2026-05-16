@@ -5,8 +5,8 @@
 
 import type { CodocPath, FieldName } from "@cobook/core";
 import type { RssArticle } from "@cobook/parser";
-import type { Workspace } from "../../domain/types.js";
-import type { SourceStateMap } from "../../sources/state.js";
+import type { Workspace } from "../../../src/domain/types.js";
+import type { SourceStateMap } from "../../../src/sources/state.js";
 
 // ---------------------------------------------------------------------------
 // Types

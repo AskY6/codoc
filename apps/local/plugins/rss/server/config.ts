@@ -2,7 +2,7 @@
 
 import { ok, err } from "@cobook/core";
 import type { Result } from "@cobook/core";
-import type { PluginConfigError } from "../types.js";
+import type { PluginConfigError } from "../../../src/plugins/types.js";
 
 export interface RssPluginConfig {
   readonly defaultSourceIntervalMinutes: number;

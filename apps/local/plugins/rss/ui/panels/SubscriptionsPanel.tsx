@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../../api.ts";
-import type { RssSubscription } from "../../api.ts";
-import { subscribe } from "../../lib/event-bus.ts";
+import { api } from "@/api.ts";
+import type { RssSubscription } from "@/api.ts";
+import { subscribe } from "@/lib/event-bus.ts";
 import { FeedStatusBadge } from "./FeedStatusBadge.tsx";
 import { SubscriptionForm } from "./SubscriptionForm.tsx";
 

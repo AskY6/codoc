@@ -11,12 +11,12 @@ import { unlink } from "node:fs/promises";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import type { CodocPath, FieldName, NodeId } from "@cobook/core";
 import type { RssArticle } from "@cobook/parser";
-import type { Workspace } from "../../domain/types.js";
-import { writeCodoc, removeFile } from "../../runtime/workspace.js";
-import { updateDataField, updateSourceFieldCache, updateSourceFieldParam } from "../../runtime/service.js";
-import { readSourceState, writeSourceState } from "../../sources/state.js";
-import { refreshAllSources, refreshSingleSource } from "../../sources/scheduler.js";
-import type { RefreshResult } from "../../sources/scheduler.js";
+import type { Workspace } from "../../../src/domain/types.js";
+import { writeCodoc, removeFile } from "../../../src/runtime/workspace.js";
+import { updateDataField, updateSourceFieldCache, updateSourceFieldParam } from "../../../src/runtime/service.js";
+import { readSourceState, writeSourceState } from "../../../src/sources/state.js";
+import { refreshAllSources, refreshSingleSource } from "../../../src/sources/scheduler.js";
+import type { RefreshResult } from "../../../src/sources/scheduler.js";
 import type { RssPluginConfig } from "./config.js";
 import {
   buildSubscriptions,

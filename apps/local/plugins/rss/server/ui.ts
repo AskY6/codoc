@@ -1,6 +1,6 @@
 // RSS plugin UI descriptor — inbox-first layout with domain actions.
 
-import type { WorkspaceUiSpec } from "../types.js";
+import type { WorkspaceUiSpec } from "../../../src/plugins/types.js";
 
 export const rssUiSpec: WorkspaceUiSpec = {
   homeView: "inbox",

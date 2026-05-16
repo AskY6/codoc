@@ -4,11 +4,11 @@
 //       agent instructions.
 // Does NOT own: source scheduler (platform), rssProvider (parser layer).
 
-import type { WorkspacePlugin } from "../types.js";
+import type { WorkspacePlugin } from "../../../src/plugins/types.js";
 import type { RssPluginConfig } from "./config.js";
 import { parseRssConfig } from "./config.js";
 import { detectRssWorkspace } from "./detect.js";
-import { rssTemplate } from "./template.js";
+import { rssTemplate } from "../template/index.js";
 import { createRssApiRoutes } from "./api-routes.js";
 import { rssUiSpec } from "./ui.js";
 import { createDigestJob } from "./digest-job.js";

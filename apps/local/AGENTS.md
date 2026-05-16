@@ -20,9 +20,10 @@ Local file-based codoc server. CLI commands:
 - `src/sources/` — periodic `$source` refresh + `.source-state.json` persistence.
 - `src/server/` — HTTP / MCP / SSE servers and REST routes.
 - `src/commands/` — one-shot CLI subcommands (`init`, `add`) and the component catalog.
-- `src/plugins/` — workspace plugin system (RSS, default).
+- `src/plugins/` — workspace plugin host: `WorkspacePlugin` interface, registry, detection, raw config parsing. Plugin implementations live in `plugins/`.
 - `src/providers/` — chat provider adapters (Claude Code, Codex, Kiro).
-- `src/templates/` — built-in workspace templates for `codoc init --from`.
+- `src/templates/` — built-in workspace templates aggregator (Phase 1 still hosts `bookmarks.ts`; the RSS template moved into `plugins/rss/template/`).
+- `plugins/` — workspace plugin implementations, one directory per plugin. See `plugins/AGENTS.md`.
 - `ui/` — Local web UI (Vite + React SPA). See `ui/AGENTS.md`.
 
 ## Architecture

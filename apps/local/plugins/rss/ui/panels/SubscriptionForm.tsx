@@ -8,8 +8,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "../../api.ts";
-import type { RssSubscription } from "../../api.ts";
+import { api } from "@/api.ts";
+import type { RssSubscription } from "@/api.ts";
 
 interface SubscriptionFormProps {
   open: boolean;

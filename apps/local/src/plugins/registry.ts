@@ -1,8 +1,8 @@
 // Plugin registry — built-in workspace plugins, looked up by workspaceKind.
 
 import type { WorkspacePlugin } from "./types.js";
-import { defaultPlugin } from "./default/index.js";
-import { rssPlugin } from "./rss/index.js";
+import { defaultPlugin } from "../../plugins/default/server/index.js";
+import { rssPlugin } from "../../plugins/rss/server/index.js";
 
 /** All built-in plugins, ordered by detection priority. */
 const plugins: readonly WorkspacePlugin[] = [

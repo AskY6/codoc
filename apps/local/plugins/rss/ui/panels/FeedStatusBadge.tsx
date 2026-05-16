@@ -1,4 +1,4 @@
-import type { RssFeedStatus } from "../../api.ts";
+import type { RssFeedStatus } from "@/api.ts";
 
 const config: Record<RssFeedStatus, { label: string; className: string; dot: string }> = {
   healthy: {

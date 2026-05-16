@@ -10,7 +10,7 @@
 // are available for the initial catch-up digest.
 
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
-import type { PluginJobHandle, WorkspacePluginContext } from "../types.js";
+import type { PluginJobHandle, WorkspacePluginContext } from "../../../src/plugins/types.js";
 import type { RssPluginConfig } from "./config.js";
 import { refreshFeeds, generateDigest, type RssServiceContext } from "./service.js";
 

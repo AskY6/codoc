@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "."
   },
-  "include": ["src"],
-  "exclude": ["src/templates/*/components"]
+  "include": ["src", "plugins/*/server", "plugins/*/template"],
+  "exclude": ["src/templates/*/components", "plugins/*/components", "plugins/*/ui"]
 }
+

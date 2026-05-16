@@ -5,8 +5,7 @@
 // (server-side plugin code can't reach into the browser bundle).
 
 import type { ComponentType } from "react";
-import { SubscriptionsPanel } from "./rss/SubscriptionsPanel.tsx";
-import { SavedArticlesPanel } from "./rss/SavedArticlesPanel.tsx";
+import { SubscriptionsPanel, SavedArticlesPanel } from "@plugins/rss/ui/index.ts";
 
 export interface PluginViewProps {
   onSelectCodoc: (path: string) => void;

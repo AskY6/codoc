@@ -4,7 +4,7 @@
 // returns an empty typed config, making "no plugin config" an explicit state.
 
 import { ok } from "@cobook/core";
-import type { WorkspacePlugin } from "../types.js";
+import type { WorkspacePlugin } from "../../../src/plugins/types.js";
 
 export type DefaultPluginConfig = Record<string, never>;
 

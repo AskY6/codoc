@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
+      "@plugins": resolve(__dirname, "..", "plugins"),
     },
   },
   build: {
@@ -20,6 +21,10 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    fs: {
+      // Permit serving plugin UI bundles that live outside ui/ root.
+      allow: [resolve(__dirname, "..")],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:4321",

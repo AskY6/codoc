@@ -6,29 +6,23 @@ Must never import from: `../App.tsx`, backend code
 
 ## Purpose
 
-Plugin-owned secondary-view UI lives here, one subdirectory per plugin id. The
-top-level `registry.ts` maps `(pluginId, viewId)` → React component so App.tsx
-can render entries from `uiSpec.secondaryViews` without per-plugin branches.
+Bridge between the SPA and plugin-owned panels. Panel components themselves now
+live under `apps/local/plugins/<id>/ui/`; this directory only holds the registry
+that maps `(pluginId, viewId)` → React component so `App.tsx` can render entries
+from `uiSpec.secondaryViews` without per-plugin branches.
 
-The browser bundle and the server-side plugin code do not share an ESM graph,
-so registry entries are added by editing `registry.ts` at build time — there is
-no dynamic registration.
+The browser bundle and the server-side plugin code do not share an ESM graph, so
+registry entries are added at build time by importing from each plugin's `ui/`
+entry — there is no dynamic registration in Phase 1.
 
-## Layout
+## Files
 
-```
-plugin-views/
-  registry.ts            ← imports + maps each plugin's components
-  AGENTS.md              ← this file
-  <pluginId>/
-    AGENTS.md            ← per-plugin constraints
-    *.tsx                ← panel components
-```
+- `registry.ts` — imports from `@plugins/<id>/ui/index.ts` and maps each plugin's panels by view id.
 
 ## Contract
 
 - A plugin that lists `{ id: "<view-id>", … }` in its `uiSpec.secondaryViews` must
-  add an entry to `pluginViewRegistry[<pluginId>][<view-id>]`.
+  export the corresponding component from its `ui/index.ts` and be wired here.
 - Components accept `PluginViewProps { onSelectCodoc: (path: string) => void }`.
   Components that don't need the prop may ignore it.
 - If a `secondaryViews` entry has no registry entry, App.tsx renders an empty
@@ -36,7 +30,9 @@ plugin-views/
 
 ## Constraints
 
-- `registry.ts` is the only file in this directory that is allowed to import
-  from `./<pluginId>/*` — keep cross-plugin coupling out of `App.tsx`.
-- New plugin → new top-level subdirectory + new top-level key in
-  `pluginViewRegistry`. Don't nest pluginId inside view-id strings.
+- Imports use the `@plugins` alias (configured in `ui/vite.config.ts` and `ui/tsconfig.json`).
+- `registry.ts` is the only file in `ui/src` allowed to import from `@plugins/*/ui/*` — keep cross-plugin coupling out of `App.tsx`.
+
+## Roadmap
+
+Phase 2 replaces this static registry with `activateUi(ctx)`-driven registration; plugins will call `ctx.views.registerView(viewId, Component)` and this file goes away.

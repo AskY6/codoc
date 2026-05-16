@@ -4,15 +4,15 @@
 // not individual feed pages. Feed definitions live under sources/
 // as data for the agent. topics/ holds agent-generated research notes.
 
-import type { Template, TemplateFile } from "./types.js";
-import { serializeYaml } from "./yaml.js";
-import articleListSource from "raw:./rss/components/ArticleList.tsx";
-import feedHeaderSource from "raw:./rss/components/FeedHeader.tsx";
-import sourceBadgeSource from "raw:./rss/components/SourceBadge.tsx";
-import digestStatsSource from "raw:./rss/components/DigestStats.tsx";
-import digestTopSource from "raw:./rss/components/DigestTop.tsx";
-import digestListSource from "raw:./rss/components/DigestList.tsx";
-import digestTrendingSource from "raw:./rss/components/DigestTrending.tsx";
+import type { Template, TemplateFile } from "../../../src/templates/types.js";
+import { serializeYaml } from "../../../src/templates/yaml.js";
+import articleListSource from "raw:../components/ArticleList.tsx";
+import feedHeaderSource from "raw:../components/FeedHeader.tsx";
+import sourceBadgeSource from "raw:../components/SourceBadge.tsx";
+import digestStatsSource from "raw:../components/DigestStats.tsx";
+import digestTopSource from "raw:../components/DigestTop.tsx";
+import digestListSource from "raw:../components/DigestList.tsx";
+import digestTrendingSource from "raw:../components/DigestTrending.tsx";
 
 function codoc(
   frontmatter: Record<string, unknown>,

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { api } from "../../api.ts";
-import type { RssStarredArticle } from "../../api.ts";
-import { subscribe } from "../../lib/event-bus.ts";
+import { api } from "@/api.ts";
+import type { RssStarredArticle } from "@/api.ts";
+import { subscribe } from "@/lib/event-bus.ts";
 
 export function SavedArticlesPanel() {
   const [articles, setArticles] = useState<RssStarredArticle[]>([]);

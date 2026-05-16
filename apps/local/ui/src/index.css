@@ -1,8 +1,8 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Scan plugin template components — their classes must end up in the bundle
-   even though they live outside ui/. */
+/* Scan plugin TSX outside ui/ — MDX components, UI panels, bookmarks template. */
+@source "../../plugins/**/*.tsx";
 @source "../../src/templates/**/*.tsx";
 
 @theme inline {
