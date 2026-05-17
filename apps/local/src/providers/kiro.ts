@@ -252,7 +252,7 @@ export const kiroProvider: ChatProvider = {
   },
 
   async *chat(params: ChatParams): AsyncIterable<ChatEvent> {
-    const { prompt, sessionId, workspace, plugin, pluginCtx, signal } = params;
+    const { prompt, sessionId, workspace, pluginInstructions, signal } = params;
 
     const client = new AcpClient(workspace.sourceDir);
 
@@ -299,7 +299,7 @@ export const kiroProvider: ChatProvider = {
       client.onNotification(notificationHandler);
 
       // Prepend agent instructions as context if configured
-      const extra = readAgentInstructions(workspace, plugin, pluginCtx);
+      const extra = readAgentInstructions(workspace, pluginInstructions);
       const fullPrompt = extra ? `[System context]\n${extra}\n\n[User request]\n${prompt}` : prompt;
 
       // Send the prompt (fire-and-forget — response comes via notifications)

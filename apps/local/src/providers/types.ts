@@ -6,7 +6,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Workspace } from "../domain/types.js";
-import type { WorkspacePlugin, WorkspacePluginContext } from "../plugins/types.js";
 
 // ---------------------------------------------------------------------------
 // Unified event envelope — sent to the browser over SSE
@@ -48,10 +47,8 @@ export interface ChatParams {
   prompt: string;
   sessionId?: string | undefined;
   workspace: Workspace;
-  /** Active workspace plugin (used to source plugin-contributed agent instructions). */
-  plugin?: WorkspacePlugin<unknown> | undefined;
-  /** Plugin runtime context — required for getAgentInstructions hook invocation. */
-  pluginCtx?: WorkspacePluginContext<unknown> | undefined;
+  /** Plugin baseline agent prompt, already resolved by the plugin host. */
+  pluginInstructions?: string | undefined | null;
   /** Mentioned codoc paths (already normalized to .codoc) */
   mentions?: string[] | undefined;
   /** Base64 image attachments */
@@ -60,24 +57,22 @@ export interface ChatParams {
 }
 
 /**
- * Resolve the agent instruction blob for a workspace.
+ * Compose the agent prompt seen by a provider for one turn.
  *
- * Composition: plugin prefix (from `plugin.getAgentInstructions(ctx)`)
- *              + config suffix (from `codoc.config.json.agentInstructions`).
+ * Inputs:
+ *   - `pluginPart` — plugin baseline (resolved by the plugin host from
+ *     `manifest.contributes.agentInstructions` + plugin module).
+ *   - `codoc.config.json#agentInstructions` — per-workspace override.
  *
- * Both are optional; if both are present they're joined by a blank line so the
- * user-level config can override or extend the plugin baseline.
+ * Both are optional. If both are present they're joined by a blank line so
+ * the user-level config can extend the plugin baseline. Defensive dedup:
+ * workspaces scaffolded before the plugin hook landed have the plugin's
+ * baseline already copied into config — treat that as no override.
  */
 export function readAgentInstructions(
   workspace: Workspace,
-  plugin?: WorkspacePlugin<unknown>,
-  pluginCtx?: WorkspacePluginContext<unknown>,
+  pluginPart?: string | null,
 ): string | undefined {
-  const pluginPart =
-    plugin?.getAgentInstructions && pluginCtx
-      ? plugin.getAgentInstructions(pluginCtx)
-      : undefined;
-
   let configPart: string | undefined;
   try {
     const raw = readFileSync(join(workspace.sourceDir, "codoc.config.json"), "utf-8");
@@ -87,8 +82,6 @@ export function readAgentInstructions(
     configPart = undefined;
   }
 
-  // Defensive dedup: workspaces scaffolded before the plugin hook landed have
-  // the plugin's baseline already copied into config — treat that as no override.
   if (pluginPart && configPart && pluginPart.trim() === configPart.trim()) {
     return pluginPart;
   }

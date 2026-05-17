@@ -24,8 +24,6 @@
 import { Hono } from "hono";
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
 import { updateArticleState } from "../../../src/runtime/service.js";
-import type { WorkspacePluginContext } from "../../../src/plugins/types.js";
-import type { RssPluginConfig } from "./config.js";
 import {
   listSubscriptions,
   getStarredArticles,
@@ -37,19 +35,12 @@ import {
   refreshSingleFeed,
   updateArticleById,
   generateDigest,
+  type RssServiceContext,
 } from "./service.js";
 import { fetchArticleBody } from "./article-fetch.js";
 
-export function createRssApiRoutes(
-  ctx: WorkspacePluginContext<RssPluginConfig>,
-): Hono {
+export function createRssApiRoutes(svcCtx: RssServiceContext): Hono {
   const api = new Hono();
-
-  const svcCtx = {
-    workspace: ctx.workspace,
-    updates: ctx.updates,
-    pluginConfig: ctx.pluginConfig,
-  };
 
   // =========================================================================
   // Subscriptions
@@ -158,7 +149,7 @@ export function createRssApiRoutes(
     // Distinguish from legacy index-based route (articleId is a 16-char hex).
     if (articleId.length !== 16 || !/^[0-9a-f]+$/.test(articleId)) {
       // Fall through to legacy handler below.
-      return legacyArticlePatch(c, ctx);
+      return legacyArticlePatch(c, svcCtx);
     }
 
     try {
@@ -224,7 +215,7 @@ export function createRssApiRoutes(
   // =========================================================================
 
   api.patch("/articles/*", async (c) => {
-    return legacyArticlePatch(c, ctx);
+    return legacyArticlePatch(c, svcCtx);
   });
 
   return api;
@@ -236,7 +227,7 @@ export function createRssApiRoutes(
 
 async function legacyArticlePatch(
   c: { req: { url: string; json: <T>() => Promise<T> }; json: (data: unknown, status?: number) => Response },
-  ctx: WorkspacePluginContext<RssPluginConfig>,
+  svcCtx: RssServiceContext,
 ): Promise<Response> {
   const pathname = new URL(c.req.url).pathname;
   const match = pathname.match(/\/articles\/(.+)\/([^/]+)\/(\d+)$/);
@@ -253,7 +244,7 @@ async function legacyArticlePatch(
   const body = await c.req.json<{ readAt?: string | null; starred?: boolean }>();
 
   const result = await updateArticleState(
-    { ws: ctx.workspace, updates: ctx.updates },
+    { ws: svcCtx.workspace, updates: svcCtx.updates },
     mkCodocPath(path),
     mkFieldName(field),
     index,

@@ -1,16 +1,8 @@
-// Template registry — lists and looks up built-in workspace templates.
-
-import type { Template } from "./types.js";
-import { rssTemplate } from "../../plugins/rss/template/index.js";
-import { bookmarksTemplate } from "./bookmarks.js";
+// Template types re-export.
+//
+// Phase 2: the template registry itself is owned by `PluginHost` (plugins
+// contribute templates through `manifest.contributes.templates[]`). This
+// file keeps the public type re-export so `commands/init.ts`, the API
+// route, and the host can share one symbol.
 
 export type { Template, TemplateFile, Command, QuickAction } from "./types.js";
-
-export const templates: readonly Template[] = [
-  rssTemplate,
-  bookmarksTemplate,
-];
-
-export function findTemplate(id: string): Template | undefined {
-  return templates.find((t) => t.id === id);
-}

@@ -221,7 +221,7 @@ export const claudeCodeProvider: ChatProvider = {
   },
 
   async *chat(params: ChatParams): AsyncIterable<ChatEvent> {
-    const { prompt, sessionId, workspace, plugin, pluginCtx, mentions = [], images = [], signal } = params;
+    const { prompt, sessionId, workspace, pluginInstructions, mentions = [], images = [], signal } = params;
 
     const augmentedPrompt =
       mentions.length > 0
@@ -235,7 +235,7 @@ export const claudeCodeProvider: ChatProvider = {
       "Available tools: list_codocs, read_codoc, write_codoc, search_codocs, update_data_field, append_content, create_from_template, dag_status, diagnose_codoc, fetch_url.",
       "When the user @mentions a codoc, its content is attached to their message. Work with it directly — do NOT re-read it or list all codocs.",
     ];
-    const extra = readAgentInstructions(workspace, plugin, pluginCtx);
+    const extra = readAgentInstructions(workspace, pluginInstructions);
     if (extra) baseParts.push("", extra);
     const systemPrompt = baseParts.join("\n");
 

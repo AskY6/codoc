@@ -1,7 +1,7 @@
 // RSS workspace detection — heuristic for legacy workspaces without workspaceKind.
 
 import type { Workspace } from "../../../src/domain/types.js";
-import type { WorkspaceConfigFile } from "../../../src/plugins/types.js";
+import type { WorkspaceConfigFile } from "../../../src/plugins-host/manifest.js";
 import { CodocPath } from "@cobook/core";
 
 /**

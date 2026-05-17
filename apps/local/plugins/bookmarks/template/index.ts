@@ -3,9 +3,9 @@
 // The user says "save <url>" and the agent creates a structured
 // bookmark codoc. reading-list.codoc aggregates via $ref.
 
-import type { Template, TemplateFile } from "./types.js";
-import { serializeYaml } from "./yaml.js";
-import bookmarkCardSource from "raw:./bookmarks/components/BookmarkCard.tsx";
+import type { Template, TemplateFile } from "../../../src/templates/types.js";
+import { serializeYaml } from "../../../src/templates/yaml.js";
+import bookmarkCardSource from "raw:./components/BookmarkCard.tsx";
 
 function codoc(
   frontmatter: Record<string, unknown>,

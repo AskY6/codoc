@@ -214,10 +214,10 @@ export const codexProvider: ChatProvider = {
   },
 
   async *chat(params: ChatParams): AsyncIterable<ChatEvent> {
-    const { prompt, workspace, plugin, pluginCtx, signal } = params;
+    const { prompt, workspace, pluginInstructions, signal } = params;
 
     // Prepend agent instructions as context if configured
-    const extra = readAgentInstructions(workspace, plugin, pluginCtx);
+    const extra = readAgentInstructions(workspace, pluginInstructions);
     const fullPrompt = extra ? `[System context]\n${extra}\n\n[User request]\n${prompt}` : prompt;
 
     // Spawn codex in non-interactive JSONL mode

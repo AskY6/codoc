@@ -1,0 +1,17 @@
+{
+  "id": "bookmarks",
+  "name": "Bookmarks",
+  "description": "AI-first web clipper — say 'save [url]' and the agent creates structured knowledge cards.",
+  "engines": { "codoc": "^0.x" },
+
+  "contributes": {
+    "templates": [
+      {
+        "id": "bookmarks",
+        "name": "Bookmarks",
+        "description": "AI-first web clipper — say 'save [url]' and the agent creates structured knowledge cards.",
+        "entry": "template/index.ts#bookmarksTemplate"
+      }
+    ]
+  }
+}

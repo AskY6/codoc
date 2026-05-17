@@ -17,9 +17,9 @@ import { homedir } from "node:os";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Workspace } from "../domain/types.js";
 import { loadWorkspace, compileAll } from "../runtime/workspace.js";
-import { buildSourceRegistry } from "../plugins/source-registry.js";
 import { createApiRoutes } from "./api-routes.js";
 import { createChatRoutes } from "./chat-route.js";
 import { createMcpServer } from "./mcp.js";
@@ -28,11 +28,9 @@ import { startSourceScheduler } from "../sources/scheduler.js";
 import type { SourceScheduler } from "../sources/scheduler.js";
 import { createProviderRegistry } from "../providers/registry.js";
 import type { ProviderRegistry } from "../providers/registry.js";
-import { templates, findTemplate } from "../templates/index.js";
 import { initWorkspace } from "../commands/init.js";
-import type { WorkspacePlugin, WorkspacePluginContext, PluginJobHandle } from "../plugins/types.js";
-import { parseWorkspaceConfig } from "../plugins/config.js";
-import { resolvePlugin } from "../plugins/detect.js";
+import { PluginHost } from "../plugins-host/host.js";
+import { parseWorkspaceConfig } from "../plugins-host/manifest.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const uiDistDir = join(__dirname, "ui");
@@ -60,12 +58,10 @@ export interface AppState {
   workspace: Workspace | null;
   workspaceName: string | null;
   mcpTransport: WebStandardStreamableHTTPServerTransport | null;
+  mcpServer: McpServer | null;
   watcher: { close: () => Promise<void> } | null;
   scheduler: SourceScheduler | null;
-  activePlugin: WorkspacePlugin | null;
-  pluginCtx: WorkspacePluginContext | null;
-  pluginJobs: PluginJobHandle[];
-  pluginRouter: Hono | null;
+  readonly pluginHost: PluginHost;
   /** Event bus for real-time UI push. */
   readonly updates: EventEmitter;
 }
@@ -88,16 +84,16 @@ export async function startHttpServer(
 ): Promise<HttpServerHandle> {
   const { port } = options;
 
+  const pluginHost = new PluginHost();
+
   const state: AppState = {
     workspace: options.initialWorkspace?.workspace ?? null,
     workspaceName: options.initialWorkspace?.name ?? null,
     mcpTransport: null,
+    mcpServer: null,
     watcher: null,
     scheduler: null,
-    activePlugin: null,
-    pluginCtx: null,
-    pluginJobs: [],
-    pluginRouter: null,
+    pluginHost,
     updates: new EventEmitter(),
   };
 
@@ -108,41 +104,10 @@ export async function startHttpServer(
     .map((p) => p.name);
   console.log(`[codoc] providers: ${availableNames.length > 0 ? availableNames.join(", ") : "none detected"}`);
 
-  // If initial workspace provided, set up MCP, watcher, and source scheduler.
+  // If initial workspace provided, set up MCP, watcher, source scheduler, and activate plugin.
   if (state.workspace && options.initialWorkspace) {
     const wsName = options.initialWorkspace.name;
-    const workspaceDir = state.workspace.sourceDir;
-
-    let rawConfig: Record<string, unknown> = {};
-    try {
-      rawConfig = JSON.parse(
-        await readFile(join(workspaceDir, "codoc.config.json"), "utf-8"),
-      ) as Record<string, unknown>;
-    } catch { /* */ }
-    const config = parseWorkspaceConfig(rawConfig);
-
-    const { plugin, source } = resolvePlugin(state.workspace, config);
-    const configResult = plugin.parseConfig(config.pluginConfig);
-    state.activePlugin = plugin;
-    state.pluginCtx = configResult.ok
-      ? buildPluginContext(wsName, state.workspace, config, configResult.value, state.updates, registry)
-      : null;
-    console.log(`[plugin] activated: ${plugin.id} (${source})`);
-
-    await setupMcp(state, registry, plugin, state.workspace, wsName, config, configResult.ok ? configResult.value : undefined);
-    state.watcher = startWatcher(state.workspace);
-    startScheduler(state);
-    // Wait for first source refresh (articles available on first page load).
-    if (state.scheduler) {
-      await Promise.race([
-        state.scheduler.ready,
-        new Promise<void>((r) => setTimeout(r, 10_000)),
-      ]);
-    }
-
-    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
-      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
-    }
+    await openWorkspaceState(state, registry, wsName, state.workspace, /* alreadyLoaded */ true);
   }
 
   const app = new Hono();
@@ -158,15 +123,13 @@ export async function startHttpServer(
     if (!state.workspace) {
       return c.json({ active: false });
     }
-    const plugin = state.activePlugin;
-    const uiSpec = plugin?.getUiSpec && state.pluginCtx
-      ? plugin.getUiSpec(state.pluginCtx)
-      : undefined;
+    const mod = state.pluginHost.activeModule();
+    const uiSpec = mod?.manifest.contributes?.ui;
     return c.json({
       active: true,
       name: state.workspaceName,
       codocCount: state.workspace.codocs.size,
-      pluginId: plugin?.id ?? "default",
+      pluginId: mod?.manifest.id ?? "default",
       uiSpec,
     });
   });
@@ -181,13 +144,7 @@ export async function startHttpServer(
       return c.json({ error: `workspace "${name}" not found` }, 404);
     }
 
-    // Tear down existing workspace.
-    teardownPlugin(state);
-    stopScheduler(state);
-    if (state.watcher) {
-      await state.watcher.close();
-      state.watcher = null;
-    }
+    await teardownWorkspace(state);
 
     // Read workspace config.
     let rawConfig: Record<string, unknown> = {};
@@ -199,43 +156,14 @@ export async function startHttpServer(
       if (typeof rawConfig.outDir === "string") outDir = resolve(workspaceDir, rawConfig.outDir);
     } catch { /* use defaults */ }
 
-    const config = parseWorkspaceConfig(rawConfig);
-
-    // Load workspace.
-    const sourceProviders = buildSourceRegistry();
-    const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
+    // Load workspace using the host-global SourceRegistry.
+    const ws = await loadWorkspace(workspaceDir, outDir, state.pluginHost.sourceRegistry);
     await compileAll(ws);
 
     state.workspace = ws;
     state.workspaceName = name;
 
-    // Resolve and activate plugin.
-    const { plugin, source } = resolvePlugin(ws, config);
-    const configResult = plugin.parseConfig(config.pluginConfig);
-    if (!configResult.ok) {
-      console.warn(`[plugin] config error for "${plugin.id}": ${configResult.error.message}`);
-    }
-    state.activePlugin = plugin;
-    state.pluginCtx = configResult.ok
-      ? buildPluginContext(name, ws, config, configResult.value, state.updates, registry)
-      : null;
-    console.log(`[plugin] activated: ${plugin.id} (${source})`);
-
-    // Set up MCP (with plugin tools), watcher, and source scheduler.
-    await setupMcp(state, registry, plugin, ws, name, config, configResult.ok ? configResult.value : undefined);
-    state.watcher = startWatcher(ws);
-    startScheduler(state);
-    if (state.scheduler) {
-      await Promise.race([
-        state.scheduler.ready,
-        new Promise<void>((r) => setTimeout(r, 10_000)),
-      ]);
-    }
-
-    // Start plugin-specific jobs.
-    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
-      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
-    }
+    await openWorkspaceState(state, registry, name, ws, /* alreadyLoaded */ false, rawConfig);
 
     console.log(`[codoc] opened workspace: ${name} (${ws.codocs.size} codocs)`);
     return c.json({ ok: true, codocCount: ws.codocs.size });
@@ -272,15 +200,9 @@ export async function startHttpServer(
 
     // If deleting the currently open workspace, close it first.
     if (state.workspaceName === name) {
-      teardownPlugin(state);
-      stopScheduler(state);
-      if (state.watcher) {
-        await state.watcher.close();
-        state.watcher = null;
-      }
+      await teardownWorkspace(state);
       state.workspace = null;
       state.workspaceName = null;
-      state.mcpTransport = null;
     }
 
     await rm(workspaceDir, { recursive: true });
@@ -363,7 +285,7 @@ export async function startHttpServer(
 
   app.get("/api/templates", (c) => {
     return c.json(
-      templates.map((t) => ({
+      state.pluginHost.templates.map((t) => ({
         id: t.id,
         name: t.name,
         description: t.description,
@@ -379,7 +301,7 @@ export async function startHttpServer(
       return c.json({ error: "name and templateId required" }, 400);
     }
 
-    const template = findTemplate(templateId);
+    const template = state.pluginHost.findTemplate(templateId);
     if (!template) {
       return c.json({ error: `unknown template: "${templateId}"` }, 400);
     }
@@ -396,50 +318,15 @@ export async function startHttpServer(
 
     // Open it immediately.
     const outDir = workspaceDir;
-    const sourceProviders = buildSourceRegistry();
-    const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
+    const ws = await loadWorkspace(workspaceDir, outDir, state.pluginHost.sourceRegistry);
     await compileAll(ws);
 
-    teardownPlugin(state);
-    stopScheduler(state);
-    if (state.watcher) {
-      await state.watcher.close();
-      state.watcher = null;
-    }
+    await teardownWorkspace(state);
 
     state.workspace = ws;
     state.workspaceName = name;
 
-    // Read freshly written config and activate plugin.
-    let rawConfig: Record<string, unknown> = {};
-    try {
-      rawConfig = JSON.parse(
-        await readFile(join(workspaceDir, "codoc.config.json"), "utf-8"),
-      ) as Record<string, unknown>;
-    } catch { /* */ }
-    const config = parseWorkspaceConfig(rawConfig);
-
-    const { plugin, source } = resolvePlugin(ws, config);
-    const configResult = plugin.parseConfig(config.pluginConfig);
-    state.activePlugin = plugin;
-    state.pluginCtx = configResult.ok
-      ? buildPluginContext(name, ws, config, configResult.value, state.updates, registry)
-      : null;
-    console.log(`[plugin] activated: ${plugin.id} (${source})`);
-
-    await setupMcp(state, registry, plugin, ws, name, config, configResult.ok ? configResult.value : undefined);
-    state.watcher = startWatcher(ws);
-    startScheduler(state);
-    if (state.scheduler) {
-      await Promise.race([
-        state.scheduler.ready,
-        new Promise<void>((r) => setTimeout(r, 10_000)),
-      ]);
-    }
-
-    if (configResult.ok && plugin.startJobs && state.pluginCtx) {
-      state.pluginJobs = [...plugin.startJobs(state.pluginCtx)];
-    }
+    await openWorkspaceState(state, registry, name, ws, /* alreadyLoaded */ false);
 
     console.log(`[codoc] created workspace from template: ${name} (${template.name}, ${ws.codocs.size} codocs)`);
     return c.json({ ok: true, name, codocCount: ws.codocs.size });
@@ -460,8 +347,6 @@ export async function startHttpServer(
         const heartbeat = setInterval(() => {
           try { controller.enqueue(encoder.encode(": heartbeat\n\n")); } catch { /* */ }
         }, 30_000);
-        // Cleanup is handled when the client drops the connection and
-        // the next enqueue throws, so we also listen for cancel.
         c.req.raw.signal.addEventListener("abort", () => {
           state.updates.off("update", send);
           clearInterval(heartbeat);
@@ -484,10 +369,12 @@ export async function startHttpServer(
   // ---- Plugin API routes (dynamic — delegates to active plugin) ----------
   app.all("/api/plugins/:pluginId/*", async (c) => {
     const pluginId = c.req.param("pluginId");
-    if (!state.activePlugin || state.activePlugin.id !== pluginId) {
+    const activeMod = state.pluginHost.activeModule();
+    if (!activeMod || activeMod.manifest.id !== pluginId) {
       return c.json({ error: `plugin "${pluginId}" not active` }, 404);
     }
-    if (!state.pluginRouter) {
+    const router = state.pluginHost.activeRouter();
+    if (!router) {
       return c.json({ error: "plugin has no API routes" }, 404);
     }
     // Strip prefix so plugin routes match against "/" + relative path.
@@ -495,7 +382,7 @@ export async function startHttpServer(
     const url = new URL(c.req.url);
     url.pathname = url.pathname.slice(prefix.length) || "/";
     const rewritten = new Request(url.toString(), c.req.raw);
-    return state.pluginRouter.fetch(rewritten);
+    return router.fetch(rewritten);
   });
 
   // ---- Chat (provider-aware proxy) ---------------------------------------
@@ -551,25 +438,25 @@ export async function startHttpServer(
     console.log(`[codoc] port ${port} in use, using ${actualPort}`);
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolvePromise) => {
     const server = serve({ fetch: app.fetch, port: actualPort }, (info) => {
       console.log(`[codoc] server listening on http://localhost:${info.port}`);
       console.log(`[codoc] MCP endpoint: http://localhost:${info.port}/mcp`);
       if (hasUi) {
         console.log(`[codoc] UI: http://localhost:${info.port}`);
       }
-      resolve({ port: info.port, close: () => server.close() });
+      resolvePromise({ port: info.port, close: () => server.close() });
     });
   });
 }
 
 function isPortFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
+  return new Promise((resolvePromise) => {
     const server = createServer();
-    server.once("error", () => resolve(false));
+    server.once("error", () => resolvePromise(false));
     server.once("listening", () => {
       server.close();
-      resolve(true);
+      resolvePromise(true);
     });
     server.listen(port);
   });
@@ -595,75 +482,85 @@ async function listWorkspaceNames(): Promise<string[]> {
   }
 }
 
-async function setupMcp(
+/**
+ * Common path for "a workspace is now state.workspace; set up runtime".
+ * Activates the plugin, wires MCP, starts watcher + scheduler, awaits the
+ * first source-refresh tick (so jobs see articles), then lets the plugin
+ * register its own jobs.
+ */
+async function openWorkspaceState(
   state: AppState,
-  registry?: ProviderRegistry,
-  plugin?: WorkspacePlugin,
-  ws?: Workspace,
-  workspaceName?: string,
-  config?: import("../plugins/types.js").WorkspaceConfigFile,
-  pluginConfig?: unknown,
+  registry: ProviderRegistry,
+  workspaceName: string,
+  ws: Workspace,
+  alreadyLoaded: boolean,
+  rawConfigOverride?: Record<string, unknown>,
 ): Promise<void> {
-  if (!state.workspace) return;
-  const mcpServer = createMcpServer(state.workspace, registry, state.updates);
-
-  // Register plugin MCP tools.
-  if (plugin?.registerMcpTools && ws && workspaceName && config && pluginConfig !== undefined) {
-    const ctx = buildPluginContext(workspaceName, ws, config, pluginConfig, state.updates, registry);
-    plugin.registerMcpTools(mcpServer, ctx as WorkspacePluginContext);
+  // Read config.
+  let rawConfig: Record<string, unknown> = rawConfigOverride ?? {};
+  if (!rawConfigOverride) {
+    try {
+      rawConfig = JSON.parse(
+        await readFile(join(ws.sourceDir, "codoc.config.json"), "utf-8"),
+      ) as Record<string, unknown>;
+    } catch { /* */ }
   }
+  const config = parseWorkspaceConfig(rawConfig);
 
-  // Mount plugin API routes.
-  if (plugin?.createApiRoutes && ws && workspaceName && config && pluginConfig !== undefined) {
-    const ctx = buildPluginContext(workspaceName, ws, config, pluginConfig, state.updates, registry);
-    state.pluginRouter = plugin.createApiRoutes(ctx as WorkspacePluginContext);
-  } else {
-    state.pluginRouter = null;
+  // Resolve plugin.
+  const { module: mod, source } = state.pluginHost.resolvePlugin(ws, config);
+  const cfgResult = state.pluginHost.parsePluginConfig(mod, config.pluginConfig);
+  if (!cfgResult.ok) {
+    console.warn(`[plugin-host] config error for "${mod.manifest.id}": ${cfgResult.error}`);
   }
+  console.log(`[plugin-host] activated: ${mod.manifest.id} (${source})`);
 
+  // Build a fresh MCP server (host tools + plugin tools).
+  const mcpServer = createMcpServer(ws, registry, state.updates);
+
+  // Activate the plugin — registers routes, jobs, mcp tools through ctx.
+  await state.pluginHost.activate({
+    module: mod,
+    pluginConfig: cfgResult.ok ? cfgResult.value : {},
+    workspaceName,
+    workspace: ws,
+    providers: registry,
+    updates: state.updates,
+    mcpServer,
+  });
+
+  // Wire MCP transport to the host's mcp server.
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
   });
   await mcpServer.connect(transport);
+  state.mcpServer = mcpServer;
   state.mcpTransport = transport;
-}
 
-function buildPluginContext(
-  workspaceName: string,
-  workspace: Workspace,
-  config: import("../plugins/types.js").WorkspaceConfigFile,
-  pluginConfig: unknown,
-  updates: EventEmitter,
-  providerRegistry?: ProviderRegistry,
-): WorkspacePluginContext<unknown> {
-  return {
-    workspaceName,
-    workspace,
-    config,
-    pluginConfig,
-    updates,
-    providerRegistry: providerRegistry!,
-  };
-}
-
-function teardownPlugin(state: AppState): void {
-  for (const job of state.pluginJobs) {
-    job.stop();
+  // Watcher + source scheduler.
+  state.watcher = startWatcher(ws);
+  state.scheduler = startSourceScheduler(ws, state.updates);
+  if (state.scheduler) {
+    await Promise.race([
+      state.scheduler.ready,
+      new Promise<void>((r) => setTimeout(r, 10_000)),
+    ]);
   }
-  state.pluginJobs = [];
-  state.activePlugin = null;
-  state.pluginCtx = null;
-  state.pluginRouter = null;
+
+  void alreadyLoaded;
 }
 
-function startScheduler(state: AppState): void {
-  if (!state.workspace) return;
-  state.scheduler = startSourceScheduler(state.workspace, state.updates);
-}
-
-function stopScheduler(state: AppState): void {
+/** Tear down everything that depends on the current workspace. Idempotent. */
+async function teardownWorkspace(state: AppState): Promise<void> {
+  state.pluginHost.deactivate();
   if (state.scheduler) {
     state.scheduler.stop();
     state.scheduler = null;
   }
+  if (state.watcher) {
+    await state.watcher.close();
+    state.watcher = null;
+  }
+  state.mcpTransport = null;
+  state.mcpServer = null;
 }

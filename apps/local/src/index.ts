@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { buildSourceRegistry } from "./plugins/source-registry.js";
+import { PluginHost } from "./plugins-host/host.js";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll } from "./runtime/workspace.js";
 import { buildAstMap } from "./domain/types.js";
@@ -25,7 +25,7 @@ import { startMcpServer } from "./server/mcp.js";
 import { startHttpServer } from "./server/http.js";
 import { initWorkspace } from "./commands/init.js";
 import { addComponent } from "./commands/add.js";
-import { templates, findTemplate } from "./templates/index.js";
+import { allTemplates, findTemplate } from "./plugins-host/registry-lookup.js";
 
 const CODOC_HOME = join(homedir(), ".codoc");
 
@@ -65,7 +65,10 @@ async function openWorkspace(name: string) {
   const cfg = readConfig(workspaceDir);
   const outDir = cfg.outDir ? resolve(workspaceDir, cfg.outDir) : workspaceDir;
   const port = cfg.port ?? 4321;
-  const sourceProviders = buildSourceRegistry();
+  // Use a transient PluginHost to assemble the source registry. The HTTP
+  // server holds its own host instance; CLI subcommands that don't open
+  // long-lived workspaces (compile, dag, mcp) only need the registry.
+  const sourceProviders = new PluginHost().sourceRegistry;
   const ws = await loadWorkspace(workspaceDir, outDir, sourceProviders);
   return { ws, workspaceDir, outDir, port };
 }
@@ -74,9 +77,10 @@ async function main(): Promise<void> {
   switch (command) {
     case "init": {
       if (!workspaceName || workspaceName === "--templates") {
+        const all = allTemplates();
         console.log("Create a new workspace:\n");
         console.log("  codoc init <name>                 Empty workspace");
-        for (const t of templates) {
+        for (const t of all) {
           console.log(`  codoc init <name> --from ${t.id.padEnd(12)} ${t.name} — ${t.description}`);
         }
         console.log(`\nExample: codoc init my-feeds --from rss`);
@@ -91,7 +95,7 @@ async function main(): Promise<void> {
         template = findTemplate(templateId);
         if (!template) {
           console.error(`Unknown template: "${templateId}"`);
-          console.error(`Available: ${templates.map((t) => t.id).join(", ")}`);
+          console.error(`Available: ${allTemplates().map((t) => t.id).join(", ")}`);
           process.exit(1);
         }
       }

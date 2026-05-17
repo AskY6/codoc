@@ -5,33 +5,24 @@
 //   2. Periodic: setInterval at digestIntervalMinutes
 //   3. On stop: clearInterval
 //
-// The job is registered via startJobs() in the plugin assembly. The host
-// starts jobs after the first source scheduler tick completes, so articles
-// are available for the initial catch-up digest.
+// Registered through ctx.jobs.start("rss-digest", ...) in plugins/rss/server/index.ts.
+// The host starts jobs after the first source scheduler tick completes, so
+// articles are available for the initial catch-up digest.
 
 import { CodocPath as mkCodocPath, FieldName as mkFieldName } from "@cobook/core";
-import type { PluginJobHandle, WorkspacePluginContext } from "../../../src/plugins/types.js";
-import type { RssPluginConfig } from "./config.js";
+import type { JobHandle } from "../../../src/plugins-host/context.js";
 import { refreshFeeds, generateDigest, type RssServiceContext } from "./service.js";
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export function createDigestJob(
-  ctx: WorkspacePluginContext<RssPluginConfig>,
-): PluginJobHandle {
-  const { pluginConfig } = ctx;
+export function createDigestJob(svcCtx: RssServiceContext): JobHandle {
+  const { pluginConfig } = svcCtx;
 
   if (!pluginConfig.autoDigest) {
     return { stop() {} };
   }
-
-  const svcCtx: RssServiceContext = {
-    workspace: ctx.workspace,
-    updates: ctx.updates,
-    pluginConfig: ctx.pluginConfig,
-  };
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;

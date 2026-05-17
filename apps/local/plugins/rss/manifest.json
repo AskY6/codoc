@@ -1,5 +1,63 @@
 {
   "id": "rss",
   "name": "RSS Reader",
-  "description": "AI-first RSS — digests, deep dives, and research across feeds."
+  "description": "AI-first RSS — digests, deep dives, and research across feeds.",
+  "engines": { "codoc": "^0.x" },
+  "activationEvents": ["onWorkspaceKind:rss"],
+
+  "contributes": {
+    "sourceProviders": [
+      { "scheme": "rss", "entry": "server/source-provider.ts#rssProvider" }
+    ],
+    "templates": [
+      {
+        "id": "rss",
+        "name": "RSS Reader",
+        "description": "AI-first RSS — ask the agent for digests, deep dives, and research across your feeds.",
+        "entry": "template/index.ts#rssTemplate"
+      }
+    ],
+    "legacyDetect": { "entry": "server/detect.ts#detectRssWorkspace" },
+    "configurationSchema": {
+      "type": "object",
+      "properties": {
+        "defaultSourceIntervalMinutes": { "type": "number", "exclusiveMinimum": 0, "default": 30 },
+        "digestCodocPath": { "type": "string", "default": "inbox.codoc" },
+        "sourcesDir": { "type": "string", "default": "sources" },
+        "autoDigest": { "type": "boolean", "default": true },
+        "digestIntervalMinutes": { "type": "number", "exclusiveMinimum": 0, "default": 120 }
+      },
+      "additionalProperties": false
+    },
+    "agentInstructions": "agent-prompt.md",
+
+    "mcpTools": [],
+
+    "views": [
+      { "id": "rss-subscriptions", "label": "Subscriptions", "icon": "list" },
+      { "id": "rss-saved", "label": "Saved", "icon": "bookmark" }
+    ],
+    "mdxComponents": [
+      { "name": "ArticleList", "path": "components/ArticleList.tsx" },
+      { "name": "FeedHeader", "path": "components/FeedHeader.tsx" },
+      { "name": "SourceBadge", "path": "components/SourceBadge.tsx" },
+      { "name": "DigestStats", "path": "components/DigestStats.tsx" },
+      { "name": "DigestTop", "path": "components/DigestTop.tsx" },
+      { "name": "DigestList", "path": "components/DigestList.tsx" },
+      { "name": "DigestTrending", "path": "components/DigestTrending.tsx" }
+    ],
+    "ui": {
+      "homeView": "inbox",
+      "hiddenPaths": ["guide.codoc"],
+      "primaryActions": [
+        { "kind": "rest", "id": "refresh", "label": "Refresh feeds", "method": "POST", "path": "/api/plugins/rss/refresh" },
+        { "kind": "rest", "id": "digest", "label": "Update digest", "method": "POST", "path": "/api/plugins/rss/digest" },
+        { "kind": "chat-prompt", "id": "subscribe", "label": "Subscribe", "prompt": "Subscribe to " }
+      ],
+      "secondaryViews": [
+        { "id": "rss-subscriptions", "label": "Subscriptions", "icon": "list" },
+        { "id": "rss-saved", "label": "Saved", "icon": "bookmark" }
+      ]
+    }
+  }
 }

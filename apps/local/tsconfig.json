@@ -5,6 +5,6 @@
     "rootDir": "."
   },
   "include": ["src", "plugins/*/server", "plugins/*/template"],
-  "exclude": ["src/templates/*/components", "plugins/*/components", "plugins/*/ui"]
+  "exclude": ["plugins/*/components", "plugins/*/template/components", "plugins/*/ui"]
 }
 
