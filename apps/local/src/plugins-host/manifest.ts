@@ -118,12 +118,6 @@ export interface McpToolContribution {
   readonly inputSchema?: Record<string, unknown>;
 }
 
-export interface ViewContribution {
-  readonly id: string;
-  readonly label: string;
-  readonly icon?: string;
-}
-
 export interface MdxComponentContribution {
   readonly name: string;
   readonly path: string;
@@ -173,7 +167,9 @@ export interface ManifestContributes {
   readonly menus?: MenusContribution;
 
   // --- UI (consumed by SPA via /api/workspace) -------------------------
-  readonly views?: readonly ViewContribution[];
+  // Plugin-owned sidebar panels are declared via `ui.secondaryViews` and
+  // mounted through `apps/local/ui/src/plugin-views/registry.ts`. A future
+  // `ctx.views.registerView(...)` will replace the static registry.
   readonly mdxComponents?: readonly MdxComponentContribution[];
   readonly ui?: WorkspaceUiSpec;
 }

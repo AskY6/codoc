@@ -412,12 +412,12 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
     void uiHost.activate({
       pluginId: wsInfo.pluginId,
       workspaceName,
-      config: {},
+      config: wsInfo.pluginConfig ?? {},
     });
     return () => {
       uiHost.deactivate();
     };
-  }, [uiHost, wsInfo.pluginId, workspaceName]);
+  }, [uiHost, wsInfo.pluginId, workspaceName, wsInfo.pluginConfig]);
 
   const pluginComponents = useMemo(() => {
     // Re-read snapshot whenever the host fires onComponentsChanged.

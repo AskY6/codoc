@@ -148,6 +148,16 @@ export class PluginHost {
     return this.active?.module ?? null;
   }
 
+  /**
+   * Validated typed config for the active plugin (the same object passed to
+   * `activate(ctx)`). Returned so /api/workspace can ship it to the browser
+   * and feed it into `activateUi(ctx)`. Returns `null` when no workspace is
+   * open; callers JSON-serialize the value — config must stay primitives.
+   */
+  activeConfig(): unknown {
+    return this.active?.config ?? null;
+  }
+
   /** Plugin's HTTP sub-router for /api/plugins/<id>/*, if it registered one. */
   activeRouter(): Hono | null {
     return this.active?.router ?? null;
@@ -214,15 +224,27 @@ export class PluginHost {
     return { module: defaultPluginModule(), source: "default" };
   }
 
-  /** Validate raw config against a plugin's parseConfig (if it has one). */
+  /**
+   * Validate raw config against a plugin's parseConfig (if it has one).
+   * Always returns a usable `value`: on err we re-run parseConfig with
+   * `undefined` so the plugin gets its declared DEFAULTS instead of `{}`.
+   * Callers should still surface `error` (the host doesn't refuse activation —
+   * codoc is single-user local, so degrading to defaults is friendlier than
+   * leaving the workspace inert; but the log is loud so misconfig is visible).
+   */
   parsePluginConfig(
     mod: PluginModule,
     raw: Record<string, unknown> | undefined,
-  ): { ok: true; value: unknown } | { ok: false; error: string } {
-    if (!mod.parseConfig) return { ok: true, value: {} };
+  ): { value: unknown; error?: string } {
+    if (!mod.parseConfig) return { value: {} };
     const result = mod.parseConfig(raw);
-    if (result.ok) return { ok: true, value: result.value };
-    return { ok: false, error: result.error.message };
+    if (result.ok) return { value: result.value };
+    // Validation failed — try the plugin's defaults path.
+    try {
+      const defaults = mod.parseConfig(undefined);
+      if (defaults.ok) return { value: defaults.value, error: result.error.message };
+    } catch { /* plugin's parseConfig didn't expect undefined */ }
+    return { value: {}, error: result.error.message };
   }
 
   /**

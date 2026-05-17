@@ -138,6 +138,10 @@ export async function startHttpServer(
       // can list them. v1 only runs the active plugin's commands; UI shows
       // others as disabled with a "switch workspace" hint.
       allCommands: state.pluginHost.allCommands(),
+      // Typed plugin config — same object passed to server-side activate(ctx).
+      // UI's activateUi(ctx) receives this verbatim so browser-side code can
+      // honour user settings (e.g. RSS panel knowing the digestCodocPath).
+      pluginConfig: state.pluginHost.activeConfig(),
     });
   });
 
@@ -552,8 +556,10 @@ async function openWorkspaceState(
   // Resolve plugin.
   const { module: mod, source } = state.pluginHost.resolvePlugin(ws, config);
   const cfgResult = state.pluginHost.parsePluginConfig(mod, config.pluginConfig);
-  if (!cfgResult.ok) {
-    console.warn(`[plugin-host] config error for "${mod.manifest.id}": ${cfgResult.error}`);
+  if (cfgResult.error) {
+    console.warn(
+      `[plugin-host] config error for "${mod.manifest.id}", falling back to defaults: ${cfgResult.error}`,
+    );
   }
   console.log(`[plugin-host] activated: ${mod.manifest.id} (${source})`);
 
@@ -563,7 +569,7 @@ async function openWorkspaceState(
   // Activate the plugin — registers routes, jobs, mcp tools through ctx.
   await state.pluginHost.activate({
     module: mod,
-    pluginConfig: cfgResult.ok ? cfgResult.value : {},
+    pluginConfig: cfgResult.value,
     workspaceName,
     workspace: ws,
     providers: registry,

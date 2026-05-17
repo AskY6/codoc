@@ -10,18 +10,21 @@
 //
 // Workspaces live under ~/.codoc/<name>/
 
+import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { PluginHost } from "./plugins-host/host.js";
+import { parseWorkspaceConfig } from "./plugins-host/manifest.js";
 import { buildDAG, checkCycles, topoSort } from "@cobook/core";
 import { loadWorkspace, compileAll } from "./runtime/workspace.js";
 import { buildAstMap } from "./domain/types.js";
 import type { Workspace } from "./domain/types.js";
 import { startWatcher } from "./runtime/watcher.js";
 import { startSourceScheduler } from "./sources/scheduler.js";
-import { startMcpServer } from "./server/mcp.js";
+import { createProviderRegistry } from "./providers/registry.js";
+import { connectStdio, createMcpServer } from "./server/mcp.js";
 import { startHttpServer } from "./server/http.js";
 import { initWorkspace } from "./commands/init.js";
 import { addComponent } from "./commands/add.js";
@@ -145,10 +148,52 @@ async function main(): Promise<void> {
         console.error("Usage: codoc mcp <workspace>");
         process.exit(1);
       }
-      const { ws } = await openWorkspace(workspaceName);
+      // Build the host first — the same instance whose sourceRegistry loads
+      // the workspace is the one we activate against, so any plugin-registered
+      // MCP tools land on the McpServer we then connect to stdio.
+      const pluginHost = new PluginHost();
+      const workspaceDir = resolveWorkspaceDir(workspaceName);
+      const cliCfg = readConfig(workspaceDir);
+      const outDir = cliCfg.outDir ? resolve(workspaceDir, cliCfg.outDir) : workspaceDir;
+      const ws = await loadWorkspace(workspaceDir, outDir, pluginHost.sourceRegistry);
+      await compileAll(ws);
+
+      let rawConfig: Record<string, unknown> = {};
+      try {
+        rawConfig = JSON.parse(
+          readFileSync(join(workspaceDir, "codoc.config.json"), "utf-8"),
+        ) as Record<string, unknown>;
+      } catch { /* defaults */ }
+      const wsConfig = parseWorkspaceConfig(rawConfig);
+
+      const { module: mod } = pluginHost.resolvePlugin(ws, wsConfig);
+      const { value: pluginConfig, error: cfgError } =
+        pluginHost.parsePluginConfig(mod, wsConfig.pluginConfig);
+      if (cfgError) {
+        console.error(
+          `[plugin-host] config error for "${mod.manifest.id}", falling back to defaults: ${cfgError}`,
+        );
+      }
+
+      const registry = await createProviderRegistry();
+      const updates = new EventEmitter();
+      const mcpServer = createMcpServer(ws, registry, updates);
+
+      // Activate BEFORE connecting transport so registerTool calls during
+      // activate() are visible on the first tools/list request.
+      await pluginHost.activate({
+        module: mod,
+        pluginConfig,
+        workspaceName,
+        workspace: ws,
+        providers: registry,
+        updates,
+        mcpServer,
+      });
+
       startWatcher(ws);
-      startSourceScheduler(ws);
-      await startMcpServer(ws);
+      startSourceScheduler(ws, updates);
+      await connectStdio(mcpServer);
       break;
     }
 

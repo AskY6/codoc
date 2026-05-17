@@ -51,10 +51,6 @@
       ]
     },
 
-    "views": [
-      { "id": "rss-subscriptions", "label": "Subscriptions", "icon": "list" },
-      { "id": "rss-saved", "label": "Saved", "icon": "bookmark" }
-    ],
     "mdxComponents": [
       { "name": "ArticleList", "path": "components/ArticleList.tsx" },
       { "name": "FeedHeader", "path": "components/FeedHeader.tsx" },

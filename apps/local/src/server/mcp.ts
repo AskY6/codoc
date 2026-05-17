@@ -646,9 +646,12 @@ function formatDiagnostics(header: string, diagnostics: readonly Diagnostic[]): 
   return lines.join("\n");
 }
 
-/** Start the MCP server on stdio transport. */
-export async function startMcpServer(ws: Workspace, registry?: ProviderRegistry): Promise<void> {
-  const server = createMcpServer(ws, registry);
+/**
+ * Connect an existing McpServer to stdio. The CLI entry constructs the
+ * server itself (so it can activate plugins first and let them register
+ * `ctx.mcp.registerTool` calls before transport open) and then calls this.
+ */
+export async function connectStdio(server: McpServer): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

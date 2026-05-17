@@ -209,6 +209,12 @@ export interface WorkspaceInfo {
   mdxComponents?: WorkspaceMdxComponentDescriptor[];
   /** Phase 5: commands from every installed plugin, tagged with pluginId. */
   allCommands?: AllPluginCommandDescriptor[];
+  /**
+   * Typed plugin config, same shape the server-side `activate(ctx).config`
+   * received. UI plugin code reads it via `UiActivateContext.config`. Must
+   * be JSON-serializable — plugins keep config to primitives.
+   */
+  pluginConfig?: unknown;
 }
 
 export interface ChatMeta {

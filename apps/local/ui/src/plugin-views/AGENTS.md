@@ -21,8 +21,9 @@ entry — there is no dynamic registration in Phase 1.
 
 ## Contract
 
-- A plugin that lists `{ id: "<view-id>", … }` in its `uiSpec.secondaryViews` must
-  export the corresponding component from its `ui/index.ts` and be wired here.
+- A plugin that lists `{ id: "<view-id>", … }` in its `contributes.ui.secondaryViews`
+  (the canonical and only declaration site — `contributes.views` was removed)
+  must export the corresponding component from its `ui/index.ts` and be wired here.
 - Components accept `PluginViewProps { onSelectCodoc: (path: string) => void }`.
   Components that don't need the prop may ignore it.
 - If a `secondaryViews` entry has no registry entry, App.tsx renders an empty

@@ -30,6 +30,7 @@ The host:
 - Per-workspace resources (HTTP router, jobs, event listeners) flow through `ctx.subscriptions` (`DisposableStore`) and dispose on workspace close.
 - `entry: "server/sources.ts#rssProvider"` strings in manifests are documentation in v1; resolution is compile-time via `registry.ts`. Phase 6 replaces this file with a manifest-driven dynamic-import loader.
 - v1 doesn't ajv-validate `contributes.configurationSchema`; each plugin keeps its own narrow validator (exported as `parseConfig` from the entry pointer).
+- `parsePluginConfig` always returns a usable `value` — on validation failure it re-runs `parseConfig(undefined)` to get the plugin's declared DEFAULTS rather than passing `{}` to `activate(ctx)`. The error is surfaced via the `error` field so callers can log; the host never refuses activation over a config error. This means plugin code can always assume `ctx.config` is a fully-typed object, not an untyped fallback.
 
 ## Phase 3+ extensions
 

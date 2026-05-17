@@ -24,6 +24,11 @@ App.tsx mounts → workspace opens → uiHost.activate({ pluginId, workspaceName
 workspace switches / closes      → uiHost.deactivate() → all Disposables fire
 ```
 
+`config` is the typed `pluginConfig` returned by `/api/workspace` — the same
+object the server-side `activate(ctx).config` received, validated against
+the plugin's `parseConfig`. Plugins must keep config to JSON-serializable
+primitives so it survives the wire.
+
 ## Command routing
 
 `UiPluginHost.executeCommand(id, args)`:
