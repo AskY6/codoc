@@ -3,16 +3,13 @@
 // The user's main surface is inbox.codoc (agent-generated digest),
 // not individual feed pages. Feed definitions live under sources/
 // as data for the agent. topics/ holds agent-generated research notes.
+//
+// Phase 4: MDX components are shipped by the plugin and registered through
+// `activateUi(ctx)` instead of being scaffolded into the user's components/
+// directory. The template only emits codoc files now.
 
 import type { Template, TemplateFile } from "../../../src/templates/types.js";
 import { serializeYaml } from "../../../src/templates/yaml.js";
-import articleListSource from "raw:../components/ArticleList.tsx";
-import feedHeaderSource from "raw:../components/FeedHeader.tsx";
-import sourceBadgeSource from "raw:../components/SourceBadge.tsx";
-import digestStatsSource from "raw:../components/DigestStats.tsx";
-import digestTopSource from "raw:../components/DigestTop.tsx";
-import digestListSource from "raw:../components/DigestList.tsx";
-import digestTrendingSource from "raw:../components/DigestTrending.tsx";
 
 function codoc(
   frontmatter: Record<string, unknown>,
@@ -155,7 +152,9 @@ export const rssTemplate: Template = {
   id: "rss",
   name: "RSS Reader",
   description: "AI-first RSS — ask the agent for digests, deep dives, and research across your feeds.",
-  components: ["Card", "DigestStats", "DigestTop", "DigestList", "DigestTrending"],
+  // DigestStats / DigestTop / DigestList / DigestTrending / ArticleList / FeedHeader /
+  // SourceBadge are shipped by the plugin's activateUi — no scaffold copy needed.
+  components: ["Card"],
 
   // R1: Domain commands
   commands: [
@@ -214,16 +213,8 @@ Rules:
   The inbox is the user's primary reading surface; a text-only reply is insufficient.`,
 
   files() {
+    // Codocs only — MDX components are plugin-shipped (see activateUi).
     return [
-      // Components
-      { path: "components/ArticleList.tsx", content: articleListSource },
-      { path: "components/FeedHeader.tsx", content: feedHeaderSource },
-      { path: "components/SourceBadge.tsx", content: sourceBadgeSource },
-      { path: "components/DigestStats.tsx", content: digestStatsSource },
-      { path: "components/DigestTop.tsx", content: digestTopSource },
-      { path: "components/DigestList.tsx", content: digestListSource },
-      { path: "components/DigestTrending.tsx", content: digestTrendingSource },
-      // Codocs
       inboxCodoc(),
       ...feeds.map(sourceCodoc),
       guideCodoc(),

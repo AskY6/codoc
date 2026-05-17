@@ -99,6 +99,12 @@ export class PluginHost {
     return this.active?.router ?? null;
   }
 
+  /** Look up a registered server-side command on the active plugin. */
+  activeCommand(pluginId: string, commandId: string): import("./context.js").CommandHandler | null {
+    if (!this.active || this.active.module.manifest.id !== pluginId) return null;
+    return this.active.result.commands.get(commandId) ?? null;
+  }
+
   /** Merge of plugin's prompt file + the workspace's config-level override. */
   activeAgentInstructions(): string | null {
     return this.active?.agentInstructions ?? null;

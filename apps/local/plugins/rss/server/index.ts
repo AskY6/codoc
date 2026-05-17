@@ -16,7 +16,7 @@ import type { ActivateContext } from "../../../src/plugins-host/context.js";
 import type { RssPluginConfig } from "./config.js";
 import { createRssApiRoutes } from "./api-routes.js";
 import { createDigestJob } from "./digest-job.js";
-import type { RssServiceContext } from "./service.js";
+import { refreshFeeds, generateDigest, type RssServiceContext } from "./service.js";
 
 // ---- Static contributions (resolved by plugins-host/registry.ts) ----------
 
@@ -50,4 +50,9 @@ export function activate(ctx: ActivateContext<RssPluginConfig>): void {
   ctx.routes.use(createRssApiRoutes(svcCtx));
 
   ctx.jobs.start("rss-digest", () => createDigestJob(svcCtx));
+
+  // ---- Commands ----
+  // `rss.subscribe` is a UI-only chat-prompt; it's registered in activateUi.
+  ctx.commands.registerCommand("rss.refresh", () => refreshFeeds(svcCtx));
+  ctx.commands.registerCommand("rss.digest", () => generateDigest(svcCtx));
 }

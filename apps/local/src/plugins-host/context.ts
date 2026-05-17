@@ -38,6 +38,9 @@ export interface UpdateEvent {
 // ActivateContext
 // ---------------------------------------------------------------------------
 
+/** Handler for a plugin-registered command. Args come from the HTTP body. */
+export type CommandHandler = (args?: unknown) => unknown | Promise<unknown>;
+
 export interface ActivateContext<C = unknown> {
   // Identity
   readonly workspaceName: string;
@@ -67,6 +70,12 @@ export interface ActivateContext<C = unknown> {
     use(router: Hono): Disposable;
   };
 
+  // Commands — server-side handlers, called via POST /api/plugins/<id>/commands/<cmdId>
+  readonly commands: {
+    registerCommand(id: string, handler: CommandHandler): Disposable;
+    executeCommand(id: string, args?: unknown): Promise<unknown>;
+  };
+
   // Background jobs
   readonly jobs: {
     start(name: string, fn: JobFn): Disposable;
@@ -90,6 +99,8 @@ export interface ActivationResult {
   readonly store: DisposableStore;
   router: Hono | null;
   readonly jobs: JobHandle[];
+  /** Live id → handler map populated via ctx.commands.registerCommand. */
+  readonly commands: Map<string, CommandHandler>;
 }
 
 export interface BuildContextOptions<C = unknown> {
@@ -114,6 +125,7 @@ export function buildActivateContext<C>(
     store: new DisposableStore(),
     router: null,
     jobs: [],
+    commands: new Map(),
   };
 
   const ctx: ActivateContext<C> = {
@@ -147,6 +159,29 @@ export function buildActivateContext<C>(
         return toDisposable(() => {
           if (result.router === r) result.router = null;
         });
+      },
+    },
+
+    commands: {
+      registerCommand(id, handler) {
+        if (result.commands.has(id)) {
+          console.warn(
+            `[plugin-host] plugin "${opts.pluginId}" re-registered command "${id}" — last wins`,
+          );
+        }
+        result.commands.set(id, handler);
+        const dispose = toDisposable(() => {
+          if (result.commands.get(id) === handler) result.commands.delete(id);
+        });
+        result.store.add(dispose);
+        return dispose;
+      },
+      async executeCommand(id, args) {
+        const handler = result.commands.get(id);
+        if (!handler) {
+          throw new Error(`[plugin-host] no handler registered for command "${id}"`);
+        }
+        return await handler(args);
       },
     },
 

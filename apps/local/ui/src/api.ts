@@ -156,10 +156,6 @@ export async function* streamChat(
 // Workspace management
 // ---------------------------------------------------------------------------
 
-export type WorkspaceUiActionDescriptor =
-  | { kind: "rest"; id: string; label: string; method: string; path: string }
-  | { kind: "chat-prompt"; id: string; label: string; prompt: string };
-
 export interface WorkspaceUiViewDescriptor {
   id: string;
   label: string;
@@ -170,8 +166,32 @@ export interface WorkspaceUiSpec {
   homeView?: "tree" | "inbox";
   homeCodocPath?: string;
   hiddenPaths?: string[];
-  primaryActions?: WorkspaceUiActionDescriptor[];
   secondaryViews?: WorkspaceUiViewDescriptor[];
+}
+
+export interface WorkspaceCommandDescriptor {
+  id: string;
+  title: string;
+  category?: string;
+  icon?: string;
+}
+
+export interface WorkspaceMenuItem {
+  command: string;
+  when?: string;
+  group?: string;
+}
+
+export interface WorkspaceMenus {
+  "workspace.actionBar"?: WorkspaceMenuItem[];
+  commandPalette?: WorkspaceMenuItem[];
+  "view.title"?: WorkspaceMenuItem[];
+  "fileTree.context"?: WorkspaceMenuItem[];
+}
+
+export interface WorkspaceMdxComponentDescriptor {
+  name: string;
+  path: string;
 }
 
 export interface WorkspaceInfo {
@@ -180,6 +200,9 @@ export interface WorkspaceInfo {
   codocCount?: number;
   pluginId?: string;
   uiSpec?: WorkspaceUiSpec;
+  commands?: WorkspaceCommandDescriptor[];
+  menus?: WorkspaceMenus;
+  mdxComponents?: WorkspaceMdxComponentDescriptor[];
 }
 
 export interface ChatMeta {

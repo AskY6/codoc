@@ -3,6 +3,11 @@
 //
 // Server compiles .tsx → CJS with react externalized. We evaluate the CJS
 // using a mock require() that resolves react from the app's loaded modules.
+//
+// Component priority (lowest → highest):
+//   builtin → plugin-shipped → user .codoc/components/
+// User wins on collisions so legacy workspaces with scaffolded copies keep
+// working; we just warn in the console.
 
 import { useState, useEffect, type ComponentType } from "react";
 import * as React from "react";
@@ -68,30 +73,43 @@ function evaluateCJS(name: string, code: string): EvaluatedComponent | null {
 // Hook: useCustomComponents
 // ---------------------------------------------------------------------------
 
+export interface PluginComponentEntry {
+  readonly name: string;
+  readonly component: ComponentType<Record<string, unknown>>;
+}
+
 export interface MergedComponents {
   /** Built-in component registry */
   readonly builtinRegistry: readonly RegisteredComponent[];
+  /** Plugin-shipped components (from activateUi) */
+  readonly pluginRegistry: readonly PluginComponentEntry[];
   /** Custom component registry (loaded from .codoc/components/) */
   readonly customRegistry: readonly RegisteredComponent[];
-  /** Builtin + custom map for MDX injection */
+  /** builtin + plugin + custom map for MDX injection (custom wins on collisions) */
   readonly componentMap: Record<string, ComponentType<Record<string, unknown>>>;
   /** Any custom components that failed to compile or evaluate */
   readonly errors: Array<{ name: string; error: string }>;
 }
 
+interface UseCustomComponentsOptions {
+  /** Re-fetch trigger for /api/components (e.g. workspace SSE update). */
+  readonly refreshKey: unknown;
+  /** Plugin-shipped component map (from UiPluginHost). */
+  readonly pluginComponents?: Record<string, ComponentType<Record<string, unknown>>>;
+}
+
 /**
- * Fetches custom components from the server, evaluates them, and returns
- * a merged view combining builtin and custom components.
- *
- * Re-fetches whenever `refreshKey` changes (e.g. after saving a codoc).
+ * Fetches custom components from the server, evaluates them, and merges the
+ * three layers (builtin → plugin → user) into a single component map for MDX
+ * rendering.
  */
-export function useCustomComponents(refreshKey: unknown): MergedComponents {
-  const [merged, setMerged] = useState<MergedComponents>(() => ({
-    builtinRegistry,
-    customRegistry: [],
-    componentMap: builtinComponentMap,
-    errors: [],
-  }));
+export function useCustomComponents(opts: UseCustomComponentsOptions): MergedComponents {
+  const pluginComponents = opts.pluginComponents ?? EMPTY_PLUGIN_MAP;
+  const [serverState, setServerState] = useState<{
+    customRegistry: readonly RegisteredComponent[];
+    customMap: Record<string, ComponentType<Record<string, unknown>>>;
+    errors: Array<{ name: string; error: string }>;
+  }>(() => ({ customRegistry: [], customMap: {}, errors: [] }));
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +119,7 @@ export function useCustomComponents(refreshKey: unknown): MergedComponents {
       try {
         entries = await api.components();
       } catch {
-        // API not available — use builtins only
+        // API not available — use builtins/plugin only
         return;
       }
 
@@ -136,21 +154,42 @@ export function useCustomComponents(refreshKey: unknown): MergedComponents {
         }
       }
 
-      if (!cancelled) {
-        setMerged({
-          builtinRegistry,
-          customRegistry,
-          componentMap: { ...builtinComponentMap, ...customMap },
-          errors,
-        });
-      }
+      if (!cancelled) setServerState({ customRegistry, customMap, errors });
     }
 
     void load();
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [opts.refreshKey]);
 
-  return merged;
+  // Warn when a user-scaffolded component shadows a plugin-shipped one.
+  useEffect(() => {
+    for (const name of Object.keys(serverState.customMap)) {
+      if (pluginComponents[name]) {
+        console.warn(
+          `[components] user component "${name}" shadows the plugin-shipped version. ` +
+          `Delete .codoc/<workspace>/components/${name}.tsx to use the latest from the plugin.`,
+        );
+      }
+    }
+  }, [serverState.customMap, pluginComponents]);
+
+  const pluginRegistry: PluginComponentEntry[] = Object.entries(pluginComponents).map(
+    ([name, component]) => ({ name, component }),
+  );
+
+  return {
+    builtinRegistry,
+    pluginRegistry,
+    customRegistry: serverState.customRegistry,
+    componentMap: {
+      ...builtinComponentMap,
+      ...pluginComponents,
+      ...serverState.customMap,
+    },
+    errors: serverState.errors,
+  };
 }
+
+const EMPTY_PLUGIN_MAP: Record<string, ComponentType<Record<string, unknown>>> = {};

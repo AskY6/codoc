@@ -10,6 +10,8 @@ import { pluginViewRegistry } from "./plugin-views/registry.ts";
 import { useCustomComponents } from "./custom-components.ts";
 import { ConfirmDialog } from "./components/ConfirmDialog.tsx";
 import { WorkspaceActionBar } from "./components/WorkspaceActionBar.tsx";
+import { CommandPalette } from "./components/CommandPalette.tsx";
+import { UiPluginHost } from "./plugins-host/host.ts";
 import { subscribe, publish } from "./lib/event-bus.ts";
 
 // ---------------------------------------------------------------------------
@@ -385,6 +387,65 @@ function countFiles(nodes: TreeNode[]): number {
 function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; onSwitchWorkspace: () => void }) {
   const workspaceName = wsInfo.name!;
   const uiSpec: WorkspaceUiSpec | undefined = wsInfo.uiSpec;
+  const commands = useMemo(() => wsInfo.commands ?? [], [wsInfo.commands]);
+  const menus = useMemo(() => wsInfo.menus ?? {}, [wsInfo.menus]);
+  const actionBarMenu = menus["workspace.actionBar"] ?? [];
+  const paletteMenu = menus.commandPalette ?? [];
+
+  // UI plugin host — one per workspace.
+  const uiHostRef = useRef<UiPluginHost | null>(null);
+  if (uiHostRef.current === null) uiHostRef.current = new UiPluginHost();
+  const uiHost = uiHostRef.current;
+  const [pluginComponentsVersion, setPluginComponentsVersion] = useState(0);
+
+  // Attach the listener once, on mount — must be in place before activate()
+  // fires synchronous register calls.
+  useEffect(() => {
+    const sub = uiHost.addListener({
+      onComponentsChanged: () => setPluginComponentsVersion((v) => v + 1),
+    });
+    return () => sub.dispose();
+  }, [uiHost]);
+
+  useEffect(() => {
+    if (!wsInfo.pluginId) return undefined;
+    void uiHost.activate({
+      pluginId: wsInfo.pluginId,
+      workspaceName,
+      config: {},
+    });
+    return () => {
+      uiHost.deactivate();
+    };
+  }, [uiHost, wsInfo.pluginId, workspaceName]);
+
+  const pluginComponents = useMemo(() => {
+    // Re-read snapshot whenever the host fires onComponentsChanged.
+    void pluginComponentsVersion;
+    return uiHost.getMdxComponents();
+  }, [uiHost, pluginComponentsVersion]);
+
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName ?? "";
+        const editable = target?.isContentEditable ?? false;
+        if (tag === "INPUT" || tag === "TEXTAREA" || editable) {
+          // Allow Cmd+K inside inputs only if the input is empty (lets users open it from search bar).
+          if ((target as HTMLInputElement | null)?.value) return;
+        }
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (e.key === "Escape") {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [codocList, setCodocList] = useState<CodocListItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -403,7 +464,7 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
   );
   const [showProviderPicker, setShowProviderPicker] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ kind: "codoc"; path: string } | { kind: "chat"; sessionId: string; title: string } | null>(null);
-  const components = useCustomComponents(0);
+  const components = useCustomComponents({ refreshKey: 0, pluginComponents });
 
   // --- Data loading --------------------------------------------------------
 
@@ -950,9 +1011,11 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
             </div>
           )}
 
-          {uiSpec?.primaryActions && uiSpec.primaryActions.length > 0 && (
+          {actionBarMenu.length > 0 && (
             <WorkspaceActionBar
-              actions={uiSpec.primaryActions}
+              host={uiHost}
+              commands={commands}
+              menu={actionBarMenu}
               onActionComplete={() => { if (codocPath) void fetchCodoc(codocPath); }}
             />
           )}
@@ -962,6 +1025,7 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
           ) : focus.kind === "component" ? (
             <ComponentPanel
               builtinRegistry={components.builtinRegistry}
+              pluginRegistry={components.pluginRegistry}
               customRegistry={components.customRegistry}
               errors={components.errors}
             />
@@ -1061,6 +1125,14 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
           </div>
         )}
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        host={uiHost}
+        commands={commands}
+        menu={paletteMenu}
+        onClose={() => setPaletteOpen(false)}
+      />
     </div>
   );
 }

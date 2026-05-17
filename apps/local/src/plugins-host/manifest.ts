@@ -68,23 +68,8 @@ export interface PluginConfigError {
 
 // ---------------------------------------------------------------------------
 // UI descriptor types — surfaced verbatim through /api/workspace.
-// Phase 3 replaces primaryActions with manifest.contributes.commands + menus.
+// Phase 3 replaced ui.primaryActions with contributes.commands + contributes.menus.
 // ---------------------------------------------------------------------------
-
-export type WorkspaceUiActionDescriptor =
-  | {
-      readonly kind: "rest";
-      readonly id: string;
-      readonly label: string;
-      readonly method: "GET" | "POST" | "PATCH" | "DELETE";
-      readonly path: string;
-    }
-  | {
-      readonly kind: "chat-prompt";
-      readonly id: string;
-      readonly label: string;
-      readonly prompt: string;
-    };
 
 export interface WorkspaceUiViewDescriptor {
   readonly id: string;
@@ -96,7 +81,6 @@ export interface WorkspaceUiSpec {
   readonly homeView?: "tree" | "inbox";
   readonly homeCodocPath?: string;
   readonly hiddenPaths?: readonly string[];
-  readonly primaryActions?: readonly WorkspaceUiActionDescriptor[];
   readonly secondaryViews?: readonly WorkspaceUiViewDescriptor[];
 }
 
@@ -145,6 +129,35 @@ export interface MdxComponentContribution {
   readonly path: string;
 }
 
+// --- Phase 3: commands + menus --------------------------------------------
+
+export interface CommandContribution {
+  readonly id: string;
+  readonly title: string;
+  readonly category?: string;
+  readonly icon?: string;
+}
+
+export interface MenuItem {
+  readonly command: string;
+  /** Placeholder for future `when` clauses — host treats it as opaque metadata. */
+  readonly when?: string;
+  /** Placeholder for grouping inside a menu surface. */
+  readonly group?: string;
+}
+
+/**
+ * Menu surfaces a plugin contributes into. v1 honors `workspace.actionBar`
+ * (top of the document area) and `commandPalette` (Cmd+K).
+ * `view.title` and `fileTree.context` are reserved placeholders for later.
+ */
+export interface MenusContribution {
+  readonly "workspace.actionBar"?: readonly MenuItem[];
+  readonly commandPalette?: readonly MenuItem[];
+  readonly "view.title"?: readonly MenuItem[];
+  readonly "fileTree.context"?: readonly MenuItem[];
+}
+
 export interface ManifestContributes {
   // --- Static (registered before workspace load) -----------------------
   readonly sourceProviders?: readonly SourceProviderContribution[];
@@ -156,6 +169,8 @@ export interface ManifestContributes {
 
   // --- Activation (declarative — programmatic half in activate(ctx)) ---
   readonly mcpTools?: readonly McpToolContribution[];
+  readonly commands?: readonly CommandContribution[];
+  readonly menus?: MenusContribution;
 
   // --- UI (consumed by SPA via /api/workspace) -------------------------
   readonly views?: readonly ViewContribution[];

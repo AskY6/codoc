@@ -33,6 +33,24 @@
 
     "mcpTools": [],
 
+    "commands": [
+      { "id": "rss.refresh",   "title": "Refresh feeds" },
+      { "id": "rss.digest",    "title": "Update digest" },
+      { "id": "rss.subscribe", "title": "Subscribe..." }
+    ],
+    "menus": {
+      "workspace.actionBar": [
+        { "command": "rss.refresh" },
+        { "command": "rss.digest" },
+        { "command": "rss.subscribe" }
+      ],
+      "commandPalette": [
+        { "command": "rss.refresh" },
+        { "command": "rss.digest" },
+        { "command": "rss.subscribe" }
+      ]
+    },
+
     "views": [
       { "id": "rss-subscriptions", "label": "Subscriptions", "icon": "list" },
       { "id": "rss-saved", "label": "Saved", "icon": "bookmark" }
@@ -49,11 +67,6 @@
     "ui": {
       "homeView": "inbox",
       "hiddenPaths": ["guide.codoc"],
-      "primaryActions": [
-        { "kind": "rest", "id": "refresh", "label": "Refresh feeds", "method": "POST", "path": "/api/plugins/rss/refresh" },
-        { "kind": "rest", "id": "digest", "label": "Update digest", "method": "POST", "path": "/api/plugins/rss/digest" },
-        { "kind": "chat-prompt", "id": "subscribe", "label": "Subscribe", "prompt": "Subscribe to " }
-      ],
       "secondaryViews": [
         { "id": "rss-subscriptions", "label": "Subscriptions", "icon": "list" },
         { "id": "rss-saved", "label": "Saved", "icon": "bookmark" }

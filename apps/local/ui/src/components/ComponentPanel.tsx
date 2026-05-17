@@ -1,19 +1,26 @@
 import type { ComponentMeta, RegisteredComponent } from "./builtin/index.ts";
+import type { PluginComponentEntry } from "../custom-components.ts";
 
 interface ComponentPanelProps {
   builtinRegistry: readonly RegisteredComponent[];
+  pluginRegistry: readonly PluginComponentEntry[];
   customRegistry: readonly RegisteredComponent[];
   errors: Array<{ name: string; error: string }>;
 }
 
-export function ComponentPanel({ builtinRegistry, customRegistry, errors }: ComponentPanelProps) {
+export function ComponentPanel({
+  builtinRegistry,
+  pluginRegistry,
+  customRegistry,
+  errors,
+}: ComponentPanelProps) {
   return (
     <div className="flex h-full flex-col bg-neutral-50/50">
       <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-2.5 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-neutral-800">Component Library</span>
           <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-500 uppercase">
-            {builtinRegistry.length + customRegistry.length} Items
+            {builtinRegistry.length + pluginRegistry.length + customRegistry.length} Items
           </span>
         </div>
       </div>
@@ -34,6 +41,35 @@ export function ComponentPanel({ builtinRegistry, customRegistry, errors }: Comp
           ))}
         </div>
 
+        {/* Plugin-shipped */}
+        {pluginRegistry.length > 0 && (
+          <>
+            <div className="mb-3 mt-8 flex items-center gap-2">
+              <div className="h-px flex-1 bg-neutral-200" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                Plugin
+              </span>
+              <div className="h-px flex-1 bg-neutral-200" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {pluginRegistry.map((entry) => (
+                <ComponentCard
+                  key={entry.name}
+                  meta={{
+                    name: entry.name,
+                    description: "Shipped by the active plugin.",
+                    props: [],
+                    template: `<${entry.name} />`,
+                    dataTypeHints: [],
+                  }}
+                  badge="plugin"
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Custom */}
         {(customRegistry.length > 0 || errors.length > 0) && (
           <>
@@ -47,7 +83,7 @@ export function ComponentPanel({ builtinRegistry, customRegistry, errors }: Comp
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {customRegistry.map((entry) => (
-                <ComponentCard key={entry.meta.name} meta={entry.meta} isCustom />
+                <ComponentCard key={entry.meta.name} meta={entry.meta} badge="custom" />
               ))}
 
               {errors.map((err) => (
@@ -72,11 +108,14 @@ export function ComponentPanel({ builtinRegistry, customRegistry, errors }: Comp
 
 function ComponentCard({
   meta,
-  isCustom,
+  badge,
 }: {
   meta: ComponentMeta;
-  isCustom?: boolean;
+  badge?: "plugin" | "custom";
 }) {
+  const badgeStyles = badge === "plugin"
+    ? "bg-blue-50 text-blue-600 ring-blue-100"
+    : "bg-purple-50 text-purple-600 ring-purple-100";
   return (
     <div className="group flex flex-col rounded-xl border border-neutral-200 bg-white p-3 transition-all hover:border-blue-300 hover:shadow-md hover:shadow-blue-50">
       <div className="flex items-start justify-between gap-2">
@@ -86,9 +125,9 @@ function ComponentCard({
             {meta.name}
             <span className="opacity-40">{" />"}</span>
           </span>
-          {isCustom && (
-            <span className="rounded-full bg-purple-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tight text-purple-600 ring-1 ring-purple-100">
-              custom
+          {badge && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tight ring-1 ${badgeStyles}`}>
+              {badge}
             </span>
           )}
         </div>

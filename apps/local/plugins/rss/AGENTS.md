@@ -10,10 +10,10 @@ RSS reader plugin — owns the vertical product experience for RSS workspaces.
 
 ## Subtrees
 
-- `server/` — node runtime: `activate(ctx)`, subscriptions, fetch, digest, ranking, AI summary, jobs, api routes.
-- `ui/` — browser panels mounted by the SPA's plugin-view registry.
-- `components/` — MDX components (`ArticleList`, `DigestList`, `FeedHeader`, …) used inside `.codoc` bodies; bundled as raw TSX strings by the template scaffold today.
-- `template/` — `codoc init --from rss` scaffold; raw-imports siblings from `../components/`.
+- `server/` — node runtime: `activate(ctx)`, subscriptions, fetch, digest, ranking, AI summary, jobs, api routes, server commands (`rss.refresh`, `rss.digest`).
+- `ui/` — browser entry: `activateUi(ctx)` registers MDX components + the UI-side `rss.subscribe` command; also exports panels mounted by the plugin-view registry.
+- `components/` — MDX components (`ArticleList`, `DigestList`, `FeedHeader`, …) used inside `.codoc` bodies; bundled into the SPA and registered via `activateUi`.
+- `template/` — `codoc init --from rss` scaffold; emits codocs only (components are plugin-shipped, no scaffold copy).
 - `manifest.json` — Phase 2 manifest with full `contributes` block.
 - `agent-prompt.md` — long-form agent system prompt, loaded by `server/index.ts` and re-exported as `rssAgentInstructions` (matches `manifest.contributes.agentInstructions`).
 

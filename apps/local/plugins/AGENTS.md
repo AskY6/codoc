@@ -8,26 +8,28 @@ Must never import from: any other plugin (`./<other>/`); `@cobook/storage*`, `@c
 
 One directory per workspace plugin. Each plugin is a self-contained vertical capability pack — `manifest.json`, server runtime, UI panels, MDX components, scaffold template — all colocated.
 
-Phase 2 contract: `manifest.json` declares the static contributions and (where applicable) `server/index.ts` exports a function `activate(ctx)`. The host (`../src/plugins-host/`) wires it all together at compile time via `plugins-host/registry.ts`.
+Phase 2 contract: `manifest.json` declares the static contributions and (where applicable) `server/index.ts` exports a function `activate(ctx)`. Phase 3 added `contributes.commands` + `contributes.menus`, registered via `ctx.commands.registerCommand` (server) and the matching UI host. Phase 4 ships MDX components through `activateUi(ctx)` instead of scaffolding them into user workspaces.
 
 ## Layout (per plugin)
 
 ```
 plugins/<id>/
-  manifest.json          # contributes block (sourceProviders, templates, configurationSchema, agentInstructions, mcpTools, views, mdxComponents, ui)
+  manifest.json          # contributes block (sourceProviders, templates, configurationSchema, agentInstructions, mcpTools, commands, menus, views, mdxComponents, ui)
   agent-prompt.md        # (optional) long-form agent system prompt
-  server/                # node runtime — activate(ctx), api routes, jobs, services
+  server/                # node runtime — activate(ctx) → routes / jobs / commands / mcp
     index.ts             # exports `activate` plus named bindings the manifest's entry strings point at
-  ui/                    # browser bundle — panels exposed to SPA
+  ui/                    # browser entry — activateUi(ctx) registers commands + MDX components; also exports panels for the plugin-view registry
   components/            # MDX components shipped with the plugin
   template/              # scaffold for `codoc init --from <id>` (optional)
   AGENTS.md
 ```
 
-## Registration (Phase 2, compile-time)
+## Registration (Phase 3/4, compile-time)
 
 - Server: `src/plugins-host/registry.ts` imports each plugin's `<id>/manifest.json` plus the bindings referenced by `entry` pointers.
-- UI: `ui/src/plugin-views/registry.ts` static-imports `@plugins/<id>/ui/index.ts` (Phase 4 moves this to `activateUi(ctx)`).
+- Server commands: `activate(ctx)` calls `ctx.commands.registerCommand(id, handler)`; the host bridges them as `POST /api/plugins/<id>/commands/<cmdId>`.
+- UI: `ui/src/plugins-host/registry.ts` static-imports `@plugins/<id>/ui/index.ts#activateUi`. `activateUi(ctx)` registers UI-side commands and MDX components.
+- UI panels (secondary views) stay in `ui/src/plugin-views/registry.ts` so the SPA shell can mount them by view id; the host doesn't proxy them.
 - Templates: contributed through the manifest; aggregated by `PluginHost.templates`.
 
 Phase 6 replaces compile-time wiring with manifest-driven dynamic imports; the manifest schema is forward-compatible.

@@ -22,7 +22,7 @@ import type { CodocAST } from "@cobook/core";
 import type { Template, TemplateFile } from "../templates/index.js";
 import { addComponent } from "./add.js";
 import { BUILTIN_COMPONENT_META } from "../domain/recognize.js";
-import { findPluginIdForTemplate } from "../plugins-host/registry-lookup.js";
+import { findPluginIdForTemplate, mdxComponentNamesForPlugin } from "../plugins-host/registry-lookup.js";
 
 interface InitConfig {
   port: number;
@@ -143,8 +143,14 @@ async function validateTemplateContent(
   const codocFiles = files.filter((f) => f.path.endsWith(".codoc"));
   if (codocFiles.length === 0) return;
 
-  // Collect all component names: platform builtins + template installs + custom .tsx files
+  // Collect all component names that will resolve at render time:
+  //   platform builtins + plugin-shipped MDX + template-installed catalog
+  //   + scaffolded .tsx (legacy path; empty for plugin-shipped templates).
   const componentNames = new Set(BUILTIN_COMPONENT_META.map((c) => c.name));
+  const pluginId = findPluginIdForTemplate(tmpl.id);
+  if (pluginId) {
+    for (const name of mdxComponentNamesForPlugin(pluginId)) componentNames.add(name);
+  }
   for (const name of tmpl.components) componentNames.add(name);
   for (const f of files) {
     if (f.path.startsWith("components/") && f.path.endsWith(".tsx")) {

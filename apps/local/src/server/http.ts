@@ -124,13 +124,16 @@ export async function startHttpServer(
       return c.json({ active: false });
     }
     const mod = state.pluginHost.activeModule();
-    const uiSpec = mod?.manifest.contributes?.ui;
+    const contributes = mod?.manifest.contributes;
     return c.json({
       active: true,
       name: state.workspaceName,
       codocCount: state.workspace.codocs.size,
       pluginId: mod?.manifest.id ?? "default",
-      uiSpec,
+      uiSpec: contributes?.ui,
+      commands: contributes?.commands ?? [],
+      menus: contributes?.menus ?? {},
+      mdxComponents: contributes?.mdxComponents ?? [],
     });
   });
 
@@ -365,6 +368,41 @@ export async function startHttpServer(
   // ---- REST API -----------------------------------------------------------
   const apiRoutes = createApiRoutes(state, registry);
   app.route("/api", apiRoutes);
+
+  // ---- Plugin command bus (POST /api/plugins/:pluginId/commands/:cmdId) ---
+  //
+  // Server-side commands are registered via ctx.commands.registerCommand(...)
+  // during plugin activate(). The UI host dispatches here over HTTP.
+  app.post("/api/plugins/:pluginId/commands/:cmdId", async (c) => {
+    const pluginId = c.req.param("pluginId");
+    const cmdId = c.req.param("cmdId");
+
+    const handler = state.pluginHost.activeCommand(pluginId, cmdId);
+    if (!handler) {
+      return c.json(
+        { ok: false, error: `command "${cmdId}" not registered on plugin "${pluginId}"` },
+        404,
+      );
+    }
+
+    let args: unknown = undefined;
+    try {
+      const text = await c.req.text();
+      if (text.length > 0) args = JSON.parse(text);
+    } catch {
+      return c.json({ ok: false, error: "invalid JSON body" }, 400);
+    }
+
+    try {
+      const result = await handler(args);
+      return c.json({ ok: true, result: result ?? null });
+    } catch (e) {
+      return c.json(
+        { ok: false, error: e instanceof Error ? e.message : String(e) },
+        500,
+      );
+    }
+  });
 
   // ---- Plugin API routes (dynamic — delegates to active plugin) ----------
   app.all("/api/plugins/:pluginId/*", async (c) => {
