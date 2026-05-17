@@ -194,6 +194,10 @@ export interface WorkspaceMdxComponentDescriptor {
   path: string;
 }
 
+export interface AllPluginCommandDescriptor extends WorkspaceCommandDescriptor {
+  pluginId: string;
+}
+
 export interface WorkspaceInfo {
   active: boolean;
   name?: string;
@@ -203,6 +207,8 @@ export interface WorkspaceInfo {
   commands?: WorkspaceCommandDescriptor[];
   menus?: WorkspaceMenus;
   mdxComponents?: WorkspaceMdxComponentDescriptor[];
+  /** Phase 5: commands from every installed plugin, tagged with pluginId. */
+  allCommands?: AllPluginCommandDescriptor[];
 }
 
 export interface ChatMeta {

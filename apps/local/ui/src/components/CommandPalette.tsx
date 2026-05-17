@@ -1,8 +1,12 @@
-// Command palette — Cmd+K modal that enumerates all manifest-declared
-// commands, filters them by query, and dispatches via the UI plugin host.
+// Command palette — Cmd+K modal that enumerates manifest-declared commands,
+// filters them by query, and dispatches via the UI plugin host. Commands
+// from inactive plugins (Phase 5) appear in a separate section and are
+// disabled: v1 keeps one plugin per workspace, so you have to switch
+// workspaces to use them.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AllPluginCommandDescriptor,
   WorkspaceCommandDescriptor,
   WorkspaceMenuItem,
 } from "../api.ts";
@@ -13,42 +17,55 @@ interface Props {
   host: UiPluginHost;
   commands: readonly WorkspaceCommandDescriptor[];
   menu: readonly WorkspaceMenuItem[];
+  /** Phase 5: cross-plugin commands. Inactive ones render disabled. */
+  allCommands?: readonly AllPluginCommandDescriptor[];
+  activePluginId?: string;
   onClose: () => void;
 }
 
-export function CommandPalette({ open, host, commands, menu, onClose }: Props) {
+export function CommandPalette({
+  open,
+  host,
+  commands,
+  menu,
+  allCommands = [],
+  activePluginId,
+  onClose,
+}: Props) {
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Restrict palette to commands listed in `commandPalette` menu (fall back to all).
-  const visible = useMemo<WorkspaceCommandDescriptor[]>(() => {
+  // Active-plugin commands (clickable) — same shape as before.
+  const activeVisible = useMemo<WorkspaceCommandDescriptor[]>(() => {
     const ids = menu.length > 0 ? new Set(menu.map((m) => m.command)) : null;
     const all = ids ? commands.filter((c) => ids.has(c.id)) : commands;
-    if (!query.trim()) return all;
-    const q = query.toLowerCase();
-    return all.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q) ||
-        (c.category ?? "").toLowerCase().includes(q),
-    );
+    return filterByQuery(all, query);
   }, [commands, menu, query]);
+
+  // Inactive-plugin commands (disabled, listed below).
+  const inactiveVisible = useMemo<AllPluginCommandDescriptor[]>(() => {
+    if (!activePluginId) return [];
+    const inactive = allCommands.filter((c) => c.pluginId !== activePluginId);
+    return filterByQuery(inactive, query);
+  }, [allCommands, activePluginId, query]);
 
   useEffect(() => {
     if (open) {
       setQuery("");
       setHighlight(0);
-      // Focus the input on next paint.
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
     return undefined;
   }, [open]);
 
+  // Only active commands are reachable via keyboard.
   useEffect(() => {
-    if (highlight >= visible.length) setHighlight(Math.max(0, visible.length - 1));
-  }, [visible, highlight]);
+    if (highlight >= activeVisible.length) {
+      setHighlight(Math.max(0, activeVisible.length - 1));
+    }
+  }, [activeVisible, highlight]);
 
   if (!open) return null;
 
@@ -81,13 +98,13 @@ export function CommandPalette({ open, host, commands, menu, onClose }: Props) {
                 onClose();
               } else if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setHighlight((h) => Math.min(h + 1, visible.length - 1));
+                setHighlight((h) => Math.min(h + 1, activeVisible.length - 1));
               } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setHighlight((h) => Math.max(h - 1, 0));
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                const cmd = visible[highlight];
+                const cmd = activeVisible[highlight];
                 if (cmd) void run(cmd);
               }
             }}
@@ -97,10 +114,10 @@ export function CommandPalette({ open, host, commands, menu, onClose }: Props) {
         </div>
 
         <ul className="max-h-80 overflow-y-auto py-1">
-          {visible.length === 0 && (
+          {activeVisible.length === 0 && inactiveVisible.length === 0 && (
             <li className="px-3 py-6 text-center text-xs text-neutral-400">No commands</li>
           )}
-          {visible.map((cmd, i) => (
+          {activeVisible.map((cmd, i) => (
             <li key={cmd.id}>
               <button
                 type="button"
@@ -117,8 +134,43 @@ export function CommandPalette({ open, host, commands, menu, onClose }: Props) {
               </button>
             </li>
           ))}
+
+          {inactiveVisible.length > 0 && (
+            <>
+              <li className="mt-1 border-t border-neutral-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                Other plugins
+              </li>
+              {inactiveVisible.map((cmd) => (
+                <li key={`${cmd.pluginId}:${cmd.id}`}>
+                  <div
+                    className="flex w-full cursor-not-allowed items-center justify-between px-3 py-2 text-left text-sm text-neutral-400"
+                    title={`Open a "${cmd.pluginId}" workspace to use this command`}
+                  >
+                    <span>{cmd.title}</span>
+                    <span className="text-[10px] uppercase tracking-wider">
+                      {cmd.pluginId}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </>
+          )}
         </ul>
       </div>
     </div>
+  );
+}
+
+function filterByQuery<T extends { id: string; title: string; category?: string }>(
+  items: readonly T[],
+  query: string,
+): T[] {
+  if (!query.trim()) return [...items];
+  const q = query.toLowerCase();
+  return items.filter(
+    (c) =>
+      c.title.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q) ||
+      (c.category ?? "").toLowerCase().includes(q),
   );
 }

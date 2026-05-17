@@ -1131,6 +1131,8 @@ function WorkspaceApp({ wsInfo, onSwitchWorkspace }: { wsInfo: WorkspaceInfo; on
         host={uiHost}
         commands={commands}
         menu={paletteMenu}
+        allCommands={wsInfo.allCommands ?? []}
+        activePluginId={wsInfo.pluginId}
         onClose={() => setPaletteOpen(false)}
       />
     </div>

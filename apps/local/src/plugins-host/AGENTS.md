@@ -35,4 +35,10 @@ The host:
 
 - `commands` namespace on `ActivateContext` + manifest `contributes.commands` / `menus` (Phase 3).
 - `mdxComponents` registration in browser-side `activateUi(ctx)` (Phase 4).
-- `activationEvents` state machine (Phase 5).
+
+## Phase 5 — ActivationEvents (landed)
+
+- `manifest.activationEvents` is parsed via `parseActivationEvent` (manifest.ts) into an ADT: `workspaceKind | command | startupFinished | unknown`.
+- `resolvePlugin` consults `onWorkspaceKind:<id>` events first when `workspaceKind` is set. Falls back to id-match (with a warn, so authors notice the missing event) and then to `legacyDetect`, preserving back-compat for plugins that haven't declared events yet.
+- `PluginHost` tracks a per-plugin `PluginState` (`installed → activated → disposed`) seeded `installed` for every known manifest. Transitions log as `[plugin-host] <id>: prev → next` on workspace open/close. `onStartupFinished` events emit an observability log line but don't activate (single-plugin-per-workspace invariant holds).
+- `onCommand:<id>` is parsed but does not auto-activate — same invariant. The command palette uses `host.allCommands()` to list every plugin's commands; inactive ones render disabled with a "switch workspace" hint.

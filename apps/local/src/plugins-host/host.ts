@@ -22,6 +22,7 @@ import type { Workspace } from "../domain/types.js";
 import type { ProviderRegistry } from "../providers/registry.js";
 import type { Template } from "../templates/types.js";
 import type { WorkspaceConfigFile, Manifest } from "./manifest.js";
+import { manifestActivationEvents } from "./manifest.js";
 import type { ActivationResult, JobHandle } from "./context.js";
 import { buildActivateContext } from "./context.js";
 import { DisposableStore } from "./disposable.js";
@@ -45,6 +46,22 @@ export interface ResolvedPlugin {
   readonly source: "config" | "detected" | "default";
 }
 
+/**
+ * Plugin lifecycle state — one transition per workspace open/close.
+ * v1 keeps one plugin activated at a time, but every manifest gets a slot
+ * so the host can log the trajectory of any plugin we know about.
+ */
+export type PluginState = "installed" | "activated" | "disposed";
+
+/** All commands declared across every plugin manifest, tagged with their pluginId. */
+export interface PluginCommandDescriptor {
+  readonly pluginId: string;
+  readonly id: string;
+  readonly title: string;
+  readonly category?: string;
+  readonly icon?: string;
+}
+
 export interface ActiveActivation {
   readonly module: PluginModule;
   readonly config: unknown;
@@ -65,10 +82,47 @@ export class PluginHost {
   readonly templates: readonly Template[];
   /** Current activation state, if a workspace is open. */
   private active: ActiveActivation | null = null;
+  /** Lifecycle state per plugin id — seeded `installed` for every known manifest. */
+  private states = new Map<string, PluginState>();
 
   constructor() {
     this.sourceRegistry = buildSourceRegistry();
     this.templates = aggregateTemplates();
+    for (const mod of pluginModules) this.states.set(mod.manifest.id, "installed");
+    this.fireStartupFinished();
+  }
+
+  /** Snapshot of the per-plugin state machine, for diagnostics. */
+  pluginState(id: string): PluginState | undefined {
+    return this.states.get(id);
+  }
+
+  /** Read all states (used by tests + future diagnostics endpoint). */
+  pluginStates(): ReadonlyMap<string, PluginState> {
+    return this.states;
+  }
+
+  private transition(id: string, next: PluginState): void {
+    const prev = this.states.get(id) ?? "installed";
+    if (prev === next) return;
+    this.states.set(id, next);
+    console.log(`[plugin-host] ${id}: ${prev} → ${next}`);
+  }
+
+  /**
+   * Emit observability traces for `onStartupFinished` activation events.
+   * v1 keeps one plugin per workspace, so this never actually flips state —
+   * but the log line proves the event got parsed and surfaced.
+   */
+  private fireStartupFinished(): void {
+    for (const mod of pluginModules) {
+      const events = manifestActivationEvents(mod.manifest);
+      if (events.some((e) => e.kind === "startupFinished")) {
+        console.log(
+          `[plugin-host] ${mod.manifest.id}: onStartupFinished noted (deferred — v1 activates one plugin per workspace)`,
+        );
+      }
+    }
   }
 
   /** All known plugin manifests. */
@@ -110,13 +164,36 @@ export class PluginHost {
     return this.active?.agentInstructions ?? null;
   }
 
-  /** Pick the plugin for a workspace — explicit workspaceKind first, then legacyDetect. */
+  /**
+   * Pick the plugin for a workspace. Phase 5 order:
+   *   1. `workspaceKind` set → match against `onWorkspaceKind:<kind>` events.
+   *   2. Back-compat: fall back to plugin whose id == workspaceKind (warn —
+   *      missing event declaration). Lets pre-Phase-5 manifests still resolve.
+   *   3. No `workspaceKind` → run each plugin's `legacyDetect`.
+   *   4. Otherwise: default plugin.
+   */
   resolvePlugin(workspace: Workspace, config: WorkspaceConfigFile): ResolvedPlugin {
     if (config.workspaceKind) {
-      const mod = findPluginModule(config.workspaceKind);
-      if (mod) return { module: mod, source: "config" };
+      const kind = config.workspaceKind;
+      const byEvent = pluginModules.find((m) =>
+        manifestActivationEvents(m.manifest).some(
+          (e) => e.kind === "workspaceKind" && e.id === kind,
+        ),
+      );
+      if (byEvent) return { module: byEvent, source: "config" };
+
+      // Back-compat: plugin id matches the requested kind but didn't declare
+      // the event yet. Honor it but warn so authors notice.
+      const byId = findPluginModule(kind);
+      if (byId) {
+        console.warn(
+          `[plugin-host] workspaceKind "${kind}" matched plugin id but no "onWorkspaceKind:${kind}" event was declared`,
+        );
+        return { module: byId, source: "config" };
+      }
+
       console.warn(
-        `[plugin-host] unknown workspaceKind "${config.workspaceKind}", falling back to default`,
+        `[plugin-host] unknown workspaceKind "${kind}", falling back to default`,
       );
       return { module: defaultPluginModule(), source: "default" };
     }
@@ -199,6 +276,7 @@ export class PluginHost {
       result,
     };
     this.active = active;
+    this.transition(mod.manifest.id, "activated");
     return active;
   }
 
@@ -216,6 +294,29 @@ export class PluginHost {
         }`,
       );
     }
+    this.transition(mod.manifest.id, "disposed");
+  }
+
+  /**
+   * All commands declared by any plugin manifest, tagged with their pluginId.
+   * Used by the command palette to surface commands across plugins; v1 still
+   * runs only the active plugin's commands.
+   */
+  allCommands(): readonly PluginCommandDescriptor[] {
+    const out: PluginCommandDescriptor[] = [];
+    for (const mod of pluginModules) {
+      const cmds = mod.manifest.contributes?.commands ?? [];
+      for (const c of cmds) {
+        out.push({
+          pluginId: mod.manifest.id,
+          id: c.id,
+          title: c.title,
+          ...(c.category !== undefined ? { category: c.category } : {}),
+          ...(c.icon !== undefined ? { icon: c.icon } : {}),
+        });
+      }
+    }
+    return out;
   }
 }
 

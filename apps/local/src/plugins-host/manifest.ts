@@ -186,3 +186,37 @@ export interface Manifest {
   readonly activationEvents?: readonly string[];
   readonly contributes?: ManifestContributes;
 }
+
+// ---------------------------------------------------------------------------
+// Activation events (Phase 5)
+//
+// VS Code-style triggers that tell the host when a plugin wants to activate.
+// v1 only acts on `onWorkspaceKind:<id>` (selection at workspace open).
+// `onStartupFinished` is logged for observability — single-plugin-per-workspace
+// keeps it from doing anything yet.
+// `onCommand:<id>` is parsed but not auto-fired (would require switching the
+// active plugin, which violates the one-workspace-one-plugin invariant).
+// ---------------------------------------------------------------------------
+
+export type ActivationEvent =
+  | { readonly kind: "workspaceKind"; readonly id: string }
+  | { readonly kind: "command"; readonly id: string }
+  | { readonly kind: "startupFinished" }
+  | { readonly kind: "unknown"; readonly raw: string };
+
+/** Parse a manifest activationEvents string into an ADT. */
+export function parseActivationEvent(raw: string): ActivationEvent {
+  if (raw === "onStartupFinished") return { kind: "startupFinished" };
+  if (raw.startsWith("onWorkspaceKind:")) {
+    return { kind: "workspaceKind", id: raw.slice("onWorkspaceKind:".length) };
+  }
+  if (raw.startsWith("onCommand:")) {
+    return { kind: "command", id: raw.slice("onCommand:".length) };
+  }
+  return { kind: "unknown", raw };
+}
+
+/** Parse the activationEvents array on a manifest (defaults to []). */
+export function manifestActivationEvents(m: Manifest): readonly ActivationEvent[] {
+  return (m.activationEvents ?? []).map(parseActivationEvent);
+}

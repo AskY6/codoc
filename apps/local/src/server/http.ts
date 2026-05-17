@@ -134,6 +134,10 @@ export async function startHttpServer(
       commands: contributes?.commands ?? [],
       menus: contributes?.menus ?? {},
       mdxComponents: contributes?.mdxComponents ?? [],
+      // Phase 5: surface commands from every installed plugin so the palette
+      // can list them. v1 only runs the active plugin's commands; UI shows
+      // others as disabled with a "switch workspace" hint.
+      allCommands: state.pluginHost.allCommands(),
     });
   });
 
